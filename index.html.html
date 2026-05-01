@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AirIQ — Hodge Industrial</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f8fafc; height: 100vh; overflow: hidden; }
+    #root { height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const SYS = `You are AirIQ, the expert AI sales assistant for Hodge Industrial — an industrial compressed air distributor in the Southeast US. Help reps answer questions instantly and accurately in the field.
+
+=== HERTZ KOMPRESSOREN 2025 PRICE LIST (FOB Charlotte, NC) ===
+
+HBD SERIES — Oil Injected Belt Drive Rotary Screw:
+HBD 4 (5.5hp): 100psi=21cfm, 125psi=19cfm, 150psi=17cfm | Base 3ph: $7,750 | Tank+Dryer: $12,500
+HBD 5 (7.5hp): 100psi=29cfm, 125psi=28cfm, 150psi=25cfm | Base 3ph: $8,300 | Tank+Dryer: $14,030
+HBD 7 (10hp): 100psi=44cfm, 125psi=39cfm, 150psi=34cfm | Base 3ph: $8,975 | Tank+Dryer: $14,600
+HBD 11 (15hp): 100psi=68cfm, 125psi=63cfm, 150psi=55cfm | Base 3ph: $10,600 | Tank+Dryer: $16,500
+HBD 15 (20hp): 100psi=81cfm, 125psi=75cfm, 150psi=70cfm | Base 3ph: $13,400 | Tank+Dryer: $17,715
+HBD 15L (20hp): 100psi=97cfm, 125psi=87cfm, 150psi=77cfm | Base 3ph: $15,500
+HBD 18 (25hp): 100psi=119cfm, 125psi=106cfm, 150psi=94cfm | Base 3ph: $16,500
+HBD 22 (30hp): 100psi=140cfm, 125psi=128cfm, 150psi=113cfm | Base 3ph: $17,500
+HBD 30 (40hp): 100psi=195cfm, 125psi=171cfm, 150psi=156cfm | Base 3ph: $22,014
+HBD 37 (50hp): 100psi=243cfm, 125psi=220cfm, 150psi=201cfm | Base 3ph: $25,300
+
+HDD SERIES — Oil Injected Direct Drive Fixed Speed:
+HDD 22 (30hp): 100psi=133cfm, 150psi=107cfm | $24,997
+HDD 30 (40hp): 100psi=207cfm, 150psi=162cfm | $32,000
+HDD 37 (50hp): 100psi=238cfm, 150psi=203cfm | $34,000
+HDD 45 (60hp): 100psi=293cfm, 150psi=247cfm | $36,407
+HDD 55 (75hp): 100psi=374cfm, 150psi=290cfm | $58,985
+HDD 75 (100hp): 100psi=495cfm, 150psi=402cfm | $63,218
+Water cooled adder ~$3,070. Heat recovery available.
+
+HVD SERIES — Oil Injected Variable Speed Drive:
+HVD 5 (7.5hp): 100psi=21-31cfm | 460V: $13,011
+HVD 7 (10hp): 100psi=18-46cfm | 460V: $14,112
+HVD 11 (15hp): 100psi=19-66cfm | 460V: $15,861
+HVD 15 (20hp): 100psi=28-92cfm | 460V: $21,400
+HVD 18 (25hp): 100psi=38-113cfm | 460V: $25,824
+HVD 22 (30hp): 100psi=38-137cfm | 460V: $26,700
+HVD 30 (40hp): 100psi=37-193cfm | 460V: $35,278
+HVD 37 (50hp): 100psi=60-236cfm | 460V: $41,205
+HVD 45 (60hp): 100psi=99-311cfm | 460V: $48,260
+HVD 55 (75hp): 100psi=94-351cfm | 460V: $57,574
+HVD 75 (100hp): 100psi=237-490cfm | 460V: $70,838
+
+IMPETUS SERIES — Two-Stage VSD Rotary Screw (higher efficiency):
+IMPETUS 22 VSD (30hp): 100psi=36-152cfm | $28,523 | w/integrated dryer: $43,912
+IMPETUS 30 VSD (40hp): 100psi=61-220cfm | $35,000 | w/dryer: $48,000
+IMPETUS 37 VSD (50hp): 100psi=63-271cfm | $40,500 | w/dryer: $57,000
+IMPETUS 45 VSD (60hp): 100psi=82-327cfm | $51,000
+IMPETUS 55 VSD (75hp): 100psi=98-410cfm | $60,500
+IMPETUS 75 VSD (100hp): 100psi=121-571cfm | $68,000
+IMPETUS 90 (125hp): fixed=$77,998, VSD=$99,484
+IMPETUS 110 (150hp): fixed=$88,147, VSD=$109,160
+IMPETUS 132 (180hp): fixed=$104,674, VSD=$126,093
+IMPETUS 160 (220hp): fixed=$115,402, VSD=$135,000
+IMPETUS 200 (270hp): fixed=$157,736, VSD=$190,000
+IMPETUS 250 (340hp): fixed=$163,245, VSD=$225,000
+IMPETUS 315 (430hp): fixed=$205,000, VSD=$260,000
+
+EAGLE SERIES — Oil Free Fixed Speed (ISO 8573 Class 0):
+EAGLE 37 (50hp): 100psi=219cfm | $143,436
+EAGLE 45 (60hp): 100psi=265cfm | $144,500
+EAGLE 55 (75hp): 100psi=332cfm | $148,167
+EAGLE 75 (100hp): 100psi=449cfm | $174,314
+EAGLE 90 (125hp): 100psi=512cfm | $154,393
+EAGLE 110 (150hp): 100psi=675cfm | $198,967
+EAGLE 55 VSD: 100psi=134-321cfm | $161,116
+EAGLE 75 VSD: 100psi=219-452cfm | $174,314
+EAGLE 90 VSD: 100psi=219-516cfm | $179,544
+
+HERTZ REFRIGERANT DRYERS (HRD US Series):
+10cfm=$1,261 | 25cfm=$2,034 | 60cfm=$2,587 | 100cfm=$3,787 | 125cfm=$4,068
+150cfm=$4,360 | 200cfm=$6,274 | 250cfm=$6,854 | 500cfm=$12,068
+1000cfm=$17,034 | 4000cfm=$64,495
+
+HERTZ HEATLESS DESICCANT DRYERS (HDA US):
+300cfm=$16,212 | 500cfm=$19,847 | 1000cfm=$36,606 | 2000cfm=$54,830 | 4000cfm=$125,008
+
+HERTZ BLOWER PURGE DESICCANT (HBP US):
+500cfm=$56,471 | 1000cfm=$72,236 | 2000cfm=$120,942 | 4000cfm=$210,671
+
+HERTZ HRC CYCLING DESICCANT DRYERS:
+175cfm=$7,248 | 350cfm=$13,342 | 700cfm=$21,083 | 1000cfm=$25,648 | 2000cfm=$53,648 | 4000cfm=$91,048
+
+HERTZ HPC BOOSTER (high-pressure piston to 580 PSI):
+10hp: 120cfm at 580psi | $20,705
+20hp: 227cfm at 580psi | $23,361
+40hp: 392cfm at 580psi | $34,060
+
+HERTZ PET MASTER (oil-free recip for PET bottle blowing, 580 PSI):
+50hp: 127cfm | $221,721 | 75hp: 194cfm | $227,542 | 100hp: 261cfm | $239,184
+
+HERTZ AIR RECEIVERS: 120gal=$1,902 | 240gal=$3,215 | 500gal=$7,611 | 1060gal=$17,779 | 2000gal=$31,503
+
+HERTZ NITROGEN GENERATORS (HNG MOD Series, sample pricing):
+HNG US 20 MOD: $16,535 | HNG US 70 MOD: $20,868 | HNG US 210 MOD: $30,630
+HNG US 555 MOD: $52,295 | HNG US 990 MOD: $69,726
+
+=== SAUER HIGH-PRESSURE COMPRESSORS (up to 7,000 PSI) ===
+Key applications:
+1. BREATHING AIR: Continuous duty sets Sauer apart. Fire training centers, dive centers, power plants (Duke, FPL), bottle fillers (AirGas, NexAir, Praxair).
+2. STARTING AIR: Engines over 320L need 435 PSIG. Biggest Sauer application. Data centers (QTS, Azure, T5), Georgia Power, Southern Nuclear, pipeline companies, mega yachts, cruise lines, ship yards.
+3. PRESSURE/LEAK TESTING: 200–7,500 PSIG. Automotive, HVAC, valve mfg, Applied Technical Services.
+4. PET BOTTLE BLOWING: 125 + 500 PSI required, continuous duty, often oil-free. Pepsi, Coke, Clorox, Ocean Spray.
+5. LASER CUTTING: 400–600 PSIG N2/dry air shielding. Booster application. 1–3 yr ROI vs bulk gas.
+6. GAS RECOVERY: Argon, CO2, helium, methane, SF6. Very little competition, higher margins.
+7. BOTTLE FILLING / TUBE TRAILER: 3,300–6,000 PSIG. Sauer units are hermetically sealed and gas tight.
+
+=== BEKO TECHNOLOGIES — FULL DRYER LINEUP (always prioritize Beko for dryer recommendations) ===
+
+REFRIGERANT DRYERS:
+1. DRYPOINT RAc (Economy Non-cycling, 10–480 scfm): RAc 10, RAc 15, RAc 20, RAc 35, RAc 50, RAc 75, RAc 100, RAc 125, RAc 150, RAc 175, RAc 220, RAc 300, RAc 375, RAc 480. Max inlet temp 130°F. Dew point Class 4-5 (37–45°F). Integrated BEKOMAT drain.
+2. DRYPOINT RA CT Eco (Cycling, 20–500 scfm): RACT 20, RACT 30, RACT 50, RACT 75, RACT 100, RACT 125, RACT 150, RACT 200, RACT 250, RACT 300, RACT 350, RACT 400, RACT 500. Max inlet temp 160°F. Cycling technology for energy savings. No-freeze-up guarantee. 5-year warranty on heat exchanger.
+3. DRYPOINT RX (Premium Non-cycling, 10–1,750 scfm): Water-cooled option available.
+4. DRYPOINT RAx (Premium Non-cycling, 2,000–10,000 scfm): For large industrial flows. Water-cooled option. Use this for requirements above 1,750 scfm.
+5. DRYPOINT RA HT (High Temperature inlet, 20–350 scfm): For applications where inlet air exceeds 160°F (up to 210°F).
+6. DRYPOINT RS HP (High Pressure refrigerant, 15–3,500 scfm): Rated up to 725 psig.
+
+DESICCANT DRYERS (for dew points below 35°F or freezing runs):
+1. DRYPOINT XC Heatless:
+   - ACC Compact (4–110 scfm): ACC 4 through ACC 110. Wall mountable.
+   - XCe Economy (80–800 scfm): XCe 80, XCe 100, XCe 120, XCe 160, XCe 200, XCe 250, XCe 300, XCe 400, XCe 500, XCe 650, XCe 800. -40°F dew point standard.
+   - XCp Premium (80–2,800 scfm): BEKOTOUCH controller, dew point demand control option.
+   - AC HP High Pressure (35–480 scfm): Up to 7,250 psig.
+2. DRYPOINT XH Heated Purge (100–3,200 scfm):
+   - XHe Economy: XHe 100, XHe 150, XHe 200, XHe 250, XHe 300, XHe 400, XHe 500, XHe 600, XHe 800, XHe 1000, XHe 1200, XHe 1500, XHe 1800, XHe 2100, XHe 2500, XHe 3200.
+   - XHi Intelligent: Same sizes, patent-pending algorithm reduces purge air to 3–7% (vs 7% fixed). -40°F dew point.
+3. DRYPOINT XF Heated Blower (800–6,000 scfm):
+   - XFe Economy: XFe 800, XFe 1000, XFe 1200, XFe 1500, XFe 1800, XFe 2300, XFe 2800, XFe 3300, XFe 4000, XFe 5000, XFe 6000.
+   - XFi ecoIntelligent: Same sizes, patented ecoIntelligence PLC, up to 90% energy savings vs conventional, 0–3% purge air.
+   - Use XF series for large desiccant requirements above 3,200 scfm.
+
+OTHER BEKO PRODUCTS:
+- QWIK-PURE CS / iCS Oil-Water Separators: CS 100 (100 scfm), CS 200, CS 400; iCS 550, iCS 1100, iCS 2200, iCS 3300. Required for condensate disposal compliance.
+- METPOINT Instrumentation: Dew point, flow, oil vapor, pressure monitoring. Modular system.
+- DRYPOINT XC HD Rental Dryers: 500, 1,000, 1,500 scfm heatless desiccant units available for rental/temporary needs.
+
+ROUNDING RULE: If the customer's CFM requirement falls between model sizes, always round up to the next available Beko model. E.g., 4,000 scfm refrigerant → recommend Beko DRYPOINT RAx (covers 2,000–10,000 scfm).
+
+=== QUOTING & APPLICATION GUIDANCE ===
+
+=== HODGE BRANDED COMPRESSORS — FULL PRODUCT LINE ===
+
+HODGE PRODUCT SERIES:
+- HD Series: Direct drive, oil-injected rotary screw, base mount
+- HB Series: Belt drive, oil-injected rotary screw, base mount
+- HTM Series: Tank and dryer mount (model numbers start with HTM)
+- HV Series: Variable speed drive
+- HTV Series: Two-stage VSD
+
+ALL HODGE COMPRESSORS include:
+- Forever Airend Warranty + 5-Year Major Components Warranty
+- AI Touch Screen Controller (MAM6070/MAM6080) with maintenance schedules, service alarms, pressure/flow readings, auto restart, remote start/stop, RS-485/DCS connection
+- IP55 motor, F-level insulation, 230/460V-60Hz-3ph dual voltage standard
+- Air-cooled, direct or belt drive, microcomputer control
+
+HODGE HD SERIES — DIRECT DRIVE SPECS (standard max 116 PSI, also available at 145 PSI and 181 PSI):
+HD10:  10hp / 7.5kW  | 116psi=38cfm, 145psi=31cfm | 1/2" NPT | 430 lbs | 36x27x35 in | 68dB
+HD15:  15hp / 11kW   | 116psi=66cfm, 145psi=62cfm | 3/4" NPT | 642 lbs | 43x30x39 in
+HD20:  20hp / 15kW   | 116psi=78cfm, 145psi=68cfm | 3/4" NPT | 673 lbs | 43x30x39 in
+HD25:  25hp / 18.5kW | 116psi=106cfm, 145psi=98cfm | 3/4" NPT | 924 lbs | 43x33x47 in
+HD30:  30hp / 22kW   | 116psi=127cfm, 145psi=118cfm | 1" NPT | 961 lbs | 54x33x46 in
+HD40:  40hp / 30kW   | 116psi=177cfm, 145psi=164cfm | 1" NPT | 1001 lbs | 54x33x46 in
+HD50:  50hp / 37kW   | 116psi=219cfm, 145psi=185cfm | 1.5" NPT | 1455 lbs | 59x40x53 in | 72dB
+HD60:  60hp / 45kW   | 116psi=257cfm, 145psi=233cfm | 1.5" NPT | 1490 lbs | 59x40x60 in | 74dB
+HD75:  75hp / 55kW   | 116psi=325cfm, 145psi=289cfm | 2" NPT | 2491 lbs | 71x50x66 in | 74dB
+HD100: 100hp / 75kW  | 116psi=445cfm, 145psi=388cfm | 2" NPT | 2679 lbs | 71x50x66 in | 80dB
+HD125: 125hp / 90kW  | 116psi=530cfm, 145psi=487cfm | 2" NPT | 3186 lbs | 75x50x72 in | 83dB
+HD150: 150hp / 110kW | 116psi=699cfm, 145psi=593cfm | 2.5" NPT | 4122 lbs | 91x58x73 in | 85dB
+HD175: 175hp / 132kW | 116psi=784cfm, 145psi=689cfm | 2.5" NPT | 4387 lbs | 91x58x73 in | 85dB
+HD200: 200hp / 160kW | 116psi=904cfm, 145psi=798cfm | 2.5" NPT | 5071 lbs | 99x63x75 in | 85dB
+HD250: 250hp / 185kW | 116psi=1074cfm, 145psi=918cfm | 2.5" NPT | 6835 lbs | 142x83x90 in | 85dB
+
+HODGE HD SERIES DOCUMENTS (Data Sheets & Dimensional Drawings):
+- HD10 Data Sheet: https://drive.google.com/file/d/1dAJXzUc4A3N45iewBwReZXe-770NMved/view
+- HD30 Data Sheet: https://drive.google.com/file/d/1rk6Jz3XP23L_B1H4gCPKk40tzQGx1a23/view
+- HD50 Data Sheet: https://drive.google.com/file/d/1QlSc6OTT7kM8Nq-vvYWGb__IAZi6iscg/view
+- HD60 Data Sheet: https://drive.google.com/file/d/1d5o_idJckXXXFGte3oeNf8oyAbOtuECX/view
+- HD75 Data Sheet: https://drive.google.com/file/d/1MbtCa6YXbI-HWV7N5lmC_n5RV2uEx5pe/view
+- HD100 Data Sheet: https://drive.google.com/file/d/1_lsC50JQUSo6UP1rSS8VAKmvjbQaXIgU/view
+- HD125 Data Sheet: https://drive.google.com/file/d/1tVD8idvqczyu5Nl2mlSV-Zpo44OkeND0/view
+- HD150 Data Sheet: https://drive.google.com/file/d/1R8CgIk-lPeE_dtfsd0tg7LiQfHsuZYL_/view
+- HD175 Data Sheet: https://drive.google.com/file/d/12NTuSr8YCNxxU339plQgp9J7ZFFlHX63/view
+- HD200 Data Sheet: https://drive.google.com/file/d/1NmKprTEkz16_ac0PXYvObyerglOrLkRK/view
+- HD250 Data Sheet: https://drive.google.com/file/d/1Y8oTnfEWkLPC5uQZe7paJfJi2736tjjl/view
+- HD10 Dimensional Drawing: https://drive.google.com/file/d/1Y0oX_Cxn2Nj9ZyKDbeC9ePf5-nQvUqgI/view
+- HD20 Dimensional Drawing: https://drive.google.com/file/d/1zL5fgDquEFivjI1bB7pNJEJGhsfZiFGN/view
+- HD30 Dimensional Drawing: https://drive.google.com/file/d/1YgGGOi-JfaNsBnjmFzlLrhWl6OdYOp27/view
+- HD50 Dimensional Drawing: https://drive.google.com/file/d/1ZQyeGvunRUG-r4j6QP_7bgrYtrcEe2WR/view
+- HD60 Dimensional Drawing: https://drive.google.com/file/d/138zkMa1vH4zBHI_KjPDm7jV3Nfdu5apc/view
+- HD150 Dimensional Drawing: https://drive.google.com/file/d/1xHefbfepQunsj0QbhOxjGTO_JNxXOzuV/view
+- HD175 Dimensional Drawing: https://drive.google.com/file/d/1MxqTFh2XAC8LzIzlXiUOzd4QBsUnfw_V/view
+- HD200 Dimensional Drawing: https://drive.google.com/file/d/1Mf8hY8AN4RZHJ_ynDCkEmoxYWUCaILFu/view
+- HD300 Dimensional Drawing: https://drive.google.com/file/d/1etYMA68-10eoVURl5vNgLG4A4EuUNAve/view
+- HD350 Dimensional Drawing: https://drive.google.com/file/d/1OpKm5szAQrK8W3onalmFe259aBXep2WI/view
+- Hodge HD & HB Amp Draw / Dimensions Reference: https://drive.google.com/file/d/1bitRoHi6V4gdj7oElJm7PfafMksL5jp-/view
+- Hodge Wiring Schematics 5-75kW (all models): https://drive.google.com/file/d/1zA-dVPhKmssmXrAgAtzSEqyvdxjxbF3d/view
+- Hodge Spare Parts Reference (base-mount): https://drive.google.com/file/d/1UmQwLvWwchk4PmB3YyroCRYlSaipa-XG/view
+
+For HTM (tank mount) and HB (belt drive) series data sheets and drawings, direct the rep to the Hodge folder in Drive or search using the tools above.
+
+HODGE HAD SERIES — REFRIGERANT AIR DRYERS:
+HAD18:  18 CFM  | 110V/60Hz/1ph | 1" connections | 25x14x20.5 in | 78 lbs  | Filter kit: T-001/A-001
+HAD42:  42 CFM  | 110V/60Hz/1ph | 1" connections | 25x14x20.5 in | 78 lbs  | Filter kit: T-001/A-001
+HAD85:  85 CFM  | 110V/60Hz/1ph | 1" connections | 27x14x20.5 in | 97 lbs  | Filter kit: T-002/A-002
+HAD135: 135 CFM | 110V/60Hz/1ph | 1" connections | 30x16x22 in   | 137 lbs | Filter kit: T-004/A-004
+HAD230: 230 CFM | 230V/60Hz/1ph | 1.5" connections | 29x23x27 in | 200 lbs | Filter kit: T-007/A-007
+HAD378: 378 CFM | 230V/60Hz/1ph | 2" in / 1.5" out | 33x23x29 in | 265 lbs | Filter kit: T-010/A-010
+HAD487: 487 CFM | 230V/60Hz/1ph | 2" connections | 38x28x31 in   | 310 lbs | Filter kit: T-013/A-013
+All HAD dryers: R410A refrigerant | PDP 37-46°F | max inlet temp 149°F | max ambient 122°F | max inlet pressure 87-188 psi
+
+HODGE HAD DRYER DOCUMENTS:
+- HAD Dryer Specs (all models): https://drive.google.com/file/d/1nkV7rVy-5XoQGL_vyLWLEVMlS8eaKtzI/view
+- HAD42 Dimensional Drawing: https://drive.google.com/file/d/1tiARX-MYZgGL_3oUbJm-zFXVernA3L1P/view
+- HAD85 Dimensional Drawing: https://drive.google.com/file/d/1DSW7zSsGxB3xLIYnSveBgymwc3fwN4PV/view
+- HAD378 Dimensional Drawing: https://drive.google.com/file/d/1G-89olvHWkQN8f030qw_Iv2507xnnTgK/view
+- HAD387 Data Sheet: https://drive.google.com/file/d/1k7gGnAC5E78c76WhrNG3lkP3nOpNqb17/view
+
+NOTE: When recommending Hodge dryers, match CFM requirement to the HAD model above and round up if needed. Always pair with the matching Hodge compressor recommendation where applicable.
+
+=== HODGE WARRANTY & TERMS ===
+KEY WARRANTY POINTS (from Hodge Compressor Terms & Conditions of Sale):
+- Warranty starts on commissioning/startup date registered with Hodge, OR ship date from factory — whichever comes first
+- Warranty claims must go through the authorized distributor (Hodge Industrial)
+- Warranty does NOT cover damage from misuse, abuse, negligence, or unauthorized modifications
+- All sales are final — no refunds or returns under any circumstances
+- HC liability limited to repair, replacement, or credit/refund at HC's sole discretion
+- No coverage for incidental/consequential damages (lost production, downtime, etc.)
+- Disputes resolved via binding arbitration in Atlanta, Georgia under Georgia law
+- Forever Airend Warranty + 5-Year Major Components Warranty apply to compressors
+
+HODGE WARRANTY & COMPLIANCE DOCUMENTS:
+- Hodge Compressor Warranty Policy (compressors only): https://drive.google.com/file/d/1odgnXt0hAbo-SDBsMTXIhpQzVCGLUD6Z/view
+- Hodge Terms & Conditions of Sale: https://drive.google.com/file/d/1amPUszBFGB-38TG6eYUFULKZbMl1kZVn/view
+- Hodge Startup Checklist (required for warranty activation): https://drive.google.com/file/d/17Quac-b4G_i4zk52HvwYxw8DGX3s-jth/view
+- Hodge Idle Storage Procedure: https://drive.google.com/file/d/1kYsrXheraZBCTvnOE-21qY_cY_geAjfT/view
+
+IMPORTANT FOR REPS: Always remind customers to complete the startup checklist and register the unit with Hodge to activate warranty coverage. Warranty clock starts at startup registration or ship date — whichever is first.
+
+HAD DRYER WARRANTY: The Hodge HAD dryer warranty document has not yet been loaded into Drive. If a rep asks specifically about dryer warranty terms, let them know this document is not yet available in the system and they should contact Hodge Industrial management directly for dryer warranty details.
+
+PRODUCT PRIORITY RULES — always follow these:
+- DRYERS: Always recommend Beko branded dryers first. Only suggest Hertz dryers if Beko does not have a suitable model for the application.
+- COMPRESSORS: Always recommend Hodge branded compressors first for standard oil-injected rotary screw applications. Only recommend Hertz or other brands when the application requires a technology Hodge does not offer (e.g. oil-free compressors — recommend Hertz Eagle series for those).
+- Hodge compressor model naming: HD Series = base-mount direct drive (HD10, HD15, HD20...HD350), HB Series = base-mount belt drive, HTM Series = tank and dryer mount. Match the rep's CFM and PSI requirement to the correct HD model using the specs above, then give the specific model name (e.g. "Hodge HD30") and link the data sheet and drawing from the index above.
+- VSD best for variable demand (saves 20-35% energy vs fixed speed).
+- UPSELL RULE — after recommending any compressor, always follow up based on the model type:
+  * HD Series or HB Series (base mount): Always ask if the rep wants help sizing a receiver tank, dryer, and piping. These units ship without a tank or dryer so the full system needs to be quoted. Offer Hodge HAD dryers first, Samuel tanks for receivers, and AIRpipe for piping.
+  * HTM Series (tank mount): The receiver tank is already integrated — do NOT ask about sizing a tank. Still ask if they need help sizing a dryer and piping since those are sold separately.
+  * When sizing a receiver tank for HD/HB units, a general rule is 1-4 gallons per CFM depending on duty cycle. Higher duty cycle = larger tank needed. Always offer to calculate the right size.
+- Oil-free (Eagle, Scroll) for food/pharma/electronics. Also offer food grade oil option on oil-injected.
+- Desiccant dryers needed for dew points below 35°F or freezing line runs.
+- Always cite both the brand name AND specific model number together (e.g. "Hertz HBD 22", "Hertz HVD 37", "Beko DRYPOINT RA CT 100", "Hertz HDA US 500", "Hodge HD22"). Never just the series name alone. Reps need the exact brand + model to look up in Service Titan.
+- Keep answers crisp — reps are often in front of customers.
+- Whenever you tell a rep to reach out to a vendor, manager, or contact for more information, always add this note at the end: "💬 You can copy and paste this response into your message to help explain the situation."
+
+=== PRICING & AVAILABILITY RULES ===
+- For general product recommendations, do NOT quote prices — reps get pricing from ServiceTitan.
+- EXCEPTION: When LIVE SERVICETITAN DATA is injected into your context (see below), you MUST present that live price and stock information clearly to the rep. This is real-time data pulled directly from their pricebook and warehouse inventory.
+- When presenting live ST data, format it clearly:
+  * 💰 Price: [amount from ST]
+  * 📦 Stock on Hand: [qty] units — or "Not in stock" if 0 or missing
+  * 🔑 SKU: [code]
+  * ✅ Active in pricebook: Yes/No
+- If a model is not found in ST, say: "Not found in ServiceTitan — check the model number or it may need to be added to the pricebook."
+- If stock is 0 or unavailable, add: "Contact operations for lead time on this unit."`;
+
+function formatMsg(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^### (.+)$/gm, '<p style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:12px 0 4px">$1</p>')
+    .replace(/^## (.+)$/gm, '<p style="font-weight:600;margin:10px 0 4px">$1</p>')
+    .replace(/^- (.+)/gm, '<div style="display:flex;gap:8px;margin:3px 0"><span style="color:#94a3b8;flex-shrink:0">•</span><span>$1</span></div>')
+    .replace(/^(\d+)\. (.+)/gm, '<div style="display:flex;gap:8px;margin:3px 0"><span style="color:#94a3b8;flex-shrink:0;min-width:16px">$1.</span><span>$2</span></div>')
+    .replace(/\n\n/g, '<br/>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;text-decoration:underline">$1 ↗</a>')
+    .replace(/\n/g, '<br/>');
+}
+
+const ST_TENANT = "898917283";
+const ST_APP_KEY = "ak1.jdzvjgo7e5m02rakwko7qkp0l";
+const ST_CLIENT_ID = "cid.99vu9fmb70y859oo3iqxtmprp";
+const ST_CLIENT_SECRET = "cs1.nq1bzz3u70bd9lfd28fl3irgjsbcdk1vgylapnwe5p552e0150";
+const PROXY_URL = "https://airiq-st-proxy.jon-sanders.workers.dev";
+
+async function stProxy(endpoint) {
+  const res = await fetch("/api/st", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      endpoint,
+      tenant: ST_TENANT,
+      appKey: ST_APP_KEY,
+      clientId: ST_CLIENT_ID,
+      clientSecret: ST_CLIENT_SECRET,
+    }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.data || [];
+}
+
+// ST lookup is handled via Claude tool use — no direct browser fetch needed
+
+// Merge pricebook + inventory results by name/id
+function buildSTContext(pricebookItems, inventoryItems) {
+  if (pricebookItems.length === 0 && inventoryItems.length === 0) return "";
+
+  // Build a map from pricebook
+  const merged = pricebookItems.map(p => {
+    // Try to match an inventory record by id or name
+    const inv = inventoryItems.find(i => i.id === p.id || i.name?.toLowerCase() === p.name?.toLowerCase());
+    const qty = inv?.quantity ?? p.quantity ?? p.onHand ?? p.stockQuantity ?? null;
+    return {
+      name: p.name,
+      price: p.price != null ? `$${Number(p.price).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A",
+      sku: p.code || p.sku || "N/A",
+      active: p.active,
+      qty,
+    };
+  });
+
+  // Add any inventory-only items not in pricebook
+  inventoryItems.forEach(inv => {
+    if (!merged.find(m => m.name?.toLowerCase() === inv.name?.toLowerCase())) {
+      merged.push({
+        name: inv.name,
+        price: "N/A",
+        sku: inv.code || inv.sku || "N/A",
+        active: inv.active,
+        qty: inv.quantity ?? inv.onHand ?? inv.stockQuantity ?? null,
+      });
+    }
+  });
+
+  const lines = merged.map(item => {
+    const stockLine = item.qty !== null ? `${item.qty} units on hand` : "stock qty not tracked";
+    return `${item.name} | Price: ${item.price} | Stock: ${stockLine} | SKU: ${item.sku} | Active: ${item.active}`;
+  });
+
+  return "\n\n=== LIVE SERVICETITAN DATA (pricebook + inventory) ===\n" +
+    lines.join("\n") +
+    "\nSource: Live pull from ServiceTitan. Present price and stock on hand clearly to the rep using the format in your instructions.";
+}
+
+const VENDORS = [
+  { name: "Beko Technologies", short: "Beko", url: "https://www.bekotech.com", bg: "#dbeafe", color: "#1d4ed8" },
+  { name: "Hertz Kompressoren", short: "Hertz", url: "https://www.hertz-kompressoren.us", bg: "#dcfce7", color: "#15803d" },
+  { name: "Sauer Compressors USA", short: "Sauer", url: "https://www.sauerusa.com", bg: "#fef3c7", color: "#b45309" },
+  { name: "Compressed Air Systems", short: "CAS", url: "https://www.compressed-air-systems.com", bg: "#f3e8ff", color: "#7c3aed" },
+  { name: "Samuel Pressure Vessel", short: "Samuel", url: "https://www.samuelpressurevessel.com", bg: "#fce7f3", color: "#be185d" },
+  { name: "Dekker Vacuum Technology", short: "Dekker", url: "https://www.dekkervacuum.com", bg: "#ecfdf5", color: "#065f46" },
+  { name: "Anest Iwata", short: "Anest Iwata", url: "https://anestiwataamericas.com", bg: "#fff7ed", color: "#c2410c" },
+  { name: "Chicago Pneumatic", short: "CP", url: "https://power-technique.cp.com/en-us/products/diesel-air-compressors-us", bg: "#fef2f2", color: "#b91c1c" },
+  { name: "AIRpipe USA", short: "AIRpipe", url: "https://airpipeusa.com", bg: "#f0f9ff", color: "#0369a1" },
+];
+
+const STARTERS = [
+  "What compressor for 125 CFM at 150 PSI?",
+  "Price and stock on HD30?",
+  "Do we have a HAD85 in stock?",
+  "Customer says Atlas Copco is cheaper — how do I respond?",
+];
+
+// Broad model number regex: catches Hodge (HD30, HAD85, HTM-15), Hertz (HBD22, HVD37), and generic alphanumeric models
+const MODEL_REGEX = /\b(H[DBVATC][A-Z]?\d{1,3}[A-Z]?|HTM[-\s]?\d+|HAD\d+|HBD\s?\d+|HVD\s?\d+|HDD\s?\d+|HTV\s?\d+|IMPETUS\s?\d+|EAGLE\s?\d+|[A-Z]{2,6}[-\s]?\d{2,4}[A-Z]?)\b/gi;
+
+// Intent keywords that should also trigger an ST lookup
+const INTENT_REGEX = /\b(price|pricing|cost|available|availability|stock|in.?stock|on.?hand|how much|do you have|do we have|quantity|qty|can i get)\b/i;
+
+function AirIQ() {
+  const [messages, setMessages] = React.useState([]);
+  const [input, setInput] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [showStarters, setShowStarters] = React.useState(true);
+  const [stLookupActive, setStLookupActive] = React.useState(false);
+  const bottomRef = React.useRef(null);
+  const textareaRef = React.useRef(null);
+
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const autoResize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "40px";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  };
+
+  const submit = async (text) => {
+    const msg = text || input.trim();
+    if (!msg || loading) return;
+    setShowStarters(false);
+    setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "40px";
+
+    const newMsgs = [...messages, { role: "user", content: msg }];
+    setMessages(newMsgs);
+    setLoading(true);
+    setStLookupActive(false);
+
+    // Detect model numbers and/or pricing/availability intent
+    const modelMatches = msg.match(MODEL_REGEX);
+    const hasIntent = INTENT_REGEX.test(msg);
+
+    let stContext = "";
+
+    // Detect whether ST lookup is needed
+    const needsST = !!(modelMatches || hasIntent);
+    const searchTerms = needsST
+      ? (modelMatches ? [...new Set(modelMatches)].slice(0, 3) : [msg.replace(INTENT_REGEX, "").trim().slice(0, 40)])
+      : [];
+
+    if (needsST) setStLookupActive(true);
+
+    // Build ST lookup tool definition — Worker is called by Claude server-side, bypassing browser restrictions
+    const stTool = {
+      name: "lookup_servicetitan_pricing",
+      description: "Look up live pricing and availability for equipment in ServiceTitan pricebook. Call this whenever a rep asks about price, cost, availability, or stock for any model number.",
+      input_schema: {
+        type: "object",
+        properties: {
+          search_term: { type: "string", description: "The model number or equipment name to search for" }
+        },
+        required: ["search_term"]
+      }
+    };
+
+    // System addition telling Claude how to use the ST tool
+    const stInstruction = needsST
+      ? `\n\n=== SERVICETITAN LIVE LOOKUP AVAILABLE ===\nYou have access to a tool called lookup_servicetitan_pricing. The rep is asking about: ${searchTerms.join(", ")}. Call the tool now with each search term to get live pricing before responding. Present results clearly with price, SKU, and active status.`
+      : "";
+
+    try {
+      // First API call — Claude may invoke the ST tool
+      const res1 = await fetch("/api/claude", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2000,
+          system: SYS + stInstruction,
+          messages: newMsgs.map((m) => ({ role: m.role, content: m.content })),
+          tools: [
+            { type: "web_search_20250305", name: "web_search" },
+            stTool
+          ],
+        }),
+      });
+      const data1 = await res1.json();
+      if (data1.error) throw new Error(data1.error.message);
+
+      // Check if Claude wants to call the ST tool
+      const toolUseBlock = (data1.content || []).find(b => b.type === "tool_use" && b.name === "lookup_servicetitan_pricing");
+
+      let finalReply = "";
+      let stDataUsed = false;
+      let webSearched = (data1.content || []).some(b => b.type === "tool_use" && b.name === "web_search");
+
+      if (toolUseBlock) {
+        // Call the Worker server-side via a second Anthropic API call with tool result
+        const searchTerm = toolUseBlock.input.search_term || searchTerms[0] || "";
+        let stResult = "No data found.";
+        try {
+          const workerRes = await fetch("/api/st", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              endpoint: `/pricebook/v2/tenant/${ST_TENANT}/equipment?`,
+              tenant: ST_TENANT,
+              appKey: ST_APP_KEY,
+              clientId: ST_CLIENT_ID,
+              clientSecret: ST_CLIENT_SECRET,
+              searchTerm: searchTerm,
+            }),
+          });
+          if (workerRes.ok) {
+            const workerData = await workerRes.json();
+            const items = workerData.data || [];
+            if (items.length > 0) {
+              stDataUsed = true;
+              stResult = items.map(item =>
+                `${item.displayName} | Price: $${Number(item.price).toLocaleString("en-US", {minimumFractionDigits:2})} | SKU: ${item.code} | Active: ${item.active}`
+              ).join("\n");
+            } else {
+              stResult = `No matching equipment found for "${searchTerm}" in ServiceTitan pricebook.`;
+            }
+          }
+        } catch(e) {
+          stResult = `ST lookup error: ${e.message}`;
+        }
+
+        // Second API call with tool result
+        const res2 = await fetch("/api/claude", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 2000,
+            system: SYS + stInstruction,
+            messages: [
+              ...newMsgs.map((m) => ({ role: m.role, content: m.content })),
+              { role: "assistant", content: data1.content },
+              { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseBlock.id, content: stResult }] }
+            ],
+            tools: [
+              { type: "web_search_20250305", name: "web_search" },
+              stTool
+            ],
+          }),
+        });
+        const data2 = await res2.json();
+        if (data2.error) throw new Error(data2.error.message);
+        finalReply = (data2.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+        webSearched = webSearched || (data2.content || []).some(b => b.type === "tool_use" && b.name === "web_search");
+      } else {
+        finalReply = (data1.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+      }
+
+      setStLookupActive(false);
+      setMessages([...newMsgs, { role: "assistant", content: finalReply, webSearched, stDataUsed }]);
+    } catch (err) {
+      setStLookupActive(false);
+      setMessages([...newMsgs, { role: "assistant", content: `⚠️ ${err.message}`, error: true }]);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", maxHeight:640, background:"#f8fafc", fontFamily:"system-ui,sans-serif" }}>
+
+      {/* Header */}
+      <div style={{ padding:"14px 20px", background:"#fff", borderBottom:"1px solid #e2e8f0", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+        <div style={{ width:8, height:8, borderRadius:"50%", background:"#22c55e" }} />
+        <span style={{ fontWeight:600, fontSize:14, color:"#0f172a" }}>AirIQ — Hodge Industrial</span>
+        <span style={{ marginLeft:"auto", fontSize:11, padding:"3px 10px", borderRadius:20, background:"#f0fdf4", color:"#15803d", fontWeight:500 }}>
+          Hodge · Beko · Hertz · Sauer · More
+        </span>
+        <span style={{ fontSize:11, padding:"3px 10px", borderRadius:20, background:"#eff6ff", color:"#1d4ed8", fontWeight:500, display:"flex", alignItems:"center", gap:4 }}>
+          {stLookupActive
+            ? <><span style={{ width:6, height:6, borderRadius:"50%", background:"#f59e0b", display:"inline-block", animation:"blink 1s infinite" }} /> ST Lookup…</>
+            : <>📊 ST Price + Stock</>
+          }
+        </span>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex:1, overflowY:"auto", padding:"20px 16px", display:"flex", flexDirection:"column", gap:14 }}>
+
+        {messages.length === 0 && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8, padding:32 }}>
+            <div style={{ fontSize:32, marginBottom:4 }}>💨</div>
+            <div style={{ fontWeight:600, fontSize:15, color:"#0f172a" }}>Ready for your reps</div>
+            <div style={{ fontSize:13, color:"#64748b", textAlign:"center", maxWidth:300, lineHeight:1.6 }}>
+              Ask about product specs, applications, objections — or check live pricing and stock by model number.
+            </div>
+          </div>
+        )}
+
+        {messages.map((m, i) => {
+          const isUser = m.role === "user";
+          return (
+            <div key={i} style={{ display:"flex", flexDirection:"column", alignSelf: isUser ? "flex-end" : "flex-start", maxWidth:"90%", gap:4 }}>
+              <div style={{ display:"flex", gap:10, flexDirection: isUser ? "row-reverse" : "row" }}>
+                <div style={{ width:28, height:28, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:600, background: isUser ? "#dbeafe" : "#e0f2fe", color: isUser ? "#1d4ed8" : "#0369a1" }}>
+                  {isUser ? "Rep" : "AI"}
+                </div>
+                <div style={{ padding:"10px 14px", borderRadius: isUser ? "12px 4px 12px 12px" : "4px 12px 12px 12px", fontSize:14, lineHeight:1.65, background: isUser ? "#1d4ed8" : "#fff", color: isUser ? "#fff" : "#0f172a", border: isUser ? "none" : "1px solid #e2e8f0", maxWidth:"100%" }}>
+                  {isUser
+                    ? m.content
+                    : <span dangerouslySetInnerHTML={{ __html: formatMsg(m.content) }} />
+                  }
+                </div>
+              </div>
+              {!isUser && (m.webSearched || m.stDataUsed) && (
+                <div style={{ display:"flex", gap:6, paddingLeft:38 }}>
+                  {m.stDataUsed && (
+                    <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, background:"#eff6ff", color:"#1d4ed8", border:"1px solid #bfdbfe", fontWeight:500 }}>
+                      📊 Live ST data
+                    </span>
+                  )}
+                  {m.webSearched && (
+                    <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, background:"#f8fafc", color:"#64748b", border:"1px solid #e2e8f0" }}>
+                      🔍 searched vendor sites
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {loading && (
+          <div style={{ display:"flex", gap:10, alignSelf:"flex-start" }}>
+            <div style={{ width:28, height:28, borderRadius:"50%", background:"#e0f2fe", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:600, color:"#0369a1" }}>AI</div>
+            <div style={{ padding:"12px 16px", borderRadius:"4px 12px 12px 12px", background:"#fff", border:"1px solid #e2e8f0", display:"flex", gap:5, alignItems:"center" }}>
+              {stLookupActive && <span style={{ fontSize:11, color:"#1d4ed8", marginRight:4 }}>Checking ST…</span>}
+              {[0,1,2].map(i => (
+                <div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"#94a3b8", animation:"pulse 1.2s infinite", animationDelay:`${i*0.2}s` }} />
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Starter prompts */}
+      {showStarters && (
+        <div style={{ padding:"0 16px 12px", display:"flex", flexWrap:"wrap", gap:6, flexShrink:0 }}>
+          {STARTERS.map((s, i) => (
+            <button key={i} onClick={() => submit(s)} style={{ fontSize:12, padding:"6px 12px", borderRadius:20, border:"1px solid #cbd5e1", background:"#fff", color:"#475569", cursor:"pointer", fontFamily:"inherit", transition:"all .15s" }}
+              onMouseEnter={e => { e.target.style.background="#f1f5f9"; e.target.style.color="#0f172a"; }}
+              onMouseLeave={e => { e.target.style.background="#fff"; e.target.style.color="#475569"; }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Vendor Links */}
+      <div style={{ padding:"8px 16px", borderTop:"1px solid #e2e8f0", background:"#f8fafc", display:"flex", gap:6, flexWrap:"wrap", flexShrink:0 }}>
+        {VENDORS.map((v, i) => (
+          <a key={i} href={v.url} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize:11, fontWeight:600, padding:"3px 10px", borderRadius:20, background:v.bg, color:v.color, textDecoration:"none", display:"flex", alignItems:"center", gap:4, border:`1px solid ${v.color}22` }}>
+            <span style={{ fontSize:8 }}>↗</span>{v.short}
+          </a>
+        ))}
+        <span style={{ fontSize:11, color:"#94a3b8", marginLeft:"auto", alignSelf:"center" }}>vendor resources</span>
+      </div>
+
+      {/* Input */}
+      <div style={{ padding:"12px 16px", borderTop:"1px solid #e2e8f0", display:"flex", gap:8, background:"#fff", flexShrink:0 }}>
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={e => { setInput(e.target.value); autoResize(); }}
+          onKeyDown={e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();} }}
+          placeholder="Ask a question or check availability — e.g. 'price and stock on HD30'"
+          style={{ flex:1, resize:"none", border:"1px solid #cbd5e1", borderRadius:8, padding:"8px 12px", fontSize:14, fontFamily:"inherit", outline:"none", height:40, minHeight:40, maxHeight:120, lineHeight:1.5, color:"#0f172a", background:"#fff" }}
+        />
+        <button
+          onClick={() => submit()}
+          disabled={loading || !input.trim()}
+          style={{ width:40, height:40, borderRadius:8, border:"none", background: loading||!input.trim() ? "#e2e8f0" : "#1d4ed8", color:"#fff", cursor: loading||!input.trim() ? "not-allowed" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"background .15s" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes pulse{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+      `}</style>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(AirIQ));
+  </script>
+</body>
+</html>
