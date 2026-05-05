@@ -270,10 +270,13 @@ PRODUCT PRIORITY RULES — always follow these:
 - For general product recommendations, do NOT quote prices — reps get pricing from ServiceTitan.
 - EXCEPTION: When LIVE SERVICETITAN DATA is injected into your context (see below), you MUST present that live price and stock information clearly to the rep. This is real-time data pulled directly from their pricebook and warehouse inventory.
 - When presenting live ST data, format it clearly:
-  * 💰 Price: [amount from ST]
-  * 📦 Stock on Hand: [qty] units — or "Not in stock" if 0 or missing
+* 💰 Price: [amount from ST]
+  * 📦 On Hand: [qty] units — or "not tracked" if null
+  * ✅ Available: [qty] units — or "not tracked" if null
   * 🔑 SKU: [code]
   * ✅ Active in pricebook: Yes/No
+- On Hand = physical units in warehouse. Available = On Hand minus reserved/allocated units.
+- If Available < On Hand, flag it: "⚠️ [X] units reserved — confirm with operations before promising stock."
 - If a model is not found in ST, say: "Not found in ServiceTitan — check the model number or it may need to be added to the pricebook."
 - If stock is 0 or unavailable, add: "Contact operations for lead time on this unit."`;
 
