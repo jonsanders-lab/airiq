@@ -500,14 +500,13 @@ function AirIQ() {
           });
           if (workerRes.ok) {
             const workerData = await workerRes.json();
-            const items = workerData.data || [];
-            if (items.length > 0) {
+            const pricebookItems = workerData.data || [];
+            const inventoryItems = workerData.inventory || [];
+            if (pricebookItems.length > 0 || inventoryItems.length > 0) {
               stDataUsed = true;
-              stResult = items.map(item =>
-                `${item.displayName} | Price: $${Number(item.price).toLocaleString("en-US", {minimumFractionDigits:2})} | SKU: ${item.code} | Active: ${item.active}`
-              ).join("\n");
+              stResult = buildSTContext(pricebookItems, inventoryItems);
             } else {
-              stResult = `No matching equipment found for "${searchTerm}" in ServiceTitan pricebook.`;
+              stResult = `No matching equipment found for "${searchTerm}" in ServiceTitan pricebook or inventory.`;
             }
           }
         } catch(e) {
