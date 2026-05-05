@@ -414,7 +414,7 @@ function AirIQ() {
   }
   const recognition = new SpeechRecognition();
   recognition.lang = "en-US";
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = false;
   recognitionRef.current = recognition;
   recognition.onstart = () => setIsListening(true);
