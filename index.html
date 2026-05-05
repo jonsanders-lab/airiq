@@ -321,41 +321,49 @@ async function stProxy(endpoint) {
 function buildSTContext(pricebookItems, inventoryItems) {
   if (pricebookItems.length === 0 && inventoryItems.length === 0) return "";
 
-  // Build a map from pricebook
   const merged = pricebookItems.map(p => {
-    // Try to match an inventory record by id or name
-    const inv = inventoryItems.find(i => i.id === p.id || i.name?.toLowerCase() === p.name?.toLowerCase());
-    const qty = inv?.quantity ?? p.quantity ?? p.onHand ?? p.stockQuantity ?? null;
+    const inv = inventoryItems.find(i =>
+      i.id === p.id ||
+      (i.name || "").toLowerCase() === (p.displayName || p.name || "").toLowerCase() ||
+      (i.code || "").toLowerCase() === (p.code || "").toLowerCase()
+    );
+    const onHand = inv?.onHand ?? inv?.quantity ?? inv?.quantityOnHand ?? p.quantity ?? p.onHand ?? p.stockQuantity ?? null;
+    const available = inv?.available ?? inv?.quantityAvailable ?? null;
     return {
-      name: p.name,
+      name: p.displayName || p.name,
       price: p.price != null ? `$${Number(p.price).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A",
       sku: p.code || p.sku || "N/A",
       active: p.active,
-      qty,
+      onHand,
+      available,
     };
   });
 
-  // Add any inventory-only items not in pricebook
   inventoryItems.forEach(inv => {
-    if (!merged.find(m => m.name?.toLowerCase() === inv.name?.toLowerCase())) {
+    const name = inv.name || inv.displayName || "";
+    if (!merged.find(m => (m.name || "").toLowerCase() === name.toLowerCase())) {
+      const onHand = inv.onHand ?? inv.quantity ?? inv.quantityOnHand ?? null;
+      const available = inv.available ?? inv.quantityAvailable ?? null;
       merged.push({
-        name: inv.name,
+        name,
         price: "N/A",
         sku: inv.code || inv.sku || "N/A",
         active: inv.active,
-        qty: inv.quantity ?? inv.onHand ?? inv.stockQuantity ?? null,
+        onHand,
+        available,
       });
     }
   });
 
   const lines = merged.map(item => {
-    const stockLine = item.qty !== null ? `${item.qty} units on hand` : "stock qty not tracked";
-    return `${item.name} | Price: ${item.price} | Stock: ${stockLine} | SKU: ${item.sku} | Active: ${item.active}`;
+    const onHandStr = item.onHand !== null ? `${item.onHand} units` : "not tracked";
+    const availStr = item.available !== null ? `${item.available} units` : "not tracked";
+    return `${item.name} | Price: ${item.price} | On Hand: ${onHandStr} | Available: ${availStr} | SKU: ${item.sku} | Active: ${item.active}`;
   });
 
   return "\n\n=== LIVE SERVICETITAN DATA (pricebook + inventory) ===\n" +
     lines.join("\n") +
-    "\nSource: Live pull from ServiceTitan. Present price and stock on hand clearly to the rep using the format in your instructions.";
+    "\nSource: Live pull from ServiceTitan. Present price, on-hand, and available quantities clearly using the format in your instructions.";
 }
 
 const VENDORS = [
