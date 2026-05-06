@@ -8,6 +8,143 @@ app.use(express.static('.'));
 
 const PROXY_URL = 'https://airiq-st-proxy.jon-sanders.workers.dev';
 
+// ST credentials
+const ST_TENANT = "898917283";
+const ST_APP_KEY = "ak1.jdzvjgo7e5m02rakwko7qkp0l";
+const ST_CLIENT_ID = "cid.99vu9fmb70y859oo3iqxtmprp";
+const ST_CLIENT_SECRET = "cs1.nq1bzz3u70bd9lfd28fl3irgjsbcdk1vgylapnwe5p552e0150";
+const INVENTORY_REPORT_ID = 72031408;
+
+// In-memory inventory cache
+let inventoryCache = [];
+let lastCacheUpdate = null;
+
+// Fetch ST access token
+async function getSTToken() {
+  const res = await fetch("https://auth.servicetitan.io/connect/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: ST_CLIENT_ID,
+      client_secret: ST_CLIENT_SECRET,
+    }),
+  });
+  const data = await res.json();
+  return data.access_token;
+}
+
+// Fetch all pages of the Inventory On Hand report
+async function fetchInventoryReport() {
+  console.log("Fetching inventory report from ST...");
+  const token = await getSTToken();
+  const today = new Date().toISOString().split("T")[0];
+  let page = 1;
+  let allRows = [];
+  let hasMore = true;
+
+  while (hasMore) {
+    const res = await fetch(
+      `https://api.servicetitan.io/reporting/v2/tenant/${ST_TENANT}/report-category/inventory/reports/${INVENTORY_REPORT_ID}/data`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "ST-App-Key": ST_APP_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          page,
+          pageSize: 1000,
+          parameters: [{ name: "Date", value: today }]
+        })
+      }
+    );
+
+    if (!res.ok) {
+      console.error("ST inventory report error:", res.status);
+      break;
+    }
+
+    const data = await res.json();
+    const rows = data.data || [];
+    allRows = allRows.concat(rows);
+    hasMore = data.hasMore;
+    page++;
+    console.log(`Fetched page ${page - 1}, got ${rows.length} rows, hasMore: ${hasMore}`);
+  }
+
+  // Convert array rows to objects using field names
+  // Field order: ItemName(0), ItemCode(1), ItemDescription(2), ItemType(3),
+  // InventoryLocation(4), BinLocation(5), QuantityAvailable(6), QuantityOnHold(7),
+  // QuantityOnHand(8), QuantityOnOrder(9), MinQuantity(10), MaxQuantity(11),
+  // QuantityReserved(12), QuantityStaged(13), QuantityOnSite(14),
+  // QuantityAvailableToPick(15), QuantityToOrder(16)
+  const parsed = allRows.map(row => ({
+    name: row[0],
+    code: row[1],
+    description: row[2],
+    type: row[3],
+    location: row[4],
+    binLocation: row[5],
+    quantityAvailable: row[6],
+    quantityOnHold: row[7],
+    quantityOnHand: row[8],
+    quantityOnOrder: row[9],
+    quantityReserved: row[12],
+  }));
+
+  inventoryCache = parsed;
+  lastCacheUpdate = new Date().toISOString();
+  console.log(`Inventory cache updated: ${parsed.length} total rows at ${lastCacheUpdate}`);
+}
+
+// Search inventory cache by item code or name
+function searchInventoryCache(searchTerm) {
+  const term = searchTerm.toUpperCase();
+  return inventoryCache.filter(item =>
+    (item.code && item.code.toUpperCase().startsWith(term)) ||
+    (item.name && item.name.toUpperCase().startsWith(term))
+  );
+}
+
+// Aggregate inventory across locations for a matched item
+function aggregateInventory(rows) {
+  // Group by item code, sum across warehouse locations only (exclude trucks/technicians)
+  const warehouseLocations = ['inventory', 'warehouse'];
+  const warehouseRows = rows.filter(r =>
+    r.location && warehouseLocations.some(w => r.location.toLowerCase().includes(w))
+  );
+
+  if (warehouseRows.length === 0) return rows; // fallback to all rows
+
+  const totals = {
+    quantityOnHand: 0,
+    quantityAvailable: 0,
+    quantityOnOrder: 0,
+    quantityReserved: 0,
+    locations: []
+  };
+
+  warehouseRows.forEach(row => {
+    totals.quantityOnHand += (row.quantityOnHand || 0);
+    totals.quantityAvailable += (row.quantityAvailable || 0);
+    totals.quantityOnOrder += (row.quantityOnOrder || 0);
+    totals.quantityReserved += (row.quantityReserved || 0);
+    if ((row.quantityOnHand || 0) > 0 || (row.quantityAvailable || 0) > 0) {
+      totals.locations.push({
+        location: row.location,
+        onHand: row.quantityOnHand,
+        available: row.quantityAvailable,
+        onOrder: row.quantityOnOrder,
+      });
+    }
+  });
+
+  return totals;
+}
+
+// API: Claude proxy
 app.post('/api/claude', async (req, res) => {
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -27,6 +164,7 @@ app.post('/api/claude', async (req, res) => {
   }
 });
 
+// API: ST proxy (pricebook)
 app.post('/api/st', async (req, res) => {
   try {
     const response = await fetch(PROXY_URL, {
@@ -41,9 +179,65 @@ app.post('/api/st', async (req, res) => {
   }
 });
 
+// API: Inventory lookup from cache
+app.get('/api/inventory', (req, res) => {
+  const term = (req.query.q || '').trim();
+  if (!term) {
+    return res.json({ items: [], cacheAge: lastCacheUpdate, totalCached: inventoryCache.length });
+  }
+  const matches = searchInventoryCache(term);
+  // Group by item code and aggregate
+  const byCode = {};
+  matches.forEach(row => {
+    if (!byCode[row.code]) byCode[row.code] = { code: row.code, name: row.name, rows: [] };
+    byCode[row.code].rows.push(row);
+  });
+
+  const results = Object.values(byCode).map(item => ({
+    code: item.code,
+    name: item.name,
+    inventory: aggregateInventory(item.rows),
+    rawRows: item.rows,
+  }));
+
+  res.json({ items: results, cacheAge: lastCacheUpdate, totalCached: inventoryCache.length });
+});
+
+// API: Force inventory refresh (admin use)
+app.post('/api/inventory/refresh', async (req, res) => {
+  try {
+    await fetchInventoryReport();
+    res.json({ success: true, totalRows: inventoryCache.length, updatedAt: lastCacheUpdate });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Cache status
+app.get('/api/inventory/status', (req, res) => {
+  res.json({ totalRows: inventoryCache.length, lastUpdated: lastCacheUpdate });
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`AirIQ running on port ${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`AirIQ running on port ${PORT}`);
+  // Initial inventory fetch on startup
+  try {
+    await fetchInventoryReport();
+  } catch (e) {
+    console.error("Initial inventory fetch failed:", e.message);
+  }
+});
+
+// Refresh inventory every hour
+setInterval(async () => {
+  try {
+    await fetchInventoryReport();
+  } catch (e) {
+    console.error("Hourly inventory refresh failed:", e.message);
+  }
+}, 60 * 60 * 1000);
