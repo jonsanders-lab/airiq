@@ -62,6 +62,11 @@ async function fetchInventoryReport() {
     );
 
     if (!res.ok) {
+      if (res.status === 429) {
+        console.log("Rate limited, waiting 30 seconds...");
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        continue; // retry this page
+      }
       console.error("ST inventory report error:", res.status);
       break;
     }
