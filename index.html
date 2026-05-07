@@ -505,7 +505,27 @@ function AirIQ() {
           if (workerRes.ok) {
             const workerData = await workerRes.json();
             const pricebookItems = workerData.data || [];
-            const inventoryItems = workerData.inventory || [];
+            let inventoryItems = [];
+            try {
+              const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(searchTerm)}`);
+              if (invRes.ok) {
+                const invData = await invRes.json();
+                inventoryItems = (invData.items || []).flatMap(item =>
+                  (item.rawRows || []).filter(r =>
+                    r.location && ['inventory','warehouse'].some(w => r.location.toLowerCase().includes(w))
+                  ).map(r => ({
+                    name: r.name,
+                    code: r.code,
+                    onHand: r.quantityOnHand,
+                    available: r.quantityAvailable,
+                    onOrder: r.quantityOnOrder,
+                    location: r.location,
+                  }))
+                );
+              }
+            } catch(invErr) {
+              console.log("Inventory cache lookup failed:", invErr.message);
+            }
             if (pricebookItems.length > 0 || inventoryItems.length > 0) {
               stDataUsed = true;
               stResult = buildSTContext(pricebookItems, inventoryItems);
@@ -513,8 +533,8 @@ function AirIQ() {
               stResult = `No matching equipment found for "${searchTerm}" in ServiceTitan pricebook or inventory.`;
             }
           }
-        } catch(e) {
-          stResult = `ST lookup error: ${e.message}`;
+        } catch(stErr) {
+          console.log("ST lookup failed:", stErr.message);
         }
 
         const res2 = await fetch("/api/claude", {
