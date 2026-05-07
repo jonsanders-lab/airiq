@@ -72,6 +72,7 @@ async function fetchInventoryReport() {
     hasMore = data.hasMore;
     page++;
     console.log(`Fetched page ${page - 1}, got ${rows.length} rows, hasMore: ${hasMore}`);
+    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay between pages
   }
 
   // Convert array rows to objects using field names
