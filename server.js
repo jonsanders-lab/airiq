@@ -263,4 +263,4 @@ setInterval(async () => {
   } catch (e) {
     console.error("Hourly inventory refresh failed:", e.message);
   }
-}, 60 * 60 * 1000);
+}, 4 * 60 * 60 * 1000);
