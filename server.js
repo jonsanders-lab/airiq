@@ -37,7 +37,7 @@ async function getSTToken() {
 // Fetch all pages of the Inventory On Hand report
 async function fetchInventoryReport() {
   console.log("Fetching inventory report from ST...");
-  const token = await getSTToken();
+  let token = await getSTToken();
   const today = new Date().toISOString().split("T")[0];
   let page = 1;
   let allRows = [];
@@ -65,7 +65,12 @@ async function fetchInventoryReport() {
       if (res.status === 429) {
         console.log("Rate limited, waiting 30 seconds...");
         await new Promise(resolve => setTimeout(resolve, 30000));
-        continue; // retry this page
+        continue;
+      }
+      if (res.status === 401) {
+        console.log("Token expired, refreshing...");
+        token = await getSTToken();
+        continue;
       }
       console.error("ST inventory report error:", res.status);
       break;
