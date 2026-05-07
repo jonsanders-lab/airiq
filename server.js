@@ -94,19 +94,26 @@ async function fetchInventoryReport() {
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
-    const parsed = allRows.map(row => ({
-      name: row[0],
-      code: row[1],
-      description: row[2],
-      type: row[3],
-      location: row[4],
-      binLocation: row[5],
-      quantityAvailable: row[6],
-      quantityOnHold: row[7],
-      quantityOnHand: row[8],
-      quantityOnOrder: row[9],
-      quantityReserved: row[12],
-    }));
+    const EQUIPMENT_PREFIXES = ['HD','HB','HV','HT','HAD','HTM'];
+
+    const parsed = allRows
+      .filter(row => {
+        const code = (row[1] || '').toUpperCase();
+        return EQUIPMENT_PREFIXES.some(p => code.startsWith(p));
+      })
+      .map(row => ({
+        name: row[0],
+        code: row[1],
+        description: row[2],
+        type: row[3],
+        location: row[4],
+        binLocation: row[5],
+        quantityAvailable: row[6],
+        quantityOnHold: row[7],
+        quantityOnHand: row[8],
+        quantityOnOrder: row[9],
+        quantityReserved: row[12],
+      }));
 
     inventoryCache = parsed;
     lastCacheUpdate = new Date().toISOString();
