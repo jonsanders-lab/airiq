@@ -18,6 +18,7 @@ const INVENTORY_REPORT_ID = 72031408;
 // In-memory inventory cache
 let inventoryCache = [];
 let lastCacheUpdate = null;
+let isFetching = false;
 
 // Fetch ST access token
 async function getSTToken() {
@@ -36,78 +37,85 @@ async function getSTToken() {
 
 // Fetch all pages of the Inventory On Hand report
 async function fetchInventoryReport() {
+  if (isFetching) {
+    console.log("Fetch already in progress, skipping...");
+    return;
+  }
+  isFetching = true;
   console.log("Fetching inventory report from ST...");
-  let token = await getSTToken();
-  const today = new Date().toISOString().split("T")[0];
-  let page = 1;
-  let allRows = [];
-  let hasMore = true;
 
-  while (hasMore) {
-    const res = await fetch(
-      `https://api.servicetitan.io/reporting/v2/tenant/${ST_TENANT}/report-category/inventory/reports/${INVENTORY_REPORT_ID}/data`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "ST-App-Key": ST_APP_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          page,
-          pageSize: 1000,
-          parameters: [{ name: "Date", value: today }]
-        })
-      }
-    );
+  try {
+    let token = await getSTToken();
+    const today = new Date().toISOString().split("T")[0];
+    let page = 1;
+    let allRows = [];
+    let hasMore = true;
 
-    if (!res.ok) {
-      if (res.status === 429) {
-        console.log("Rate limited, waiting 30 seconds...");
-        await new Promise(resolve => setTimeout(resolve, 30000));
-        continue;
+    while (hasMore) {
+      const res = await fetch(
+        `https://api.servicetitan.io/reporting/v2/tenant/${ST_TENANT}/report-category/inventory/reports/${INVENTORY_REPORT_ID}/data`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "ST-App-Key": ST_APP_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            page,
+            pageSize: 1000,
+            parameters: [{ name: "Date", value: today }]
+          })
+        }
+      );
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          console.log("Rate limited, waiting 30 seconds...");
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          continue;
+        }
+        if (res.status === 401) {
+          console.log("Token expired, refreshing...");
+          token = await getSTToken();
+          continue;
+        }
+        console.error("ST inventory report error:", res.status);
+        break;
       }
-      if (res.status === 401) {
-        console.log("Token expired, refreshing...");
-        token = await getSTToken();
-        continue;
-      }
-      console.error("ST inventory report error:", res.status);
-      break;
+
+      const data = await res.json();
+      const rows = data.data || [];
+      allRows = allRows.concat(rows);
+      hasMore = data.hasMore;
+      page++;
+      console.log(`Fetched page ${page - 1}, got ${rows.length} rows, hasMore: ${hasMore}`);
+
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
-    const data = await res.json();
-    const rows = data.data || [];
-    allRows = allRows.concat(rows);
-    hasMore = data.hasMore;
-    page++;
-    console.log(`Fetched page ${page - 1}, got ${rows.length} rows, hasMore: ${hasMore}`);
-    await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay between pages
+    const parsed = allRows.map(row => ({
+      name: row[0],
+      code: row[1],
+      description: row[2],
+      type: row[3],
+      location: row[4],
+      binLocation: row[5],
+      quantityAvailable: row[6],
+      quantityOnHold: row[7],
+      quantityOnHand: row[8],
+      quantityOnOrder: row[9],
+      quantityReserved: row[12],
+    }));
+
+    inventoryCache = parsed;
+    lastCacheUpdate = new Date().toISOString();
+    console.log(`Inventory cache updated: ${parsed.length} total rows at ${lastCacheUpdate}`);
+  } catch (err) {
+    console.error("fetchInventoryReport error:", err.message);
+  } finally {
+    isFetching = false;
   }
-
-  // Convert array rows to objects using field names
-  // Field order: ItemName(0), ItemCode(1), ItemDescription(2), ItemType(3),
-  // InventoryLocation(4), BinLocation(5), QuantityAvailable(6), QuantityOnHold(7),
-  // QuantityOnHand(8), QuantityOnOrder(9), MinQuantity(10), MaxQuantity(11),
-  // QuantityReserved(12), QuantityStaged(13), QuantityOnSite(14),
-  // QuantityAvailableToPick(15), QuantityToOrder(16)
-  const parsed = allRows.map(row => ({
-    name: row[0],
-    code: row[1],
-    description: row[2],
-    type: row[3],
-    location: row[4],
-    binLocation: row[5],
-    quantityAvailable: row[6],
-    quantityOnHold: row[7],
-    quantityOnHand: row[8],
-    quantityOnOrder: row[9],
-    quantityReserved: row[12],
-  }));
-
-  inventoryCache = parsed;
-  lastCacheUpdate = new Date().toISOString();
-  console.log(`Inventory cache updated: ${parsed.length} total rows at ${lastCacheUpdate}`);
 }
 
 // Search inventory cache by item code or name
@@ -119,15 +127,14 @@ function searchInventoryCache(searchTerm) {
   );
 }
 
-// Aggregate inventory across locations for a matched item
+// Aggregate inventory across warehouse locations
 function aggregateInventory(rows) {
-  // Group by item code, sum across warehouse locations only (exclude trucks/technicians)
   const warehouseLocations = ['inventory', 'warehouse'];
   const warehouseRows = rows.filter(r =>
     r.location && warehouseLocations.some(w => r.location.toLowerCase().includes(w))
   );
 
-  if (warehouseRows.length === 0) return rows; // fallback to all rows
+  if (warehouseRows.length === 0) return rows;
 
   const totals = {
     quantityOnHand: 0,
@@ -197,7 +204,6 @@ app.get('/api/inventory', (req, res) => {
     return res.json({ items: [], cacheAge: lastCacheUpdate, totalCached: inventoryCache.length });
   }
   const matches = searchInventoryCache(term);
-  // Group by item code and aggregate
   const byCode = {};
   matches.forEach(row => {
     if (!byCode[row.code]) byCode[row.code] = { code: row.code, name: row.name, rows: [] };
@@ -214,7 +220,7 @@ app.get('/api/inventory', (req, res) => {
   res.json({ items: results, cacheAge: lastCacheUpdate, totalCached: inventoryCache.length });
 });
 
-// API: Force inventory refresh (admin use)
+// API: Force inventory refresh
 app.post('/api/inventory/refresh', async (req, res) => {
   try {
     await fetchInventoryReport();
@@ -226,7 +232,7 @@ app.post('/api/inventory/refresh', async (req, res) => {
 
 // API: Cache status
 app.get('/api/inventory/status', (req, res) => {
-  res.json({ totalRows: inventoryCache.length, lastUpdated: lastCacheUpdate });
+  res.json({ totalRows: inventoryCache.length, lastUpdated: lastCacheUpdate, isFetching });
 });
 
 app.get('/', (req, res) => {
@@ -236,7 +242,6 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`AirIQ running on port ${PORT}`);
-  // Initial inventory fetch on startup
   try {
     await fetchInventoryReport();
   } catch (e) {
