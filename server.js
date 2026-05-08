@@ -13,7 +13,7 @@ const ST_TENANT = "898917283";
 const ST_APP_KEY = "ak1.jdzvjgo7e5m02rakwko7qkp0l";
 const ST_CLIENT_ID = "cid.99vu9fmb70y859oo3iqxtmprp";
 const ST_CLIENT_SECRET = "cs1.nq1bzz3u70bd9lfd28fl3irgjsbcdk1vgylapnwe5p552e0150";
-const INVENTORY_REPORT_ID = 72031408;
+const INVENTORY_REPORT_ID = 1823;
 
 // In-memory inventory cache
 let inventoryCache = [];
@@ -35,7 +35,7 @@ async function getSTToken() {
   return data.access_token;
 }
 
-// Fetch all pages of the Inventory On Hand report
+// Fetch all pages of the Inventory Stock Report
 async function fetchInventoryReport() {
   if (isFetching) {
     console.log("Fetch already in progress, skipping...");
@@ -46,7 +46,6 @@ async function fetchInventoryReport() {
 
   try {
     let token = await getSTToken();
-    const today = new Date().toISOString().split("T")[0];
     let page = 1;
     let allRows = [];
     let hasMore = true;
@@ -64,7 +63,7 @@ async function fetchInventoryReport() {
           body: JSON.stringify({
             page,
             pageSize: 1000,
-            parameters: [{ name: "Date", value: today }]
+            parameters: []
           })
         }
       );
@@ -94,6 +93,11 @@ async function fetchInventoryReport() {
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
+    // Log first row to see field structure
+    if (allRows.length > 0) {
+      console.log("Sample row:", JSON.stringify(allRows[0]));
+    }
+
     const EQUIPMENT_PREFIXES = ['HD','HB','HV','HT','HAD','HTM'];
 
     const parsed = allRows
@@ -117,7 +121,7 @@ async function fetchInventoryReport() {
 
     inventoryCache = parsed;
     lastCacheUpdate = new Date().toISOString();
-    console.log(`Inventory cache updated: ${parsed.length} total rows at ${lastCacheUpdate}`);
+    console.log(`Inventory cache updated: ${parsed.length} equipment items at ${lastCacheUpdate}`);
   } catch (err) {
     console.error("fetchInventoryReport error:", err.message);
   } finally {
@@ -256,11 +260,11 @@ app.listen(PORT, async () => {
   }
 });
 
-// Refresh inventory every hour
+// Refresh inventory every 4 hours
 setInterval(async () => {
   try {
     await fetchInventoryReport();
   } catch (e) {
-    console.error("Hourly inventory refresh failed:", e.message);
+    console.error("Inventory refresh failed:", e.message);
   }
 }, 4 * 60 * 60 * 1000);
