@@ -63,7 +63,13 @@ async function fetchInventoryReport() {
           body: JSON.stringify({
             page,
             pageSize: 1000,
-            parameters: []
+            parameters: [
+              {
+                name: "Date",
+                value: new Date().toISOString().split('T')[0]   // today's date, e.g. "2026-05-09"
+              }
+              // InventoryLocationIds is optional — omitting it returns all locations
+            ]
           })
         }
       );
@@ -108,17 +114,17 @@ async function fetchInventoryReport() {
         return EQUIPMENT_PREFIXES.some(p => code.startsWith(p));
       })
       .map(row => ({
-        name: row[0],
-        code: row[1],
-        description: row[2],
-        type: row[3],
-        location: row[4],
-        binLocation: row[5],
-        quantityAvailable: row[6],
-        quantityOnHold: row[7],
-        quantityOnHand: row[8],
-        quantityOnOrder: row[9],
-        quantityReserved: row[12],
+        name: row[0],              // ItemName
+        code: row[1],              // ItemCode
+        description: row[2],       // ItemDescription
+        type: row[3],              // ItemType
+        location: row[4],          // InventoryLocation
+        quantityAvailable: row[5], // QuantityAvailable
+        quantityOnHold: row[6],    // QuantityOnHold
+        quantityOnOrder: row[7],   // QuantityOnOrder
+        quantityOnHand: row[8],    // QuantityOnHand
+        binLocation: row[11],      // BinLocation
+        quantityReserved: row[12], // QuantityReserved
       }));
 
     inventoryCache = parsed;
