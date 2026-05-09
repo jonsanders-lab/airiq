@@ -79,7 +79,9 @@ async function fetchInventoryReport() {
           token = await getSTToken();
           continue;
         }
-        console.error("ST inventory report error:", res.status);
+        // Log the full error body so we can see exactly what ST says is missing
+        const errBody = await res.text();
+        console.error(`ST inventory report error ${res.status}:`, errBody);
         break;
       }
 
@@ -203,6 +205,29 @@ app.post('/api/st', async (req, res) => {
     });
     const data = await response.json();
     res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DIAGNOSTIC: Fetch report schema to discover required parameters
+// Hit GET /api/inventory/report-schema to see what params report 1823 needs
+app.get('/api/inventory/report-schema', async (req, res) => {
+  try {
+    const token = await getSTToken();
+    const response = await fetch(
+      `https://api.servicetitan.io/reporting/v2/tenant/${ST_TENANT}/report-category/inventory/reports/${INVENTORY_REPORT_ID}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "ST-App-Key": ST_APP_KEY,
+        }
+      }
+    );
+    const status = response.status;
+    const body = await response.json();
+    res.json({ httpStatus: status, reportSchema: body });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
