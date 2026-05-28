@@ -1,167 +1,170 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const path = require('path');
-const app = express();
+const XLSX = require('xlsx');
+const app = require('express')();
 
 app.use(express.json());
 app.use(express.static('.'));
 
 const PROXY_URL = 'https://airiq-st-proxy.jon-sanders.workers.dev';
 
-// ST credentials — set these in Railway's Variables tab, never hardcode
-const ST_TENANT        = process.env.ST_TENANT;
-const ST_APP_KEY       = process.env.ST_APP_KEY;
-const ST_CLIENT_ID     = process.env.ST_CLIENT_ID;
-const ST_CLIENT_SECRET = process.env.ST_CLIENT_SECRET;
-const INVENTORY_REPORT_ID = 1823;
-
-// All branch warehouse location IDs
-const INVENTORY_LOCATION_IDS = [
-  84363890,  // Hodge Compressor
-  11053988,  // Nashville Warehouse
-  11055398,  // Charlotte Warehouse
-  11055907,  // Atlanta Warehouse
-  42353491,  // Tampa Warehouse
-  42353988,  // Greenville Warehouse
-  46238016,  // Cleveland Warehouse
-  73998548,  // Detroit Inventory
-  73998551,  // Nashville Inventory
-  73998799,  // Atlanta Inventory
-  73998802,  // Cleveland Inventory
-  74001225,  // Charlotte Inventory
-  74001353,  // Greenville Inventory
-  74001481,  // Tampa Inventory
-  78073441,  // Dallas Compressor
-  78078793,  // Dallas Inventory
-  32766265,  // Detroit Compressor
-  108478665, // Chicago Warehouse
-  108716118  // Chicago Inventory
-];
-
 // In-memory inventory cache
 let inventoryCache = [];
 let lastCacheUpdate = null;
 let isFetching = false;
 
-// Fetch ST access token
-async function getSTToken() {
-  const res = await fetch("https://auth.servicetitan.io/connect/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+// ─── GMAIL INVENTORY LOADER ───────────────────────────────────────────────────
+// Reads the daily "Hodge Compressor Inventory" email from Gmail,
+// downloads the .xlsx attachment, and populates the inventory cache.
+// No ST API calls needed — zero rate limit risk.
+
+async function getGmailToken() {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: ST_CLIENT_ID,
-      client_secret: ST_CLIENT_SECRET,
+      client_id:     process.env.GMAIL_CLIENT_ID,
+      client_secret: process.env.GMAIL_CLIENT_SECRET,
+      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+      grant_type:    'refresh_token',
     }),
   });
   const data = await res.json();
+  if (!data.access_token) {
+    throw new Error('Gmail token error: ' + JSON.stringify(data));
+  }
   return data.access_token;
 }
 
-// Fetch all pages of the Inventory Stock Report
-async function fetchInventoryReport() {
+async function fetchInventoryFromGmail() {
   if (isFetching) {
-    console.log("Fetch already in progress, skipping...");
+    console.log('Inventory fetch already in progress, skipping...');
     return;
   }
   isFetching = true;
-  console.log("Fetching inventory report from ST...");
+  console.log('Loading inventory from Gmail...');
 
   try {
-    let token = await getSTToken();
-    let page = 1;
-    let allRows = [];
-    let hasMore = true;
+    const token = await getGmailToken();
 
-    while (hasMore) {
-      const res = await fetch(
-        `https://api.servicetitan.io/reporting/v2/tenant/${ST_TENANT}/report-category/inventory/reports/${INVENTORY_REPORT_ID}/data`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "ST-App-Key": ST_APP_KEY,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            page,
-            pageSize: 1000,
-            parameters: [
-              {
-                name: "Date",
-                value: new Date().toISOString().split('T')[0]
-              },
-              {
-                name: "InventoryLocationIds",
-                value: INVENTORY_LOCATION_IDS
-              }
-            ]
-          })
-        }
-      );
+    // Step 1: Search for the most recent Hodge Compressor Inventory email
+    const searchRes = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=subject:"Hodge+Compressor+Inventory"+from:noreply@onservicetitan.com',
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const searchData = await searchRes.json();
 
-      if (!res.ok) {
-        if (res.status === 429) {
-          console.log("Rate limited, waiting 30 seconds...");
-          await new Promise(resolve => setTimeout(resolve, 30000));
-          continue;
+    if (!searchData.messages || searchData.messages.length === 0) {
+      console.error('No Hodge Compressor Inventory email found in Gmail');
+      return;
+    }
+
+    const messageId = searchData.messages[0].id;
+    console.log(`Found inventory email: ${messageId}`);
+
+    // Step 2: Get the message to find the attachment ID
+    const msgRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const msgData = await msgRes.json();
+
+    // Find the xlsx attachment part
+    let attachmentId = null;
+    let filename = null;
+
+    function findAttachment(parts) {
+      if (!parts) return;
+      for (const part of parts) {
+        if (
+          part.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+          (part.filename && part.filename.endsWith('.xlsx'))
+        ) {
+          attachmentId = part.body.attachmentId;
+          filename = part.filename;
+          return;
         }
-        if (res.status === 401) {
-          console.log("Token expired, refreshing...");
-          token = await getSTToken();
-          continue;
-        }
-        const errBody = await res.text();
-        console.error(`ST inventory report error ${res.status}:`, errBody);
-        break;
+        if (part.parts) findAttachment(part.parts);
       }
-
-      const data = await res.json();
-      const rows = data.data || [];
-      allRows = allRows.concat(rows);
-      hasMore = data.hasMore;
-      page++;
-      console.log(`Fetched page ${page - 1}, got ${rows.length} rows, hasMore: ${hasMore}`);
-
-      await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
-    if (allRows.length > 0) {
-      console.log("Sample row:", JSON.stringify(allRows[0]));
+    findAttachment(msgData.payload.parts);
+
+    if (!attachmentId) {
+      console.error('No .xlsx attachment found in inventory email');
+      return;
     }
+
+    console.log(`Downloading attachment: ${filename}`);
+
+    // Step 3: Download the attachment
+    const attachRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const attachData = await attachRes.json();
+
+    // Gmail returns base64url encoded data — convert to standard base64
+    const base64 = attachData.data.replace(/-/g, '+').replace(/_/g, '/');
+    const buffer = Buffer.from(base64, 'base64');
+
+    // Step 4: Parse the xlsx
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    // Row 0 is the header — skip it
+    const dataRows = rows.slice(1);
+
+    // Column order from the ST report:
+    // 0: Item Name, 1: Item Code, 2: Item Description, 3: Item Type,
+    // 4: Inventory Location, 5: Bin Location, 6: Quantity Available,
+    // 7: Quantity on Hold, 8: Quantity on Hand, 9: Quantity on Order,
+    // 10: Min Quantity, 11: Max Quantity, 12: Quantity Reserved,
+    // 13: Quantity Staged, 14: Quantity on Site, 15: Quantity Available to Pick,
+    // 16: Quantity to Order
 
     const EQUIPMENT_PREFIXES = ['HD','HB','HV','HT','HAD','HTM'];
 
-    const parsed = allRows
+    const parsed = dataRows
       .filter(row => {
-        const code = (row[1] || '').toUpperCase();
+        const code = (row[1] || '').toString().toUpperCase();
         return EQUIPMENT_PREFIXES.some(p => code.startsWith(p));
       })
       .map(row => ({
-        name: row[0],              // ItemName
-        code: row[1],              // ItemCode
-        description: row[2],       // ItemDescription
-        type: row[3],              // ItemType
-        location: row[4],          // InventoryLocation
-        quantityAvailable: row[5], // QuantityAvailable
-        quantityOnHold: row[6],    // QuantityOnHold
-        quantityOnOrder: row[7],   // QuantityOnOrder
-        quantityOnHand: row[8],    // QuantityOnHand
-        binLocation: row[11],      // BinLocation
-        quantityReserved: row[12], // QuantityReserved
+        name:               row[0] || '',
+        code:               row[1] || '',
+        description:        row[2] || '',
+        type:               row[3] || '',
+        location:           row[4] || '',
+        binLocation:        row[5] || '',
+        quantityAvailable:  Number(row[6])  || 0,
+        quantityOnHold:     Number(row[7])  || 0,
+        quantityOnHand:     Number(row[8])  || 0,
+        quantityOnOrder:    Number(row[9])  || 0,
+        quantityReserved:   Number(row[12]) || 0,
+        quantityStaged:     Number(row[13]) || 0,
+        quantityOnSite:     Number(row[14]) || 0,
       }));
 
     inventoryCache = parsed;
     lastCacheUpdate = new Date().toISOString();
-    console.log(`Inventory cache updated: ${parsed.length} equipment items at ${lastCacheUpdate}`);
+    console.log(`Inventory cache loaded from Gmail: ${parsed.length} equipment items at ${lastCacheUpdate}`);
+
+    if (parsed.length > 0) {
+      console.log('Sample item:', JSON.stringify(parsed[0]));
+    }
+
   } catch (err) {
-    console.error("fetchInventoryReport error:", err.message);
+    console.error('fetchInventoryFromGmail error:', err.message);
   } finally {
     isFetching = false;
   }
 }
 
-// Search inventory cache by item code or name
+// ─── INVENTORY SEARCH & AGGREGATION ──────────────────────────────────────────
+
 function searchInventoryCache(searchTerm) {
   const term = searchTerm.toUpperCase();
   return inventoryCache.filter(item =>
@@ -170,14 +173,8 @@ function searchInventoryCache(searchTerm) {
   );
 }
 
-// Aggregate inventory across warehouse locations
 function aggregateInventory(rows) {
-  const warehouseLocations = ['inventory', 'warehouse'];
-  const warehouseRows = rows.filter(r =>
-    r.location && warehouseLocations.some(w => r.location.toLowerCase().includes(w))
-  );
-
-  if (warehouseRows.length === 0) return rows;
+  if (rows.length === 0) return rows;
 
   const totals = {
     quantityOnHand: 0,
@@ -187,17 +184,17 @@ function aggregateInventory(rows) {
     locations: []
   };
 
-  warehouseRows.forEach(row => {
-    totals.quantityOnHand += (row.quantityOnHand || 0);
+  rows.forEach(row => {
+    totals.quantityOnHand    += (row.quantityOnHand    || 0);
     totals.quantityAvailable += (row.quantityAvailable || 0);
-    totals.quantityOnOrder += (row.quantityOnOrder || 0);
-    totals.quantityReserved += (row.quantityReserved || 0);
+    totals.quantityOnOrder   += (row.quantityOnOrder   || 0);
+    totals.quantityReserved  += (row.quantityReserved  || 0);
     if ((row.quantityOnHand || 0) > 0 || (row.quantityAvailable || 0) > 0) {
       totals.locations.push({
-        location: row.location,
-        onHand: row.quantityOnHand,
+        location:  row.location,
+        onHand:    row.quantityOnHand,
         available: row.quantityAvailable,
-        onOrder: row.quantityOnOrder,
+        onOrder:   row.quantityOnOrder,
       });
     }
   });
@@ -205,7 +202,9 @@ function aggregateInventory(rows) {
   return totals;
 }
 
-// API: Claude proxy
+// ─── API ROUTES ───────────────────────────────────────────────────────────────
+
+// Claude proxy
 app.post('/api/claude', async (req, res) => {
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -225,7 +224,7 @@ app.post('/api/claude', async (req, res) => {
   }
 });
 
-// API: ST proxy (pricebook)
+// ST pricebook proxy (unchanged)
 app.post('/api/st', async (req, res) => {
   try {
     const response = await fetch(PROXY_URL, {
@@ -240,29 +239,7 @@ app.post('/api/st', async (req, res) => {
   }
 });
 
-// DIAGNOSTIC: Fetch report schema to discover required parameters
-app.get('/api/inventory/report-schema', async (req, res) => {
-  try {
-    const token = await getSTToken();
-    const response = await fetch(
-      `https://api.servicetitan.io/reporting/v2/tenant/${ST_TENANT}/report-category/inventory/reports/${INVENTORY_REPORT_ID}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "ST-App-Key": ST_APP_KEY,
-        }
-      }
-    );
-    const status = response.status;
-    const body = await response.json();
-    res.json({ httpStatus: status, reportSchema: body });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// API: Inventory lookup from cache
+// Inventory lookup from cache
 app.get('/api/inventory', (req, res) => {
   const term = (req.query.q || '').trim();
   if (!term) {
@@ -276,26 +253,26 @@ app.get('/api/inventory', (req, res) => {
   });
 
   const results = Object.values(byCode).map(item => ({
-    code: item.code,
-    name: item.name,
+    code:      item.code,
+    name:      item.name,
     inventory: aggregateInventory(item.rows),
-    rawRows: item.rows,
+    rawRows:   item.rows,
   }));
 
   res.json({ items: results, cacheAge: lastCacheUpdate, totalCached: inventoryCache.length });
 });
 
-// API: Force inventory refresh
+// Force inventory refresh from Gmail
 app.post('/api/inventory/refresh', async (req, res) => {
   try {
-    await fetchInventoryReport();
+    await fetchInventoryFromGmail();
     res.json({ success: true, totalRows: inventoryCache.length, updatedAt: lastCacheUpdate });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// API: Cache status
+// Cache status
 app.get('/api/inventory/status', (req, res) => {
   res.json({ totalRows: inventoryCache.length, lastUpdated: lastCacheUpdate, isFetching });
 });
@@ -304,23 +281,35 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// ─── STARTUP & SCHEDULER ─────────────────────────────────────────────────────
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`AirIQ running on port ${PORT}`);
-  // Inventory fetch temporarily disabled — ST API rate limit cooldown
-  // Re-enable by uncommenting the block below once rate limit clears
-  //
-  // fetchInventoryReport().catch(e => {
-  //   console.error("Initial inventory fetch failed:", e.message);
-  // });
+  // Load inventory from today's Gmail report on startup
+  try {
+    await fetchInventoryFromGmail();
+  } catch (e) {
+    console.error('Initial Gmail inventory load failed:', e.message);
+  }
 });
 
-// Inventory auto-refresh temporarily disabled — re-enable with fetch above
-//
-// setInterval(async () => {
-//   try {
-//     await fetchInventoryReport();
-//   } catch (e) {
-//     console.error("Inventory refresh failed:", e.message);
-//   }
-// }, 4 * 60 * 60 * 1000);
+// Refresh daily at 6:10am EST (11:10 UTC) — after the 5:56am ST email arrives
+function scheduleDailyRefresh() {
+  const now = new Date();
+  const next = new Date();
+  next.setUTCHours(11, 10, 0, 0);
+  if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+  const msUntilNext = next - now;
+  console.log(`Next inventory refresh scheduled in ${Math.round(msUntilNext / 60000)} minutes`);
+  setTimeout(async () => {
+    try {
+      await fetchInventoryFromGmail();
+    } catch (e) {
+      console.error('Scheduled Gmail inventory refresh failed:', e.message);
+    }
+    scheduleDailyRefresh(); // reschedule for the next day
+  }, msUntilNext);
+}
+
+scheduleDailyRefresh();
