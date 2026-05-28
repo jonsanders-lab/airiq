@@ -8,11 +8,11 @@ app.use(express.static('.'));
 
 const PROXY_URL = 'https://airiq-st-proxy.jon-sanders.workers.dev';
 
-// ST credentials
-const ST_TENANT = "898917283";
-const ST_APP_KEY = "ak1.jdzvjgo7e5m02rakwko7qkp0l";
-const ST_CLIENT_ID = "cid.99vu9fmb70y859oo3iqxtmprp";
-const ST_CLIENT_SECRET = "cs1.nq1bzz3u70bd9lfd28fl3irgjsbcdk1vgylapnwe5p552e0150";
+// ST credentials — set these in Railway's Variables tab, never hardcode
+const ST_TENANT        = process.env.ST_TENANT;
+const ST_APP_KEY       = process.env.ST_APP_KEY;
+const ST_CLIENT_ID     = process.env.ST_CLIENT_ID;
+const ST_CLIENT_SECRET = process.env.ST_CLIENT_SECRET;
 const INVENTORY_REPORT_ID = 1823;
 
 // In-memory inventory cache
@@ -66,9 +66,9 @@ async function fetchInventoryReport() {
             parameters: [
               {
                 name: "Date",
-                value: new Date().toISOString().split('T')[0]   // today's date, e.g. "2026-05-09"
+                value: new Date().toISOString().split('T')[0]  // today's date e.g. "2026-05-09"
               }
-              // InventoryLocationIds is optional — omitting it returns all locations
+              // InventoryLocationIds is optional — omitting returns all locations
             ]
           })
         }
@@ -85,7 +85,6 @@ async function fetchInventoryReport() {
           token = await getSTToken();
           continue;
         }
-        // Log the full error body so we can see exactly what ST says is missing
         const errBody = await res.text();
         console.error(`ST inventory report error ${res.status}:`, errBody);
         break;
@@ -101,7 +100,6 @@ async function fetchInventoryReport() {
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
-    // Log first row to see field structure
     if (allRows.length > 0) {
       console.log("Sample row:", JSON.stringify(allRows[0]));
     }
@@ -217,7 +215,6 @@ app.post('/api/st', async (req, res) => {
 });
 
 // DIAGNOSTIC: Fetch report schema to discover required parameters
-// Hit GET /api/inventory/report-schema to see what params report 1823 needs
 app.get('/api/inventory/report-schema', async (req, res) => {
   try {
     const token = await getSTToken();
