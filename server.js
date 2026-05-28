@@ -15,8 +15,7 @@ const ST_CLIENT_ID     = process.env.ST_CLIENT_ID;
 const ST_CLIENT_SECRET = process.env.ST_CLIENT_SECRET;
 const INVENTORY_REPORT_ID = 1823;
 
-// Hodge Compressor warehouse — the only location AirIQ needs
-// ID sourced from ST inventory-locations/warehouses/details/84363890
+// All branch warehouse location IDs
 const INVENTORY_LOCATION_IDS = [
   84363890,  // Hodge Compressor
   11053988,  // Nashville Warehouse
@@ -90,7 +89,7 @@ async function fetchInventoryReport() {
             parameters: [
               {
                 name: "Date",
-                value: new Date().toISOString().split('T')[0]  // today's date e.g. "2026-05-27"
+                value: new Date().toISOString().split('T')[0]
               },
               {
                 name: "InventoryLocationIds",
@@ -306,20 +305,22 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`AirIQ running on port ${PORT}`);
-  try {
-    await fetchInventoryReport();
-  } catch (e) {
-    console.error("Initial inventory fetch failed:", e.message);
-  }
+  // Inventory fetch temporarily disabled — ST API rate limit cooldown
+  // Re-enable by uncommenting the block below once rate limit clears
+  //
+  // fetchInventoryReport().catch(e => {
+  //   console.error("Initial inventory fetch failed:", e.message);
+  // });
 });
 
-// Refresh inventory every 4 hours
-setInterval(async () => {
-  try {
-    await fetchInventoryReport();
-  } catch (e) {
-    console.error("Inventory refresh failed:", e.message);
-  }
-}, 4 * 60 * 60 * 1000);
+// Inventory auto-refresh temporarily disabled — re-enable with fetch above
+//
+// setInterval(async () => {
+//   try {
+//     await fetchInventoryReport();
+//   } catch (e) {
+//     console.error("Inventory refresh failed:", e.message);
+//   }
+// }, 4 * 60 * 60 * 1000);
