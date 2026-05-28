@@ -15,6 +15,30 @@ const ST_CLIENT_ID     = process.env.ST_CLIENT_ID;
 const ST_CLIENT_SECRET = process.env.ST_CLIENT_SECRET;
 const INVENTORY_REPORT_ID = 1823;
 
+// Hodge Compressor warehouse — the only location AirIQ needs
+// ID sourced from ST inventory-locations/warehouses/details/84363890
+const INVENTORY_LOCATION_IDS = [
+  84363890,  // Hodge Compressor
+  11053988,  // Nashville Warehouse
+  11055398,  // Charlotte Warehouse
+  11055907,  // Atlanta Warehouse
+  42353491,  // Tampa Warehouse
+  42353988,  // Greenville Warehouse
+  46238016,  // Cleveland Warehouse
+  73998548,  // Detroit Inventory
+  73998551,  // Nashville Inventory
+  73998799,  // Atlanta Inventory
+  73998802,  // Cleveland Inventory
+  74001225,  // Charlotte Inventory
+  74001353,  // Greenville Inventory
+  74001481,  // Tampa Inventory
+  78073441,  // Dallas Compressor
+  78078793,  // Dallas Inventory
+  32766265,  // Detroit Compressor
+  108478665, // Chicago Warehouse
+  108716118  // Chicago Inventory
+];
+
 // In-memory inventory cache
 let inventoryCache = [];
 let lastCacheUpdate = null;
@@ -66,9 +90,12 @@ async function fetchInventoryReport() {
             parameters: [
               {
                 name: "Date",
-                value: new Date().toISOString().split('T')[0]  // today's date e.g. "2026-05-09"
+                value: new Date().toISOString().split('T')[0]  // today's date e.g. "2026-05-27"
+              },
+              {
+                name: "InventoryLocationIds",
+                value: INVENTORY_LOCATION_IDS
               }
-              // InventoryLocationIds is optional — omitting returns all locations
             ]
           })
         }
