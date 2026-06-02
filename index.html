@@ -1494,6 +1494,10 @@ function Estimator() {
   const [reels, setReels]     = React.useState([]);
   const [bomText, setBomText] = React.useState("");
   const [bomBusy, setBomBusy] = React.useState(false);
+  const [layoutImg, setLayoutImg]           = React.useState(null);
+  const [layoutAnalysis, setLayoutAnalysis] = React.useState(null);
+  const [layoutBusy, setLayoutBusy]         = React.useState(false);
+  const fileInputRef = React.useRef(null);
 
   const uid = () => Date.now() + Math.random();
 
@@ -1521,6 +1525,73 @@ function Estimator() {
   function addRow(setter, def) { setter(p=>[...p,{id:uid(),name:def||"",qty:1}]); }
   function updRow(setter, id, f, v) { setter(p=>p.map(r=>r.id===id?{...r,[f]:v}:r)); }
   function rmRow(setter, id) { setter(p=>p.filter(r=>r.id!==id)); }
+
+  function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type === "application/pdf") {
+      alert("PDF detected. Please export your drawing as PNG or JPG first, then re-upload.");
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      setLayoutImg({ dataUrl: ev.target.result, mediaType: file.type || "image/png", name: file.name });
+      setLayoutAnalysis(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function analyzeLayout() {
+    if (!layoutImg) return;
+    setLayoutBusy(true);
+    setLayoutAnalysis(null);
+    try {
+      const base64 = layoutImg.dataUrl.split(",")[1];
+      const res = await fetch("/api/claude", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 800,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: layoutImg.mediaType, data: base64 } },
+              { type: "text", text: `You are analyzing a compressed air piping layout drawing for an AIRpipe aluminum piping installation.
+
+Extract the following from this facility sketch, GoodNotes export, or site photo:
+1. Estimated total pipe run in feet (trace main header + all branch lines, account for scale or notes if present)
+2. Number of 90° elbows (corners/bends)
+3. Number of tees (branch splits)
+4. Number of drops (vertical takeoffs going down to equipment or floor connections)
+5. System type: "loop" (ring main — pipe forms a complete circuit) or "dead-end" (linear with branches) or "unknown"
+6. Ceiling height in feet if labeled or inferable (null if not visible)
+7. Confidence: "high" (clear professional drawing with scale), "medium" (rough sketch but readable), or "low" (unclear photo, best estimate)
+8. Brief notes on what you observed
+
+Respond ONLY with a JSON object in exactly this format — no other text:
+{"totalRun":<number|null>,"elbows90":<number>,"tees":<number>,"drops":<number>,"systemType":"loop"|"dead-end"|"unknown","ceilingHeight":<number|null>,"confidence":"high"|"medium"|"low","notes":"<brief>"}`
+              }
+            ]
+          }]
+        })
+      });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error.message);
+      const text = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error("Could not parse analysis response");
+      const analysis = JSON.parse(m[0]);
+      setLayoutAnalysis(analysis);
+      if (analysis.totalRun && !job.totalRun) {
+        setJob(prev => ({ ...prev, totalRun: String(analysis.totalRun) }));
+      }
+    } catch(e) {
+      setLayoutAnalysis({ error: e.message });
+    }
+    setLayoutBusy(false);
+  }
 
   async function genBOM() {
     setBomBusy(true); setBomText("");
@@ -1576,6 +1647,16 @@ ${tanks.length?tanks.map(t=>`${t.qty}× ${t.name||"(unnamed)"}`).join(", "):"Non
 
 HOSE REELS:
 ${reels.length?reels.map(r=>`${r.qty}× ${r.name||"(unnamed)"}`).join(", "):"None"}
+${layoutAnalysis&&!layoutAnalysis.error?`
+LAYOUT DRAWING ANALYSIS (AI-extracted, ${layoutAnalysis.confidence} confidence):
+- Estimated pipe run: ${layoutAnalysis.totalRun!=null?layoutAnalysis.totalRun+" ft":"not detected"}
+- 90° elbows: ${layoutAnalysis.elbows90??0}
+- Tees: ${layoutAnalysis.tees??0}
+- Drops: ${layoutAnalysis.drops??0}
+- System type: ${layoutAnalysis.systemType||"unknown"}
+- Ceiling height: ${layoutAnalysis.ceilingHeight?layoutAnalysis.ceilingHeight+" ft":"not detected"}
+- Analyst notes: ${layoutAnalysis.notes||""}
+Use the fitting counts above as estimates in the AIRpipe Materials section; flag them as AI-estimated and note that field verification is still required.`:""}
 
 OUTPUT FORMAT — produce a clean field-ready BOM with these sections:
 1. **Equipment Summary** — list each compressor with its auto-recommended HAD dryer and receiver tank from the data above
@@ -1797,6 +1878,92 @@ Be concise. Include exact part numbers. No fabricated prices.`;
               style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
           </div>
         ))}
+      </div>
+
+      {/* Layout Drawing Upload */}
+      <div style={card}>
+        <Mono color={C.copper}>LAYOUT DRAWING / PHOTO</Mono>
+        <div style={{color:C.mid,fontSize:12,fontFamily:F.mono,letterSpacing:1,marginBottom:12}}>
+          Upload a facility sketch, GoodNotes export, or site photo — AI extracts pipe quantities
+        </div>
+        <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp"
+          style={{display:"none"}} onChange={handleFileUpload}/>
+        {!layoutImg ? (
+          <button onClick={()=>fileInputRef.current?.click()} style={{
+            width:"100%",background:C.surface2,border:`1px dashed ${C.border}`,
+            borderRadius:8,padding:20,color:C.mid,fontSize:13,cursor:"pointer",
+            fontFamily:F.body,display:"flex",flexDirection:"column",alignItems:"center",gap:8
+          }}>
+            <span style={{fontSize:26}}>📁</span>
+            <span>Tap to upload PNG or JPG</span>
+            <span style={{fontSize:11,color:C.dim}}>GoodNotes export · facility sketch · site photo · PDF → export as PNG first</span>
+          </button>
+        ) : (
+          <div>
+            <div style={{position:"relative",marginBottom:12}}>
+              <img src={layoutImg.dataUrl} alt="Layout" style={{
+                width:"100%",borderRadius:7,border:`1px solid ${C.border}`,
+                maxHeight:280,objectFit:"contain",background:C.surface2}}/>
+              <button onClick={()=>{setLayoutImg(null);setLayoutAnalysis(null);}} style={{
+                position:"absolute",top:6,right:6,background:"rgba(6,9,15,0.82)",
+                border:`1px solid ${C.border}`,borderRadius:4,color:C.mid,
+                padding:"3px 8px",cursor:"pointer",fontSize:11,fontFamily:F.mono}}>
+                ✕ Remove
+              </button>
+            </div>
+            <button onClick={analyzeLayout} disabled={layoutBusy} style={{
+              width:"100%",
+              background:layoutBusy?C.surface2:`linear-gradient(135deg,${C.blueLight} 0%,${C.blue} 100%)`,
+              border:"none",borderRadius:7,padding:11,fontFamily:F.head,fontSize:16,letterSpacing:3,
+              color:layoutBusy?C.dim:"#fff",transition:"all 0.2s",marginBottom:12,
+              boxShadow:layoutBusy?"none":"0 0 20px rgba(59,111,212,0.22)",cursor:layoutBusy?"default":"pointer"
+            }}>
+              {layoutBusy?"ANALYZING LAYOUT...":"ANALYZE LAYOUT →"}
+            </button>
+            {layoutAnalysis && !layoutAnalysis.error && (
+              <div style={{background:C.surface2,border:`1px solid ${C.blueLight}44`,borderRadius:8,padding:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div style={{fontFamily:F.mono,fontSize:9,color:C.blueLight,letterSpacing:2}}>LAYOUT ANALYSIS</div>
+                  <div style={{
+                    fontFamily:F.mono,fontSize:9,letterSpacing:2,padding:"3px 8px",borderRadius:3,
+                    background:layoutAnalysis.confidence==="high"?C.greenSoft:
+                               layoutAnalysis.confidence==="medium"?C.orangeSoft:"rgba(220,38,38,0.10)",
+                    color:layoutAnalysis.confidence==="high"?C.green:
+                          layoutAnalysis.confidence==="medium"?C.orange:C.red,
+                    border:`1px solid ${layoutAnalysis.confidence==="high"?C.green+"44":
+                            layoutAnalysis.confidence==="medium"?C.orange+"44":C.red+"44"}`
+                  }}>
+                    {(layoutAnalysis.confidence||"?").toUpperCase()} CONFIDENCE
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
+                  {[
+                    ["PIPE RUN",    layoutAnalysis.totalRun!=null ? layoutAnalysis.totalRun+" ft" : "—"],
+                    ["SYSTEM TYPE", layoutAnalysis.systemType||"—"],
+                    ["90° ELBOWS",  layoutAnalysis.elbows90??0],
+                    ["TEES",        layoutAnalysis.tees??0],
+                    ["DROPS",       layoutAnalysis.drops??0],
+                    ["CEILING HT",  layoutAnalysis.ceilingHeight ? layoutAnalysis.ceilingHeight+" ft" : "—"],
+                  ].map(([label,val])=>(
+                    <div key={label} style={{background:C.surface3,borderRadius:5,padding:"7px 10px"}}>
+                      <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,marginBottom:2}}>{label}</div>
+                      <div style={{fontSize:15,fontFamily:F.body,color:C.text,fontWeight:600}}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+                {layoutAnalysis.notes && (
+                  <div style={{fontSize:12,color:C.mid,lineHeight:1.5,fontStyle:"italic",
+                    borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+                    {layoutAnalysis.notes}
+                  </div>
+                )}
+              </div>
+            )}
+            {layoutAnalysis?.error && (
+              <div style={{color:C.red,fontSize:12,fontFamily:F.mono,padding:"8px 0"}}>⚠ {layoutAnalysis.error}</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Generate BOM */}
