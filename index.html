@@ -582,7 +582,7 @@ function App() {
       }}>
         <div style={{ height:3, background:`linear-gradient(90deg,${C.blue},${C.blueLight},${C.orange})` }}/>
         <div style={{ display:"flex", alignItems:"center", gap:14, padding:"10px 16px" }}>
-          <img src={LOGO_SRC} alt="Hodge"
+          <img src="https://hodgecompressor.com/wp-content/uploads/2025/03/HC-logo-dk-1.png" alt="Hodge"
             style={{ height:40, width:"auto", background:"white", borderRadius:6,
               padding:"3px 6px", boxShadow:"0 2px 10px rgba(0,0,0,0.4)", flexShrink:0 }}/>
           <div style={{ borderLeft:`1px solid ${C.border}`, paddingLeft:14 }}>
@@ -1420,6 +1420,50 @@ const CF_AMBIENT = {80:1.08,90:1.04,100:1.00,110:0.94,115:0.90,120:0.87};
 // 116 psi interpolated between 100(1.00)→125(1.09): 1.00+(16/25)*0.09≈1.058; 181 uses 175 value
 const CF_PRESS   = {60:0.80,80:0.90,100:1.00,116:1.058,125:1.09,145:1.13,175:1.19,181:1.19};
 
+const DRYER_OPTS = [
+  "HAD18 — 18 CFM Refrigerant Dryer",
+  "HAD42 — 42 CFM Refrigerant Dryer",
+  "HAD85 — 85 CFM Refrigerant Dryer",
+  "HAD135 — 135 CFM Refrigerant Dryer",
+  "HAD230 — 230 CFM Refrigerant Dryer",
+  "HAD378 — 378 CFM Refrigerant Dryer",
+  "HAD487 — 487 CFM Refrigerant Dryer",
+  "Beko DRYPOINT RAc — Economy Non-Cycling Refrigerant",
+  "Beko DRYPOINT RA CT Eco — Cycling Refrigerant",
+  "Beko DRYPOINT RX — Premium Non-Cycling Refrigerant",
+  "Beko DRYPOINT XCe — Heatless Desiccant (-40F dp)",
+  "Beko DRYPOINT XHi — Heated Purge Desiccant (-40F dp)",
+  "Coalescing Pre-Filter (bulk liquid/oil removal)",
+  "Coalescing After-Filter (submicron oil aerosol)",
+  "Activated Carbon Filter (odor/vapor removal)",
+  "Particulate Filter (dry solids)",
+  "Filter/Regulator/Lubricator (FRL)",
+];
+
+const TANK_OPTS = [
+  "80 gal — Samuel vertical",
+  "120 gal — Samuel vertical",
+  "200 gal — Samuel vertical",
+  "240 gal — Samuel vertical",
+  "400 gal — Samuel vertical",
+  "500 gal — Samuel vertical",
+  "1000 gal — Samuel vertical",
+  "1000 gal — Samuel horizontal",
+  "Custom size — contact Supply Chain",
+];
+
+const REEL_OPTS = [
+  "Retractable reel — 3/8-in. x 25-ft air hose",
+  "Retractable reel — 3/8-in. x 50-ft air hose",
+  "Retractable reel — 1/2-in. x 25-ft air hose",
+  "Retractable reel — 1/2-in. x 50-ft air hose",
+  "Retractable reel — 1/2-in. x 100-ft air hose",
+  "Retractable reel — 3/4-in. x 50-ft air hose",
+  "Self-storing coil hose — 1/4-in. x 25-ft",
+  "Quick-disconnect drop assembly",
+  "Drop leg w/ ball valve and quick-connect",
+];
+
 function estAvailPressures(series, model) {
   const cfm = COMP_DB[series]?.cfm[model];
   if (!cfm) return [116,145,181];
@@ -1474,7 +1518,7 @@ function Estimator() {
   }
   function rmComp(id) { setComps(p=>p.filter(c=>c.id!==id)); }
 
-  function addRow(setter) { setter(p=>[...p,{id:uid(),name:"",qty:1}]); }
+  function addRow(setter, def) { setter(p=>[...p,{id:uid(),name:def||"",qty:1}]); }
   function updRow(setter, id, f, v) { setter(p=>p.map(r=>r.id===id?{...r,[f]:v}:r)); }
   function rmRow(setter, id) { setter(p=>p.filter(r=>r.id!==id)); }
 
@@ -1693,7 +1737,7 @@ Be concise. Include exact part numbers. No fabricated prices.`;
       <div style={card}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <Mono color={C.copper}>DRYERS & FILTERS</Mono>
-          {addBtn("Add Item", ()=>addRow(setDryers))}
+          {addBtn("Add Item", ()=>addRow(setDryers, DRYER_OPTS[0]))}
         </div>
         {dryers.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No items added.</div>}
         {dryers.map(d=>(
@@ -1701,8 +1745,10 @@ Be concise. Include exact part numbers. No fabricated prices.`;
             <input type="number" value={d.qty} min={1}
               onChange={e=>updRow(setDryers,d.id,"qty",Number(e.target.value))}
               style={{...inS,width:58,flexShrink:0}}/>
-            <input value={d.name} onChange={e=>updRow(setDryers,d.id,"name",e.target.value)}
-              placeholder="e.g. HAD230, Beko XCe 200, coalescing filter..." style={{...inS,flex:1}}/>
+            <select value={d.name} onChange={e=>updRow(setDryers,d.id,"name",e.target.value)}
+              style={{...inS,flex:1}}>
+              {DRYER_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
             <button onClick={()=>rmRow(setDryers,d.id)}
               style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
           </div>
@@ -1713,7 +1759,7 @@ Be concise. Include exact part numbers. No fabricated prices.`;
       <div style={card}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <Mono color={C.copper}>RECEIVER TANKS</Mono>
-          {addBtn("Add Tank", ()=>addRow(setTanks))}
+          {addBtn("Add Tank", ()=>addRow(setTanks, TANK_OPTS[0]))}
         </div>
         {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
         {tanks.map(t=>(
@@ -1721,8 +1767,10 @@ Be concise. Include exact part numbers. No fabricated prices.`;
             <input type="number" value={t.qty} min={1}
               onChange={e=>updRow(setTanks,t.id,"qty",Number(e.target.value))}
               style={{...inS,width:58,flexShrink:0}}/>
-            <input value={t.name} onChange={e=>updRow(setTanks,t.id,"name",e.target.value)}
-              placeholder="e.g. Samuel 200-gal vertical..." style={{...inS,flex:1}}/>
+            <select value={t.name} onChange={e=>updRow(setTanks,t.id,"name",e.target.value)}
+              style={{...inS,flex:1}}>
+              {TANK_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
             <button onClick={()=>rmRow(setTanks,t.id)}
               style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
           </div>
@@ -1733,7 +1781,7 @@ Be concise. Include exact part numbers. No fabricated prices.`;
       <div style={card}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <Mono color={C.copper}>HOSE REELS</Mono>
-          {addBtn("Add Hose Reel", ()=>addRow(setReels))}
+          {addBtn("Add Hose Reel", ()=>addRow(setReels, REEL_OPTS[0]))}
         </div>
         {reels.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No reels added.</div>}
         {reels.map(r=>(
@@ -1741,8 +1789,10 @@ Be concise. Include exact part numbers. No fabricated prices.`;
             <input type="number" value={r.qty} min={1}
               onChange={e=>updRow(setReels,r.id,"qty",Number(e.target.value))}
               style={{...inS,width:58,flexShrink:0}}/>
-            <input value={r.name} onChange={e=>updRow(setReels,r.id,"name",e.target.value)}
-              placeholder="e.g. 1/2-in. x 25-ft spring reel..." style={{...inS,flex:1}}/>
+            <select value={r.name} onChange={e=>updRow(setReels,r.id,"name",e.target.value)}
+              style={{...inS,flex:1}}>
+              {REEL_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
             <button onClick={()=>rmRow(setReels,r.id)}
               style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
           </div>
