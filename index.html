@@ -346,7 +346,7 @@ const ST_CLIENT_ID = "cid.99vu9fmb70y859oo3iqxtmprp";
 const ST_CLIENT_SECRET = "cs1.nq1bzz3u70bd9lfd28fl3irgjsbcdk1vgylapnwe5p552e0150";
 
 const ST_VENDORS = [
-  { short:"Beko",       url:"https://www.bekotech.com" },
+  { short:"Beko",       url:"https://www.beko-technologies.us/en-us/" },
   { short:"Hertz",      url:"https://www.hertz-kompressoren.us" },
   { short:"Sauer",      url:"https://www.sauerusa.com" },
   { short:"CAS",        url:"https://www.compressed-air-systems.com" },
@@ -611,6 +611,10 @@ function App() {
           height:"100%", overflowY:"auto", padding:"20px 16px 20px" }}>
           <Wingman/>
         </div>
+        <div style={{ display: tab==="estimator" ? "block" : "none",
+          height:"100%", overflowY:"auto" }}>
+          <Estimator/>
+        </div>
       </div>
 
       {/* Bottom Tab Bar */}
@@ -620,8 +624,9 @@ function App() {
         paddingBottom:"env(safe-area-inset-bottom, 8px)",
       }}>
         {[
-          { id:"airiq",   icon:"💨", label:"AirIQ"   },
-          { id:"wingman", icon:"🎯", label:"Wingman"  },
+          { id:"airiq",     icon:"💨", label:"AirIQ"     },
+          { id:"wingman",   icon:"🎯", label:"Wingman"   },
+          { id:"estimator", icon:"📐", label:"Estimator" },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex:1, background:"none", border:"none",
@@ -1342,6 +1347,427 @@ function LogAWin({ stories, onSave, onDone }) {
           {saving ? "LOGGING WIN..." : "LOG THIS WIN →"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── AIRPIPE ESTIMATOR DATA ──────────────────────────────────────────────────
+const PIPE_SIZES = ["3/4\"","1\"","1.5\"","2\"","2.5\"","3\"","4\"","6\"","8\""];
+const PIPE_COLORS = ["Blue","Gray","Green"];
+const PIPE_PFX = {"3/4\"":"1","1\"":"2","1.5\"":"4","2\"":"5","2.5\"":"6","3\"":"7","4\"":"8","6\"":"9","8\"":"A"};
+
+function apipePN(size, color) {
+  const p = PIPE_PFX[size]||"1";
+  if (color==="Blue")  return p+"000";
+  if (color==="Gray")  return p+"062";
+  if (color==="Green") return p+"061";
+  return p+"000";
+}
+
+const COMP_DB = {
+  HD: {
+    label:"HD — Direct Drive Fixed Speed",
+    conn:{HD10:"1/2\" NPT",HD15:"3/4\" NPT",HD20:"3/4\" NPT",HD25:"1\" NPT",HD30:"1\" NPT",HD40:"1\" NPT",HD50:"1.5\" NPT",HD60:"1.5\" NPT",HD75:"2\" NPT",HD100:"2\" NPT",HD125:"2\" NPT",HD150:"2.5\" NPT",HD175:"2.5\" NPT",HD200:"2.5\" NPT",HD250:"2.5\" NPT"},
+    cfm:{HD10:{116:38,145:31,181:28},HD15:{116:66,145:53,181:38},HD20:{116:77,145:67,181:63},HD25:{116:106,145:77,181:70},HD30:{116:127,145:113,181:95},HD40:{116:176,145:148,181:127},HD50:{116:219,145:185,181:176},HD60:{116:257,145:233,181:212},HD75:{116:325,145:289,181:265},HD100:{116:445,145:388,181:300},HD125:{116:530,145:487,181:434},HD150:{116:699,145:593,181:523},HD175:{116:784,145:689,181:614},HD200:{116:904,145:798,181:724},HD250:{116:1074,145:918,181:809}},
+  },
+  HV: {
+    label:"HV — Variable Speed Direct Drive",
+    conn:{HV10:"1/2\" NPT",HV15:"1/2\" NPT",HV20:"3/4\" NPT",HV30:"1\" NPT",HV40:"1.5\" NPT",HV50:"1.5\" NPT",HV60:"1.5\" NPT",HV75:"2\" NPT",HV100:"2\" NPT",HV125:"2\" NPT",HV150:"2.5\" NPT",HV175:"2.5\" NPT",HV200:"2.5\" NPT",HV250:"4\" Flange",HV300:"5\" Flange",HV350:"5\" Flange"},
+    cfm:{HV10:{116:38,145:31},HV15:{116:63,145:53},HV20:{116:77,145:70},HV30:{116:127,145:113},HV40:{116:148,145:134},HV50:{116:222,145:197},HV60:{116:257,145:233},HV75:{116:325,145:289},HV100:{116:445,145:388},HV125:{116:530,145:487},HV150:{116:699,145:593},HV175:{116:819,145:723},HV200:{116:837},HV250:{116:1073},HV300:{116:1296},HV350:{116:1455}},
+  },
+  HT: {
+    label:"HT — Two-Stage Direct Drive",
+    conn:{HT30:"1.5\" NPT",HT40:"1.5\" NPT",HT50:"1.5\" NPT",HT60:"1.5\" NPT",HT75:"2\" NPT",HT100:"2\" NPT",HT125:"2.5\" NPT",HT150:"2.5\" NPT",HT175:"2.5\" NPT",HT200:"3\" NPT",HT250:"3\" NPT",HT275:"5\" Flange",HT300:"5\" Flange",HT350:"5\" Flange"},
+    cfm:{HT30:{116:144,145:130,181:113},HT40:{116:198,145:183,181:148},HT50:{116:250,145:222,181:190},HT60:{116:329,145:261,181:233},HT75:{116:409,145:399,181:318},HT100:{116:551,145:409,181:399},HT125:{116:653,145:537,181:512},HT150:{116:742,145:653,181:565},HT175:{116:872,145:752,181:652},HT200:{116:1095,145:989,181:876},HT250:{116:1254,145:1095,181:918},HT275:{116:1413,145:1254,181:1130},HT300:{116:1590,145:1413,181:1254},HT350:{116:1767,145:1590,181:1413}},
+  },
+  HTV: {
+    label:"HTV — Two-Stage Variable Speed",
+    conn:{HTV200:"3\" Flange",HTV250:"3\" Flange",HTV350:"5\" Flange",HTV420:"5\" Flange"},
+    cfm:{HTV200:{116:1095,145:989,181:876},HTV250:{116:1254,145:1095,181:918},HTV350:{116:1767,145:1590,181:1413},HTV420:{116:1908}},
+  },
+  HTM: {
+    label:"HTM — Tank Mount (tank & dryer included)",
+    noTank:true,
+    conn:{"HTM7.5":"3/4\" NPT","HTM7.5(1Ph)":"1/2\" NPT",HTM10:"3/4\" NPT",HTM15:"3/4\" NPT",HTM20:"3/4\" NPT"},
+    cfm:{"HTM7.5":{145:21},"HTM7.5(1Ph)":{145:21},HTM10:{145:32},HTM15:{145:46},HTM20:{145:74}},
+  },
+};
+
+const HAD_DRYERS = [
+  {model:"HAD18", cfm:18,  conn:"1\" NPT"},
+  {model:"HAD42", cfm:42,  conn:"1\" NPT"},
+  {model:"HAD85", cfm:85,  conn:"1\" NPT"},
+  {model:"HAD135",cfm:135, conn:"1\" NPT"},
+  {model:"HAD230",cfm:230, conn:"1.5\" NPT"},
+  {model:"HAD378",cfm:378, conn:"2\" NPT (inlet) / 1.5\" NPT (outlet)"},
+  {model:"HAD487",cfm:487, conn:"2\" NPT"},
+];
+
+const TANK_TBL = [
+  {max:20,  min:80,  ideal:120},
+  {max:40,  min:80,  ideal:200},
+  {max:80,  min:120, ideal:240},
+  {max:150, min:200, ideal:500},
+  {max:300, min:240, ideal:500},
+  {max:500, min:400, ideal:1000},
+  {max:800, min:500, ideal:1000},
+  {max:1e9, min:1000,ideal:null},
+];
+
+// CAGI ADF-100 correction factor tables (standard: 100°F inlet, 100°F ambient, 100 psig)
+const CF_INLET   = {80:1.25,90:1.12,100:1.00,110:0.87,120:0.74,130:0.62};
+const CF_AMBIENT = {80:1.08,90:1.04,100:1.00,110:0.94,115:0.90,120:0.87};
+// 116 psi interpolated between 100(1.00)→125(1.09): 1.00+(16/25)*0.09≈1.058; 181 uses 175 value
+const CF_PRESS   = {60:0.80,80:0.90,100:1.00,116:1.058,125:1.09,145:1.13,175:1.19,181:1.19};
+
+function estAvailPressures(series, model) {
+  const cfm = COMP_DB[series]?.cfm[model];
+  if (!cfm) return [116,145,181];
+  return Object.keys(cfm).map(Number).sort((a,b)=>a-b);
+}
+function estCFM(series, model, psi) {
+  return COMP_DB[series]?.cfm[model]?.[psi] ?? null;
+}
+function estReqDryerCFM(cfm, inletT, ambT, psi) {
+  const ci = CF_INLET[inletT]  || 1.0;
+  const ca = CF_AMBIENT[ambT]  || 1.0;
+  const cp = CF_PRESS[psi]     || 1.0;
+  return cfm / (ci * ca * cp);
+}
+function estRecHAD(reqCFM) {
+  return HAD_DRYERS.find(d => d.cfm >= reqCFM) || HAD_DRYERS[HAD_DRYERS.length-1];
+}
+function estRecTank(cfm) {
+  return TANK_TBL.find(r => cfm <= r.max) || TANK_TBL[TANK_TBL.length-1];
+}
+
+// ─── AIRPIPE ESTIMATOR COMPONENT ─────────────────────────────────────────────
+function Estimator() {
+  const [job, setJob]         = React.useState({customer:"",address:"",pipeSize:"1\"",pipeColor:"Blue",totalRun:""});
+  const [comps, setComps]     = React.useState([]);
+  const [dryers, setDryers]   = React.useState([]);
+  const [tanks, setTanks]     = React.useState([]);
+  const [reels, setReels]     = React.useState([]);
+  const [bomText, setBomText] = React.useState("");
+  const [bomBusy, setBomBusy] = React.useState(false);
+
+  const uid = () => Date.now() + Math.random();
+
+  function addComp() {
+    setComps(p => [...p, {id:uid(),series:"HD",model:"HD30",pressure:116,inletTemp:100,ambientTemp:100}]);
+  }
+  function updComp(id, field, val) {
+    setComps(p => p.map(c => {
+      if (c.id !== id) return c;
+      const u = {...c,[field]:val};
+      if (field==="series") {
+        u.model = Object.keys(COMP_DB[val]?.cfm||{})[0]||"";
+        const ap = estAvailPressures(val, u.model);
+        u.pressure = ap[0]||116;
+      }
+      if (field==="model") {
+        const ap = estAvailPressures(u.series, val);
+        if (!ap.includes(u.pressure)) u.pressure = ap[0];
+      }
+      return u;
+    }));
+  }
+  function rmComp(id) { setComps(p=>p.filter(c=>c.id!==id)); }
+
+  function addRow(setter) { setter(p=>[...p,{id:uid(),name:"",qty:1}]); }
+  function updRow(setter, id, f, v) { setter(p=>p.map(r=>r.id===id?{...r,[f]:v}:r)); }
+  function rmRow(setter, id) { setter(p=>p.filter(r=>r.id!==id)); }
+
+  async function genBOM() {
+    setBomBusy(true); setBomText("");
+    const pp = PIPE_PFX[job.pipeSize]||"1";
+    const smallPipe = ["3/4\"","1\"","1.5\"","2\""].includes(job.pipeSize);
+    const smallElb  = ["3/4\"","1\"","1.5\"","2\"","2.5\"","3\""].includes(job.pipeSize);
+    const teeLaborRate = ["3/4\"","1\"","1.5\"","2\""].includes(job.pipeSize)?"0.18":["2.5\"","3\""].includes(job.pipeSize)?"0.08":"0.02";
+
+    const compLines = comps.map((c,i)=>{
+      const cfm = estCFM(c.series, c.model, c.pressure);
+      const noTank = COMP_DB[c.series]?.noTank;
+      const conn = COMP_DB[c.series]?.conn[c.model]||"";
+      let dryerStr="N/A", tankStr="";
+      if (cfm) {
+        const req = estReqDryerCFM(cfm, c.inletTemp, c.ambientTemp, c.pressure);
+        const had = estRecHAD(req);
+        dryerStr = `${had.model} (${had.cfm} CFM, ${had.conn}) — corrected req: ${req.toFixed(1)} CFM`;
+        if (noTank) tankStr = "Tank included in unit — no additional tank needed";
+        else {
+          const t = estRecTank(cfm);
+          tankStr = `${t.min} gal (min) / ${t.ideal?t.ideal+" gal":"1000+ gal"} (ideal)`;
+        }
+      }
+      return `${i+1}. ${c.model} @ ${c.pressure} psi — ${cfm||"?"} CFM — ${conn}\n   Site: Inlet ${c.inletTemp}°F / Ambient ${c.ambientTemp}°F\n   Recommended HAD Dryer: ${dryerStr}\n   Recommended Tank: ${tankStr||"N/A"}`;
+    }).join("\n\n");
+
+    const prompt = `You are generating a professional Bill of Materials for an AIRpipe compressed air piping installation for Hodge Compressor.
+
+JOB INFO:
+Customer: ${job.customer||"TBD"} | Site: ${job.address||"TBD"}
+Pipe Size: ${job.pipeSize} | Color: ${job.pipeColor} | Total Run: ${job.totalRun||0} ft
+AIRpipe stick length: 13.12 ft (4 m)
+
+AIRPIPE PART NUMBERS (Verified — AIRpipe Quote Tool 2025):
+Pipe (${job.pipeSize} ${job.pipeColor}): PN ${apipePN(job.pipeSize,job.pipeColor)}
+Union: PN ${pp}002
+90° Elbow: PN ${pp}003
+Equal Tee: PN ${pp}005
+End Cap: PN ${pp}006
+Flex Hose: PN ${pp}055
+
+LABOR HOURS (AIRpipe Quote Tool 2025):
+Pipe: ${smallPipe?"0.15":"0.20"} hrs/stick | Union: 0.15 hrs | 90° Elbow: ${smallElb?"0.12":"0.02"} hrs | Equal Tee: ${teeLaborRate} hrs | End Cap: 0.02 hrs | Flex Hose: 0.12 hrs
+
+COMPRESSORS (${comps.length}):
+${compLines||"None specified"}
+
+ADDITIONAL DRYERS & FILTERS:
+${dryers.length?dryers.map(d=>`${d.qty}× ${d.name||"(unnamed)"}`).join(", "):"None"}
+
+RECEIVER TANKS:
+${tanks.length?tanks.map(t=>`${t.qty}× ${t.name||"(unnamed)"}`).join(", "):"None"}
+
+HOSE REELS:
+${reels.length?reels.map(r=>`${r.qty}× ${r.name||"(unnamed)"}`).join(", "):"None"}
+
+OUTPUT FORMAT — produce a clean field-ready BOM with these sections:
+1. **Equipment Summary** — list each compressor with its auto-recommended HAD dryer and receiver tank from the data above
+2. **AIRpipe Materials** — pipe quantity (sticks = round up total run ÷ 13.12), estimated fittings with part numbers and labor hours; note that fitting quantities require field verification
+3. **Labor Estimate** — total hours
+4. **Notes & Flags** — any sizing considerations, reminders (e.g., HTM units already include tank/dryer)
+
+Be concise. Include exact part numbers. No fabricated prices.`;
+
+    try {
+      const res = await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2000,messages:[{role:"user",content:prompt}]})});
+      const d = await res.json();
+      if (d.error) throw new Error(d.error.message);
+      setBomText((d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n"));
+    } catch(e) {
+      setBomText("⚠️ Error: "+e.message);
+    }
+    setBomBusy(false);
+  }
+
+  const card = {background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:16,marginBottom:12};
+  const addBtn = (label, fn) => (
+    <button onClick={fn} style={{background:"none",border:`1px dashed ${C.border}`,borderRadius:7,
+      padding:"8px 14px",color:C.mid,fontSize:13,cursor:"pointer",
+      display:"flex",alignItems:"center",gap:6,fontFamily:F.body}}>
+      <span style={{fontSize:16,lineHeight:1}}>+</span> {label}
+    </button>
+  );
+
+  return (
+    <div style={{padding:"16px 16px 80px",overflowY:"auto",height:"100%"}}>
+
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <img src="https://airpipeusa.com/wp-content/uploads/2026/05/airpipe-usa-icon-100x100-1.png"
+          height="36" alt="AIRpipe" style={{borderRadius:4,background:"white",padding:2}}/>
+        <img src="https://mldp0hrp4tx9.i.optimole.com/cb:YTLn.459d0/w:1026/h:1020/q:100/f:best/https://hodgecompressor.com/wp-content/uploads/2025/03/HC-logo-dk-1.png"
+          height="36" alt="Hodge" style={{borderRadius:4,background:"white",padding:"2px 6px"}}/>
+        <div>
+          <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.text,lineHeight:1}}>AIRPIPE ESTIMATOR</div>
+          <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:3,marginTop:2}}>PIPING SYSTEM BOM TOOL</div>
+        </div>
+      </div>
+
+      {/* Job Info */}
+      <div style={card}>
+        <Mono color={C.copper}>JOB INFO</Mono>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <FieldRow label="CUSTOMER">
+              <input value={job.customer} onChange={e=>setJob({...job,customer:e.target.value})}
+                placeholder="Customer name" style={inS}/>
+            </FieldRow>
+            <FieldRow label="SITE ADDRESS">
+              <input value={job.address} onChange={e=>setJob({...job,address:e.target.value})}
+                placeholder="City, State" style={inS}/>
+            </FieldRow>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            <FieldRow label="PIPE SIZE">
+              <select value={job.pipeSize} onChange={e=>setJob({...job,pipeSize:e.target.value})} style={inS}>
+                {PIPE_SIZES.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </FieldRow>
+            <FieldRow label="PIPE COLOR">
+              <select value={job.pipeColor} onChange={e=>setJob({...job,pipeColor:e.target.value})} style={inS}>
+                {PIPE_COLORS.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </FieldRow>
+            <FieldRow label="TOTAL RUN (FT)">
+              <input type="number" value={job.totalRun}
+                onChange={e=>setJob({...job,totalRun:e.target.value})}
+                placeholder="e.g. 250" style={inS}/>
+            </FieldRow>
+          </div>
+        </div>
+      </div>
+
+      {/* Compressors */}
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <Mono color={C.copper}>COMPRESSORS</Mono>
+          {addBtn("Add Compressor", addComp)}
+        </div>
+        {comps.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No compressors added.</div>}
+        {comps.map((c,idx)=>{
+          const cfm = estCFM(c.series, c.model, c.pressure);
+          const noTank = COMP_DB[c.series]?.noTank;
+          const pressures = estAvailPressures(c.series, c.model);
+          const conn = COMP_DB[c.series]?.conn[c.model]||"";
+          let hadRec=null, tRec=null, reqCFM=null;
+          if (cfm) {
+            reqCFM = estReqDryerCFM(cfm, c.inletTemp, c.ambientTemp, c.pressure);
+            hadRec = estRecHAD(reqCFM);
+            if (!noTank) tRec = estRecTank(cfm);
+          }
+          return (
+            <div key={c.id} style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2}}>UNIT {idx+1}</div>
+                <button onClick={()=>rmComp(c.id)}
+                  style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                <FieldRow label="SERIES">
+                  <select value={c.series} onChange={e=>updComp(c.id,"series",e.target.value)} style={inS}>
+                    {Object.keys(COMP_DB).map(s=><option key={s} value={s}>{COMP_DB[s].label}</option>)}
+                  </select>
+                </FieldRow>
+                <FieldRow label="MODEL">
+                  <select value={c.model} onChange={e=>updComp(c.id,"model",e.target.value)} style={inS}>
+                    {Object.keys(COMP_DB[c.series]?.cfm||{}).map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                </FieldRow>
+              </div>
+              <FieldRow label="PRESSURE / CFM">
+                <select value={c.pressure} onChange={e=>updComp(c.id,"pressure",Number(e.target.value))} style={inS}>
+                  {pressures.map(p=>(
+                    <option key={p} value={p}>{p} psi — {estCFM(c.series,c.model,p)||"?"} CFM</option>
+                  ))}
+                </select>
+              </FieldRow>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+                <FieldRow label="INLET TEMP (°F)" hint="dryer sizing">
+                  <select value={c.inletTemp} onChange={e=>updComp(c.id,"inletTemp",Number(e.target.value))} style={inS}>
+                    {Object.keys(CF_INLET).map(t=><option key={t} value={t}>{t}°F</option>)}
+                  </select>
+                </FieldRow>
+                <FieldRow label="AMBIENT TEMP (°F)" hint="dryer sizing">
+                  <select value={c.ambientTemp} onChange={e=>updComp(c.id,"ambientTemp",Number(e.target.value))} style={inS}>
+                    {Object.keys(CF_AMBIENT).map(t=><option key={t} value={t}>{t}°F</option>)}
+                  </select>
+                </FieldRow>
+              </div>
+              {cfm && (
+                <div style={{background:C.surface3,borderRadius:6,padding:"10px 12px",marginTop:10,borderLeft:`3px solid ${C.copper}`}}>
+                  <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2,marginBottom:6}}>AUTO-RECOMMEND</div>
+                  <div style={{fontSize:13,color:C.text,lineHeight:1.85}}>
+                    <div><span style={{color:C.mid}}>CFM @ {c.pressure} psi:</span> <strong>{cfm}</strong> — <span style={{color:C.dim,fontSize:12}}>{conn}</span></div>
+                    {hadRec && (
+                      <div><span style={{color:C.mid}}>HAD Dryer:</span> <strong>{hadRec.model}</strong> ({hadRec.cfm} CFM, {hadRec.conn})
+                        <span style={{color:C.dim,fontSize:11}}> — {reqCFM?.toFixed(1)} CFM req&apos;d (CAGI corrected)</span>
+                      </div>
+                    )}
+                    {noTank && <div style={{color:C.dim,fontSize:12}}>Tank: Included in {c.model} — no separate unit needed</div>}
+                    {!noTank && tRec && (
+                      <div><span style={{color:C.mid}}>Tank:</span> <strong>{tRec.min} gal</strong> min / <strong>{tRec.ideal||"1000+"} gal</strong> ideal (Samuel)</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Dryers & Filters */}
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <Mono color={C.copper}>DRYERS & FILTERS</Mono>
+          {addBtn("Add Item", ()=>addRow(setDryers))}
+        </div>
+        {dryers.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No items added.</div>}
+        {dryers.map(d=>(
+          <div key={d.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+            <input type="number" value={d.qty} min={1}
+              onChange={e=>updRow(setDryers,d.id,"qty",Number(e.target.value))}
+              style={{...inS,width:58,flexShrink:0}}/>
+            <input value={d.name} onChange={e=>updRow(setDryers,d.id,"name",e.target.value)}
+              placeholder="e.g. HAD230, Beko XCe 200, coalescing filter..." style={{...inS,flex:1}}/>
+            <button onClick={()=>rmRow(setDryers,d.id)}
+              style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Receiver Tanks */}
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <Mono color={C.copper}>RECEIVER TANKS</Mono>
+          {addBtn("Add Tank", ()=>addRow(setTanks))}
+        </div>
+        {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
+        {tanks.map(t=>(
+          <div key={t.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+            <input type="number" value={t.qty} min={1}
+              onChange={e=>updRow(setTanks,t.id,"qty",Number(e.target.value))}
+              style={{...inS,width:58,flexShrink:0}}/>
+            <input value={t.name} onChange={e=>updRow(setTanks,t.id,"name",e.target.value)}
+              placeholder="e.g. Samuel 200-gal vertical..." style={{...inS,flex:1}}/>
+            <button onClick={()=>rmRow(setTanks,t.id)}
+              style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Hose Reels */}
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <Mono color={C.copper}>HOSE REELS</Mono>
+          {addBtn("Add Hose Reel", ()=>addRow(setReels))}
+        </div>
+        {reels.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No reels added.</div>}
+        {reels.map(r=>(
+          <div key={r.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+            <input type="number" value={r.qty} min={1}
+              onChange={e=>updRow(setReels,r.id,"qty",Number(e.target.value))}
+              style={{...inS,width:58,flexShrink:0}}/>
+            <input value={r.name} onChange={e=>updRow(setReels,r.id,"name",e.target.value)}
+              placeholder="e.g. 1/2\" × 25' spring reel..." style={{...inS,flex:1}}/>
+            <button onClick={()=>rmRow(setReels,r.id)}
+              style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Generate BOM */}
+      <button onClick={genBOM} disabled={bomBusy} style={{
+        width:"100%",
+        background:bomBusy?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+        border:"none",borderRadius:8,padding:15,
+        fontFamily:F.head,fontSize:18,letterSpacing:4,
+        color:bomBusy?C.dim:"#fff",transition:"all 0.2s",marginBottom:16,
+        boxShadow:bomBusy?"none":"0 0 28px rgba(193,122,53,0.25)",
+      }}>
+        {bomBusy?"GENERATING BOM...":"GENERATE BOM →"}
+      </button>
+
+      {bomText && (
+        <div style={{background:C.surface,border:`1px solid ${C.copper}44`,borderRadius:10,padding:16,marginBottom:20}}>
+          <Mono color={C.copper}>BILL OF MATERIALS</Mono>
+          <div style={{fontSize:14,lineHeight:1.7,color:C.text}}
+            dangerouslySetInnerHTML={{__html:formatMsg(bomText)}}/>
+        </div>
+      )}
     </div>
   );
 }
