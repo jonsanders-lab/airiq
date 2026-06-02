@@ -1493,6 +1493,109 @@ function estRecTank(cfm) {
   return TANK_TBL.find(r => cfm <= r.max) || TANK_TBL[TANK_TBL.length-1];
 }
 
+// ─── BOM TABLE RENDERER ──────────────────────────────────────────────────────
+function BOMTable({ raw }) {
+  let data = null;
+  try { data = JSON.parse(raw); } catch {}
+
+  // Fall back to plain-text rendering for old saved records
+  if (!data || (!Array.isArray(data.equipment) && !Array.isArray(data.materials))) {
+    return (
+      <div style={{fontSize:13,lineHeight:1.7,color:C.text}}
+        dangerouslySetInnerHTML={{__html:formatMsg(raw)}}/>
+    );
+  }
+
+  const equipment = data.equipment || [];
+  const materials = data.materials || [];
+  const allRows   = [...equipment, ...materials];
+  const totalLaborHrs = allRows.reduce((s,r) => s + (Number(r.laborHrs)||0), 0);
+  const totalLineItems = allRows.filter(r => (r.qty||0) > 0).length;
+  const pipeRow   = materials.find(r => /stick|pipe stick/i.test(r.description||""));
+  const pipeSticks = pipeRow ? (pipeRow.qty||0) : null;
+
+  const TH = {fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2,
+    padding:"9px 11px",textAlign:"left",background:C.surface3,
+    borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap"};
+  const TD = {fontSize:13,color:C.text,padding:"8px 11px",
+    borderBottom:`1px solid ${C.border}`,verticalAlign:"top"};
+  const SEC = {fontFamily:F.mono,fontSize:8,color:C.copper,letterSpacing:2,
+    padding:"8px 11px",background:`rgba(193,122,53,0.08)`,
+    borderBottom:`1px solid ${C.border}`,colSpan:4};
+
+  const Row = ({row, shade}) => (
+    <tr style={{background: shade ? C.surface2 : "transparent"}}>
+      <td style={TD}>
+        <span>{row.description||"—"}</span>
+        {row.note && <div style={{fontSize:10,color:C.mid,marginTop:2,lineHeight:1.4}}>{row.note}</div>}
+      </td>
+      <td style={{...TD,fontFamily:F.mono,fontSize:11,color:C.mid,whiteSpace:"nowrap"}}>{row.partNumber||"—"}</td>
+      <td style={{...TD,textAlign:"center",fontFamily:F.mono,fontSize:12}}>{row.qty||0}</td>
+      <td style={{...TD,textAlign:"right",fontFamily:F.mono,fontSize:12}}>
+        {(Number(row.laborHrs)||0) > 0 ? (Number(row.laborHrs)).toFixed(2) : <span style={{color:C.dim}}>—</span>}
+      </td>
+    </tr>
+  );
+
+  return (
+    <div>
+      <div style={{overflowX:"auto",borderRadius:8,border:`1px solid ${C.border}`}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:420}}>
+          <thead>
+            <tr>
+              <th style={TH}>DESCRIPTION</th>
+              <th style={{...TH,whiteSpace:"nowrap"}}>PART #</th>
+              <th style={{...TH,textAlign:"center"}}>QTY</th>
+              <th style={{...TH,textAlign:"right"}}>LABOR HRS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {equipment.length > 0 && (
+              <>
+                <tr><td colSpan={4} style={SEC}>EQUIPMENT</td></tr>
+                {equipment.map((r,i) => <Row key={i} row={r} shade={i%2===0}/>)}
+              </>
+            )}
+            {materials.length > 0 && (
+              <>
+                <tr><td colSpan={4} style={SEC}>AIRPIPE MATERIALS &amp; ACCESSORIES</td></tr>
+                {materials.map((r,i) => <Row key={i} row={r} shade={i%2===0}/>)}
+              </>
+            )}
+            {/* Summary row */}
+            <tr style={{background:C.surface3}}>
+              <td colSpan={2} style={{...TD,borderBottom:"none",fontFamily:F.mono,fontSize:9,letterSpacing:1}}>
+                <span style={{color:C.copper}}>TOTAL</span>
+                <span style={{color:C.mid,marginLeft:10}}>{totalLineItems} line items</span>
+                {pipeSticks!=null && <span style={{color:C.mid,marginLeft:10}}>· {pipeSticks} pipe sticks</span>}
+              </td>
+              <td style={{...TD,borderBottom:"none",textAlign:"center"}}></td>
+              <td style={{...TD,borderBottom:"none",textAlign:"right",fontFamily:F.mono,fontSize:15,color:C.copper,fontWeight:700}}>
+                {totalLaborHrs.toFixed(2)}
+                <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,fontWeight:400,marginTop:1}}>TOTAL HRS</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {data.notes && (
+        <div style={{marginTop:12,fontSize:12,color:C.mid,lineHeight:1.6,padding:"10px 12px",
+          background:C.surface2,borderRadius:6,border:`1px solid ${C.border}`}}>
+          <span style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,display:"block",marginBottom:4}}>NOTES</span>
+          {data.notes}
+        </div>
+      )}
+      {data.warnings && (
+        <div style={{marginTop:8,fontSize:12,color:C.orange,lineHeight:1.6,padding:"10px 12px",
+          background:"rgba(249,115,22,0.06)",borderRadius:6,border:`1px solid rgba(249,115,22,0.2)`}}>
+          <span style={{fontFamily:F.mono,fontSize:8,letterSpacing:1,display:"block",marginBottom:4}}>⚠ WARNINGS</span>
+          {data.warnings}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ESTIMATOR DRAWING-ANALYSIS HELPERS ──────────────────────────────────────
 function findClosestCompModel(modelStr) {
   if (!modelStr) return null;
@@ -1834,17 +1937,18 @@ Notes: ${layoutAnalysis.notes||""} ${layoutAnalysis.warnings?`| Warnings: ${layo
 Use AI-extracted fitting counts as starting estimates in the AIRpipe Materials section; flag as AI-estimated and note field verification required.`
 :""}
 
-OUTPUT FORMAT — produce a clean field-ready BOM with these sections:
-1. **Equipment Summary** — list each compressor with its auto-recommended HAD dryer and receiver tank from the data above
-2. **AIRpipe Materials** — pipe quantity (sticks = round up total run ÷ 13.12), estimated fittings with part numbers and labor hours; note that fitting quantities require field verification
-3. **Labor Estimate** — total hours
-4. **Notes & Flags** — any sizing considerations, reminders (e.g., HTM units already include tank/dryer)
+OUTPUT — return ONLY a JSON object, no markdown, no other text. Exact schema:
+{"equipment":[{"description":"","partNumber":"","qty":1,"laborHrs":0,"note":""}],"materials":[{"description":"","partNumber":"","qty":1,"laborHrs":0.0,"note":""}],"notes":"","warnings":""}
 
-Be concise. Include exact part numbers. No fabricated prices.`;
+equipment rows: each compressor (laborHrs=0), its recommended HAD dryer (laborHrs=0), receiver tank (laborHrs=0). For HTM units note that tank+dryer are integrated — do not add separate rows for those.
+materials rows: AIRpipe pipe sticks (qty=ceil(totalRun÷13.12), use description "AIRpipe [size] [color] — 13.12 ft stick"), then fittings (unions, 90° elbows, equal tees, end caps, flex hose) using verified part numbers and labor hours from the LABOR HOURS table above. Then any additional dryers, filters, tanks, reels from the job.
+notes: brief sizing flags, HTM reminders, field-verification notes. One paragraph.
+warnings: critical issues only (missing info, sizing concern). Empty string if none.
+No fabricated prices.`;
 
     try {
       const res = await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2000,messages:[{role:"user",content:prompt}]})});
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2800,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
       if (d.error) throw new Error(d.error.message);
       setBomText((d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n"));
@@ -2307,8 +2411,9 @@ Be concise. Include exact part numbers. No fabricated prices.`;
       {bomText && (
         <div style={{background:C.surface,border:`1px solid ${C.copper}44`,borderRadius:10,padding:16,marginBottom:12}}>
           <Mono color={C.copper}>BILL OF MATERIALS</Mono>
-          <div style={{fontSize:14,lineHeight:1.7,color:C.text}}
-            dangerouslySetInnerHTML={{__html:formatMsg(bomText)}}/>
+          <div style={{marginTop:14}}>
+            <BOMTable raw={bomText}/>
+          </div>
         </div>
       )}
 
