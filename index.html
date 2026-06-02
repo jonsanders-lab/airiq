@@ -1438,6 +1438,7 @@ const DRYER_OPTS = [
   "Activated Carbon Filter (odor/vapor removal)",
   "Particulate Filter (dry solids)",
   "Filter/Regulator/Lubricator (FRL)",
+  "QWIK-PURE CS — Oil-Water Separator",
 ];
 
 const TANK_OPTS = [
@@ -1490,6 +1491,41 @@ function estRecHAD(reqCFM) {
 }
 function estRecTank(cfm) {
   return TANK_TBL.find(r => cfm <= r.max) || TANK_TBL[TANK_TBL.length-1];
+}
+
+// ─── ESTIMATOR DRAWING-ANALYSIS HELPERS ──────────────────────────────────────
+function findClosestCompModel(modelStr) {
+  if (!modelStr) return null;
+  const s = String(modelStr).toUpperCase().replace(/[-\s]/g,'');
+  const series = ['HTV','HTM','HV','HT','HD'].find(p=>s.startsWith(p));
+  if (!series || !COMP_DB[series]) return null;
+  const models = Object.keys(COMP_DB[series].cfm||{});
+  if (models.includes(s)) return {series, model:s};
+  const num = parseFloat(s.slice(series.length));
+  if (isNaN(num)) return {series, model:models[0]};
+  let best=models[0], bestDiff=Infinity;
+  models.forEach(m=>{const n=parseFloat(m.slice(series.length));if(!isNaN(n)&&Math.abs(n-num)<bestDiff){bestDiff=Math.abs(n-num);best=m;}});
+  return {series, model:best};
+}
+function findDryerOption(modelStr) {
+  if (!modelStr) return null;
+  const u = String(modelStr).toUpperCase();
+  return DRYER_OPTS.find(o=>o.toUpperCase().startsWith(u))||null;
+}
+function findTankOption(sizeStr) {
+  if (!sizeStr) return null;
+  const m = String(sizeStr).match(/(\d+)/);
+  if (!m) return null;
+  const g = parseInt(m[1]);
+  return TANK_OPTS.find(o=>{const n=o.match(/^(\d+)/);return n&&parseInt(n[1])>=g;})||TANK_OPTS[TANK_OPTS.length-1];
+}
+function matchPipeSize(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (PIPE_SIZES.includes(s)) return s;
+  const num = parseFloat(s.replace(/[^\d.]/g,''));
+  if (isNaN(num)) return null;
+  return PIPE_SIZES.find(ps=>Math.abs(parseFloat(ps)-num)<0.05)||null;
 }
 
 // ─── AIRPIPE ESTIMATOR COMPONENT ─────────────────────────────────────────────
@@ -1591,7 +1627,7 @@ function Estimator() {
     setTanks((est.tanks||[]).map(t => ({ id:uid(), qty:t.qty||1, name:t.name||"" })));
     setReels((est.hoseReels||[]).map(r => ({ id:uid(), qty:r.qty||1, name:r.name||"" })));
     setBomText(est.bomOutput||"");
-    setLayoutAnalysis(est.analysisNotes ? { notes: est.analysisNotes, systemType: est.systemType||"", confidence:"medium", totalRun:est.totalRunFt||null, elbows90:0, tees:0, drops:0, ceilingHeight:null } : null);
+    setLayoutAnalysis(est.analysisNotes ? { notes: est.analysisNotes, systemType: est.systemType||"", confidence:"medium", totalRunFt:est.totalRunFt||null, elbows90:0, tees:0, drops:0, ceilingHeightFt:null } : null);
     setLayoutImg(null);
     setShowPast(false);
   }
@@ -1640,25 +1676,37 @@ function Estimator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 800,
+          max_tokens: 1400,
           messages: [{
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: layoutImg.mediaType, data: base64 } },
-              { type: "text", text: `You are analyzing a compressed air piping layout drawing for an AIRpipe aluminum piping installation.
+              { type: "text", text: `You are analyzing a compressed air system layout for a Hodge Compressor AIRpipe piping installation. Extract ALL equipment and piping details visible in this facility drawing, sketch, GoodNotes export, or site photo.
 
-Extract the following from this facility sketch, GoodNotes export, or site photo:
-1. Estimated total pipe run in feet (trace main header + all branch lines, account for scale or notes if present)
-2. Number of 90° elbows (corners/bends)
-3. Number of tees (branch splits)
-4. Number of drops (vertical takeoffs going down to equipment or floor connections)
-5. System type: "loop" (ring main — pipe forms a complete circuit) or "dead-end" (linear with branches) or "unknown"
-6. Ceiling height in feet if labeled or inferable (null if not visible)
-7. Confidence: "high" (clear professional drawing with scale), "medium" (rough sketch but readable), or "low" (unclear photo, best estimate)
-8. Brief notes on what you observed
+COMPRESSOR: Identify model number or HP. Match to closest Hodge model from this list — return the exact model string:
+HD10,HD15,HD20,HD25,HD30,HD40,HD50,HD60,HD75,HD100,HD125,HD150,HD175,HD200,HD250,HV10,HV15,HV20,HV30,HV40,HV50,HV60,HV75,HV100,HV125,HV150,HV175,HV200,HV250,HV300,HV350,HT30,HT40,HT50,HT60,HT75,HT100,HT125,HT150,HT175,HT200,HT250,HT275,HT300,HT350,HTV200,HTV250,HTV350,HTV420,HTM7.5,HTM10,HTM15,HTM20
+If none visible set model to null.
 
-Respond ONLY with a JSON object in exactly this format — no other text:
-{"totalRun":<number|null>,"elbows90":<number>,"tees":<number>,"drops":<number>,"systemType":"loop"|"dead-end"|"unknown","ceilingHeight":<number|null>,"confidence":"high"|"medium"|"low","notes":"<brief>"}`
+DRYER: Match to closest HAD model — return exact string: HAD18,HAD42,HAD85,HAD135,HAD230,HAD378,HAD487. Type is "refrigerated" or "desiccant". If non-Hodge brand, set model to null and note brand+cfm. If none visible set model to null.
+
+RECEIVER TANK: Note size in gallons if labeled or estimable.
+
+FILTERS: Coalescing, carbon, particulate — note type, qty, and position ("before dryer","after dryer","point of use").
+
+OIL/WATER SEPARATOR: true if present, false if not.
+
+FRL: Filter/Regulator/Lubricator — note qty (0 if none).
+
+PIPE SIZE: Return as one of: 3/4",1",1.5",2",2.5",3",4",6",8" — null if not visible.
+
+SYSTEM TYPE: "loop" (ring main, complete circuit) or "dead-end" (linear with branches) or "unknown".
+
+PIPING: Trace the layout — total run in feet, count 90° elbows, tees, drops (vertical takeoffs to equipment). Account for scale or dimension labels if present.
+
+CEILING HEIGHT: In feet if labeled.
+
+Respond ONLY with this exact JSON — no other text, no markdown:
+{"compressor":{"model":null,"confidence":"low","notes":""},"dryer":{"model":null,"type":"refrigerated","confidence":"low","notes":""},"tank":{"size":null,"confidence":"low"},"filters":[],"oilWaterSeparator":false,"frl":{"qty":0},"pipeSize":null,"systemType":"unknown","totalRunFt":null,"elbows90":0,"tees":0,"drops":0,"ceilingHeightFt":null,"confidence":"low","notes":"","warnings":""}`
               }
             ]
           }]
@@ -1669,11 +1717,54 @@ Respond ONLY with a JSON object in exactly this format — no other text:
       const text = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
       const m = text.match(/\{[\s\S]*\}/);
       if (!m) throw new Error("Could not parse analysis response");
-      const analysis = JSON.parse(m[0]);
-      setLayoutAnalysis(analysis);
-      if (analysis.totalRun && !job.totalRun) {
-        setJob(prev => ({ ...prev, totalRun: String(analysis.totalRun) }));
+      const a = JSON.parse(m[0]);
+
+      // ── Auto-populate form ──────────────────────────────────────────────────
+      const populated = [];
+
+      // Job fields
+      const jobPatch = {};
+      const ps = matchPipeSize(a.pipeSize);
+      if (ps) { jobPatch.pipeSize = ps; populated.push(`Pipe size: ${ps}`); }
+      if (a.totalRunFt && !job.totalRun) { jobPatch.totalRun = String(a.totalRunFt); populated.push(`Total run: ${a.totalRunFt} ft`); }
+      if (Object.keys(jobPatch).length) setJob(prev=>({...prev,...jobPatch}));
+
+      // Compressor (medium or high confidence only)
+      let compMatch = null;
+      if (a.compressor?.model && ['medium','high'].includes(a.compressor.confidence)) {
+        compMatch = findClosestCompModel(a.compressor.model);
+        if (compMatch) {
+          const prs = estAvailPressures(compMatch.series, compMatch.model);
+          setComps(prev=>[...prev,{id:uid(),series:compMatch.series,model:compMatch.model,pressure:prs[0],inletTemp:100,ambientTemp:100,fromDrawing:true}]);
+          populated.push(`Compressor: ${compMatch.model} (${a.compressor.confidence} confidence)`);
+        }
       }
+
+      // Dryers, filters, OWS, FRL → all go into dryers list
+      const dItems = [];
+      if (a.dryer?.model) {
+        const opt = findDryerOption(a.dryer.model);
+        if (opt) { dItems.push({id:uid(),qty:1,name:opt,fromDrawing:true}); populated.push(`Dryer: ${a.dryer.model}`); }
+      }
+      (a.filters||[]).forEach(f=>{
+        const ft = (f.type||'').toLowerCase();
+        let opt = ft.includes('coalesc')
+          ? (f.position?.includes('before')||f.position?.includes('pre') ? 'Coalescing Pre-Filter (bulk liquid/oil removal)' : 'Coalescing After-Filter (submicron oil aerosol)')
+          : ft.includes('carbon') ? 'Activated Carbon Filter (odor/vapor removal)'
+          : ft.includes('particul') ? 'Particulate Filter (dry solids)' : null;
+        if (opt) { dItems.push({id:uid(),qty:f.qty||1,name:opt,fromDrawing:true}); populated.push(`Filter: ${f.qty||1}× ${f.type} (${f.position||''})`); }
+      });
+      if (a.oilWaterSeparator) { dItems.push({id:uid(),qty:1,name:'QWIK-PURE CS — Oil-Water Separator',fromDrawing:true}); populated.push('Oil-water separator'); }
+      if ((a.frl?.qty||0)>0) { dItems.push({id:uid(),qty:a.frl.qty,name:'Filter/Regulator/Lubricator (FRL)',fromDrawing:true}); populated.push(`FRL: ${a.frl.qty}×`); }
+      if (dItems.length) setDryers(prev=>[...prev,...dItems]);
+
+      // Tank
+      if (a.tank?.size) {
+        const opt = findTankOption(a.tank.size);
+        if (opt) { setTanks(prev=>[...prev,{id:uid(),qty:1,name:opt,fromDrawing:true}]); populated.push(`Tank: ${a.tank.size}`); }
+      }
+
+      setLayoutAnalysis({...a, _populated: populated});
     } catch(e) {
       setLayoutAnalysis({ error: e.message });
     }
@@ -1736,14 +1827,12 @@ HOSE REELS:
 ${reels.length?reels.map(r=>`${r.qty}× ${r.name||"(unnamed)"}`).join(", "):"None"}
 ${layoutAnalysis&&!layoutAnalysis.error?`
 LAYOUT DRAWING ANALYSIS (AI-extracted, ${layoutAnalysis.confidence} confidence):
-- Estimated pipe run: ${layoutAnalysis.totalRun!=null?layoutAnalysis.totalRun+" ft":"not detected"}
-- 90° elbows: ${layoutAnalysis.elbows90??0}
-- Tees: ${layoutAnalysis.tees??0}
-- Drops: ${layoutAnalysis.drops??0}
-- System type: ${layoutAnalysis.systemType||"unknown"}
-- Ceiling height: ${layoutAnalysis.ceilingHeight?layoutAnalysis.ceilingHeight+" ft":"not detected"}
-- Analyst notes: ${layoutAnalysis.notes||""}
-Use the fitting counts above as estimates in the AIRpipe Materials section; flag them as AI-estimated and note that field verification is still required.`:""}
+Equipment identified: Compressor=${layoutAnalysis.compressor?.model||"not detected"} (${layoutAnalysis.compressor?.confidence||"—"}), Dryer=${layoutAnalysis.dryer?.model||"not detected"} (${layoutAnalysis.dryer?.confidence||"—"}), Tank=${layoutAnalysis.tank?.size||"not detected"}
+Filters: ${(layoutAnalysis.filters||[]).map(f=>`${f.qty||1}× ${f.type} (${f.position})`).join(', ')||"none"}, OWS: ${layoutAnalysis.oilWaterSeparator?"yes":"no"}, FRL: ${layoutAnalysis.frl?.qty||0}×
+Piping: run=${layoutAnalysis.totalRunFt!=null?layoutAnalysis.totalRunFt+" ft":"unknown"}, elbows=${layoutAnalysis.elbows90??0}, tees=${layoutAnalysis.tees??0}, drops=${layoutAnalysis.drops??0}, system=${layoutAnalysis.systemType||"unknown"}, ceiling=${layoutAnalysis.ceilingHeightFt?layoutAnalysis.ceilingHeightFt+" ft":"unknown"}
+Notes: ${layoutAnalysis.notes||""} ${layoutAnalysis.warnings?`| Warnings: ${layoutAnalysis.warnings}`:""}
+Use AI-extracted fitting counts as starting estimates in the AIRpipe Materials section; flag as AI-estimated and note field verification required.`
+:""}
 
 OUTPUT FORMAT — produce a clean field-ready BOM with these sections:
 1. **Equipment Summary** — list each compressor with its auto-recommended HAD dryer and receiver tank from the data above
@@ -1925,7 +2014,10 @@ Be concise. Include exact part numbers. No fabricated prices.`;
           return (
             <div key={c.id} style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2}}>UNIT {idx+1}</div>
+                <div style={{display:"flex",alignItems:"center",gap:7}}>
+                  <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2}}>UNIT {idx+1}</div>
+                  {c.fromDrawing && <span style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,background:"rgba(59,111,212,0.12)",border:`1px solid ${C.blueLight}44`,borderRadius:3,padding:"1px 5px"}}>📐 DRAWING</span>}
+                </div>
                 <button onClick={()=>rmComp(c.id)}
                   style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
               </div>
@@ -1990,16 +2082,19 @@ Be concise. Include exact part numbers. No fabricated prices.`;
         </div>
         {dryers.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No items added.</div>}
         {dryers.map(d=>(
-          <div key={d.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
-            <input type="number" value={d.qty} min={1}
-              onChange={e=>updRow(setDryers,d.id,"qty",Number(e.target.value))}
-              style={{...inS,width:58,flexShrink:0}}/>
-            <select value={d.name} onChange={e=>updRow(setDryers,d.id,"name",e.target.value)}
-              style={{...inS,flex:1}}>
-              {DRYER_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
-            </select>
-            <button onClick={()=>rmRow(setDryers,d.id)}
-              style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
+          <div key={d.id} style={{marginBottom:8}}>
+            {d.fromDrawing && <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,marginBottom:3}}>📐 FROM DRAWING</div>}
+            <div style={{display:"flex",gap:8,alignItems:"center",borderLeft:d.fromDrawing?`2px solid ${C.blueLight}`:undefined,paddingLeft:d.fromDrawing?8:0}}>
+              <input type="number" value={d.qty} min={1}
+                onChange={e=>updRow(setDryers,d.id,"qty",Number(e.target.value))}
+                style={{...inS,width:58,flexShrink:0}}/>
+              <select value={d.name} onChange={e=>updRow(setDryers,d.id,"name",e.target.value)}
+                style={{...inS,flex:1}}>
+                {DRYER_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+              <button onClick={()=>rmRow(setDryers,d.id)}
+                style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
+            </div>
           </div>
         ))}
       </div>
@@ -2012,16 +2107,19 @@ Be concise. Include exact part numbers. No fabricated prices.`;
         </div>
         {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
         {tanks.map(t=>(
-          <div key={t.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
-            <input type="number" value={t.qty} min={1}
-              onChange={e=>updRow(setTanks,t.id,"qty",Number(e.target.value))}
-              style={{...inS,width:58,flexShrink:0}}/>
-            <select value={t.name} onChange={e=>updRow(setTanks,t.id,"name",e.target.value)}
-              style={{...inS,flex:1}}>
-              {TANK_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
-            </select>
-            <button onClick={()=>rmRow(setTanks,t.id)}
-              style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
+          <div key={t.id} style={{marginBottom:8}}>
+            {t.fromDrawing && <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,marginBottom:3}}>📐 FROM DRAWING</div>}
+            <div style={{display:"flex",gap:8,alignItems:"center",borderLeft:t.fromDrawing?`2px solid ${C.blueLight}`:undefined,paddingLeft:t.fromDrawing?8:0}}>
+              <input type="number" value={t.qty} min={1}
+                onChange={e=>updRow(setTanks,t.id,"qty",Number(e.target.value))}
+                style={{...inS,width:58,flexShrink:0}}/>
+              <select value={t.name} onChange={e=>updRow(setTanks,t.id,"name",e.target.value)}
+                style={{...inS,flex:1}}>
+                {TANK_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+              <button onClick={()=>rmRow(setTanks,t.id)}
+                style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
+            </div>
           </div>
         ))}
       </div>
@@ -2090,40 +2188,100 @@ Be concise. Include exact part numbers. No fabricated prices.`;
             </button>
             {layoutAnalysis && !layoutAnalysis.error && (
               <div style={{background:C.surface2,border:`1px solid ${C.blueLight}44`,borderRadius:8,padding:12}}>
+                {/* Header + confidence */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                   <div style={{fontFamily:F.mono,fontSize:9,color:C.blueLight,letterSpacing:2}}>LAYOUT ANALYSIS</div>
                   <div style={{
                     fontFamily:F.mono,fontSize:9,letterSpacing:2,padding:"3px 8px",borderRadius:3,
-                    background:layoutAnalysis.confidence==="high"?C.greenSoft:
-                               layoutAnalysis.confidence==="medium"?C.orangeSoft:"rgba(220,38,38,0.10)",
-                    color:layoutAnalysis.confidence==="high"?C.green:
-                          layoutAnalysis.confidence==="medium"?C.orange:C.red,
-                    border:`1px solid ${layoutAnalysis.confidence==="high"?C.green+"44":
-                            layoutAnalysis.confidence==="medium"?C.orange+"44":C.red+"44"}`
+                    background:layoutAnalysis.confidence==="high"?C.greenSoft:layoutAnalysis.confidence==="medium"?C.orangeSoft:"rgba(220,38,38,0.10)",
+                    color:layoutAnalysis.confidence==="high"?C.green:layoutAnalysis.confidence==="medium"?C.orange:C.red,
+                    border:`1px solid ${layoutAnalysis.confidence==="high"?C.green+"44":layoutAnalysis.confidence==="medium"?C.orange+"44":C.red+"44"}`
                   }}>
                     {(layoutAnalysis.confidence||"?").toUpperCase()} CONFIDENCE
                   </div>
                 </div>
+
+                {/* Equipment detected */}
+                {(layoutAnalysis.compressor?.model||layoutAnalysis.dryer?.model||layoutAnalysis.tank?.size||(layoutAnalysis.filters||[]).length>0||layoutAnalysis.oilWaterSeparator||(layoutAnalysis.frl?.qty||0)>0) && (
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,marginBottom:5}}>EQUIPMENT DETECTED</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                      {layoutAnalysis.compressor?.model && (
+                        <div style={{background:C.surface3,borderRadius:4,padding:"4px 8px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:C.dim,letterSpacing:1}}>COMPRESSOR</span>
+                          <strong style={{fontFamily:F.body,fontSize:12,color:C.text}}>{layoutAnalysis.compressor.model}</strong>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:layoutAnalysis.compressor.confidence==="high"?C.green:layoutAnalysis.compressor.confidence==="medium"?C.orange:C.mid}}>●</span>
+                        </div>
+                      )}
+                      {layoutAnalysis.dryer?.model && (
+                        <div style={{background:C.surface3,borderRadius:4,padding:"4px 8px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:C.dim,letterSpacing:1}}>DRYER</span>
+                          <strong style={{fontFamily:F.body,fontSize:12,color:C.text}}>{layoutAnalysis.dryer.model}</strong>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:layoutAnalysis.dryer.confidence==="high"?C.green:layoutAnalysis.dryer.confidence==="medium"?C.orange:C.mid}}>●</span>
+                        </div>
+                      )}
+                      {layoutAnalysis.tank?.size && (
+                        <div style={{background:C.surface3,borderRadius:4,padding:"4px 8px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:C.dim,letterSpacing:1}}>TANK</span>
+                          <strong style={{fontFamily:F.body,fontSize:12,color:C.text}}>{layoutAnalysis.tank.size}</strong>
+                        </div>
+                      )}
+                      {(layoutAnalysis.filters||[]).map((f,i)=>(
+                        <div key={i} style={{background:C.surface3,borderRadius:4,padding:"4px 8px"}}>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:C.dim,letterSpacing:1}}>{f.qty||1}× {(f.type||"").toUpperCase()}</span>
+                        </div>
+                      ))}
+                      {layoutAnalysis.oilWaterSeparator && (
+                        <div style={{background:C.surface3,borderRadius:4,padding:"4px 8px"}}>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:C.dim,letterSpacing:1}}>OIL/WATER SEP</span>
+                        </div>
+                      )}
+                      {(layoutAnalysis.frl?.qty||0)>0 && (
+                        <div style={{background:C.surface3,borderRadius:4,padding:"4px 8px"}}>
+                          <span style={{fontFamily:F.mono,fontSize:7,color:C.dim,letterSpacing:1}}>{layoutAnalysis.frl.qty}× FRL</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Auto-populated summary */}
+                {(layoutAnalysis._populated||[]).length>0 && (
+                  <div style={{background:C.greenSoft,border:`1px solid ${C.green}33`,borderRadius:5,padding:"8px 10px",marginBottom:10}}>
+                    <div style={{fontFamily:F.mono,fontSize:8,color:C.green,letterSpacing:1,marginBottom:4}}>✓ AUTO-POPULATED INTO FORM</div>
+                    {(layoutAnalysis._populated||[]).map((item,i)=>(
+                      <div key={i} style={{fontSize:12,color:C.text,lineHeight:1.7}}>• {item}</div>
+                    ))}
+                    <div style={{fontFamily:F.mono,fontSize:8,color:C.green,marginTop:5,opacity:0.7}}>Review sections above and adjust before generating BOM</div>
+                  </div>
+                )}
+
+                {/* Piping grid */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
                   {[
-                    ["PIPE RUN",    layoutAnalysis.totalRun!=null ? layoutAnalysis.totalRun+" ft" : "—"],
+                    ["PIPE SIZE",   layoutAnalysis.pipeSize||"—"],
+                    ["PIPE RUN",    layoutAnalysis.totalRunFt!=null?layoutAnalysis.totalRunFt+" ft":"—"],
                     ["SYSTEM TYPE", layoutAnalysis.systemType||"—"],
                     ["90° ELBOWS",  layoutAnalysis.elbows90??0],
                     ["TEES",        layoutAnalysis.tees??0],
                     ["DROPS",       layoutAnalysis.drops??0],
-                    ["CEILING HT",  layoutAnalysis.ceilingHeight ? layoutAnalysis.ceilingHeight+" ft" : "—"],
+                    ["CEILING HT",  layoutAnalysis.ceilingHeightFt?layoutAnalysis.ceilingHeightFt+" ft":"—"],
                   ].map(([label,val])=>(
                     <div key={label} style={{background:C.surface3,borderRadius:5,padding:"7px 10px"}}>
                       <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,marginBottom:2}}>{label}</div>
-                      <div style={{fontSize:15,fontFamily:F.body,color:C.text,fontWeight:600}}>{val}</div>
+                      <div style={{fontSize:14,fontFamily:F.body,color:C.text,fontWeight:600}}>{val}</div>
                     </div>
                   ))}
                 </div>
+
+                {/* Notes / warnings */}
                 {layoutAnalysis.notes && (
-                  <div style={{fontSize:12,color:C.mid,lineHeight:1.5,fontStyle:"italic",
-                    borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+                  <div style={{fontSize:12,color:C.mid,lineHeight:1.5,fontStyle:"italic",borderTop:`1px solid ${C.border}`,paddingTop:8}}>
                     {layoutAnalysis.notes}
                   </div>
+                )}
+                {layoutAnalysis.warnings && (
+                  <div style={{fontSize:12,color:C.orange,marginTop:6,fontFamily:F.mono}}>⚠ {layoutAnalysis.warnings}</div>
                 )}
               </div>
             )}
