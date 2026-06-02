@@ -2,7 +2,27 @@ const express = require('express');
 const fetch = require('node-fetch');
 const path = require('path');
 const XLSX = require('xlsx');
+const fs = require('fs');
 const app = require('express')();
+
+// ─── ESTIMATES PERSISTENCE ────────────────────────────────────────────────────
+const ESTIMATES_FILE = path.join(__dirname, 'data', 'estimates.json');
+
+function ensureEstimatesFile() {
+  const dir = path.join(__dirname, 'data');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(ESTIMATES_FILE)) fs.writeFileSync(ESTIMATES_FILE, '[]', 'utf8');
+}
+
+function readEstimates() {
+  ensureEstimatesFile();
+  try { return JSON.parse(fs.readFileSync(ESTIMATES_FILE, 'utf8')); } catch { return []; }
+}
+
+function writeEstimates(list) {
+  ensureEstimatesFile();
+  fs.writeFileSync(ESTIMATES_FILE, JSON.stringify(list, null, 2), 'utf8');
+}
 
 app.use(express.json({ limit: '15mb' }));
 app.use(express.static('.'));
@@ -275,6 +295,20 @@ app.post('/api/inventory/refresh', async (req, res) => {
 // Cache status
 app.get('/api/inventory/status', (req, res) => {
   res.json({ totalRows: inventoryCache.length, lastUpdated: lastCacheUpdate, isFetching });
+});
+
+// Estimates library
+app.get('/api/estimates', (req, res) => {
+  const list = readEstimates();
+  res.json(list.slice().reverse()); // newest first
+});
+
+app.post('/api/estimates', (req, res) => {
+  const list = readEstimates();
+  const record = { id: Date.now().toString(), timestamp: new Date().toISOString(), ...req.body };
+  list.push(record);
+  writeEstimates(list);
+  res.json(record);
 });
 
 app.get('/', (req, res) => {

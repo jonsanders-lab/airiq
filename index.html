@@ -1464,6 +1464,13 @@ const REEL_OPTS = [
   "Drop leg w/ ball valve and quick-connect",
 ];
 
+const REPS = [
+  "Tony Gilleland","Jon Landress","Zac Hoadley","Devon Dalton","Earl Livingston",
+  "Jack Wolchek","Kyle White","Dave Jolly","Chase Lewis","Mike George",
+  "Jackson Carrell","Jon Sanders","Tristian Castiglione","Connor Smith",
+  "Dan Constant","David Gonzalez","Javi Cabral",
+];
+
 function estAvailPressures(series, model) {
   const cfm = COMP_DB[series]?.cfm[model];
   if (!cfm) return [116,145,181];
@@ -1498,6 +1505,16 @@ function Estimator() {
   const [layoutAnalysis, setLayoutAnalysis] = React.useState(null);
   const [layoutBusy, setLayoutBusy]         = React.useState(false);
   const fileInputRef = React.useRef(null);
+  const [showPast, setShowPast]             = React.useState(false);
+  const [pastList, setPastList]             = React.useState([]);
+  const [pastLoading, setPastLoading]       = React.useState(false);
+  const [fSeries, setFSeries]               = React.useState("Any");
+  const [fPipeSize, setFPipeSize]           = React.useState("Any");
+  const [fSysType, setFSysType]             = React.useState("Any");
+  const [fRunRange, setFRunRange]           = React.useState("Any");
+  const [saveRep, setSaveRep]               = React.useState("Jon Sanders");
+  const [saveBusy, setSaveBusy]             = React.useState(false);
+  const [saveMsg, setSaveMsg]               = React.useState("");
 
   const uid = () => Date.now() + Math.random();
 
@@ -1525,6 +1542,76 @@ function Estimator() {
   function addRow(setter, def) { setter(p=>[...p,{id:uid(),name:def||"",qty:1}]); }
   function updRow(setter, id, f, v) { setter(p=>p.map(r=>r.id===id?{...r,[f]:v}:r)); }
   function rmRow(setter, id) { setter(p=>p.filter(r=>r.id!==id)); }
+
+  async function loadEstimates() {
+    setPastLoading(true);
+    try {
+      const r = await fetch("/api/estimates");
+      const d = await r.json();
+      setPastList(Array.isArray(d) ? d : []);
+    } catch { setPastList([]); }
+    setPastLoading(false);
+  }
+
+  React.useEffect(() => { if (showPast) loadEstimates(); }, [showPast]);
+
+  async function saveEstimate() {
+    setSaveBusy(true); setSaveMsg("");
+    const sysType = layoutAnalysis && !layoutAnalysis.error
+      ? (layoutAnalysis.systemType === "loop" ? "loop" : layoutAnalysis.systemType === "dead-end" ? "branch" : "")
+      : "";
+    const payload = {
+      repName:      saveRep,
+      customer:     job.customer,
+      address:      job.address,
+      pipeSize:     job.pipeSize,
+      pipeColor:    job.pipeColor,
+      totalRunFt:   Number(job.totalRun) || 0,
+      systemType:   sysType,
+      compressors:  comps.map(c => ({ series:c.series, model:c.model, pressure:c.pressure, cfm: estCFM(c.series,c.model,c.pressure)||null })),
+      dryers:       dryers.map(d => ({ qty:d.qty, name:d.name })),
+      tanks:        tanks.map(t  => ({ qty:t.qty, name:t.name })),
+      hoseReels:    reels.map(r  => ({ qty:r.qty, name:r.name })),
+      analysisNotes: layoutAnalysis && !layoutAnalysis.error ? layoutAnalysis.notes||"" : "",
+      bomOutput:    bomText,
+    };
+    try {
+      const r = await fetch("/api/estimates", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error("Server error " + r.status);
+      setSaveMsg("Saved!");
+      setTimeout(() => setSaveMsg(""), 3000);
+    } catch(e) { setSaveMsg("⚠ " + e.message); }
+    setSaveBusy(false);
+  }
+
+  function loadEstimateIntoForm(est) {
+    setJob({ customer: est.customer||"", address: est.address||"", pipeSize: est.pipeSize||"1\"", pipeColor: est.pipeColor||"Blue", totalRun: est.totalRunFt ? String(est.totalRunFt) : "" });
+    setComps((est.compressors||[]).map(c => ({ id:uid(), series:c.series||"HD", model:c.model||"HD30", pressure:c.pressure||116, inletTemp:100, ambientTemp:100 })));
+    setDryers((est.dryers||[]).map(d => ({ id:uid(), qty:d.qty||1, name:d.name||"" })));
+    setTanks((est.tanks||[]).map(t => ({ id:uid(), qty:t.qty||1, name:t.name||"" })));
+    setReels((est.hoseReels||[]).map(r => ({ id:uid(), qty:r.qty||1, name:r.name||"" })));
+    setBomText(est.bomOutput||"");
+    setLayoutAnalysis(est.analysisNotes ? { notes: est.analysisNotes, systemType: est.systemType||"", confidence:"medium", totalRun:est.totalRunFt||null, elbows90:0, tees:0, drops:0, ceilingHeight:null } : null);
+    setLayoutImg(null);
+    setShowPast(false);
+  }
+
+  function filterPastList(list) {
+    return list.filter(est => {
+      if (fSeries !== "Any" && !(est.compressors||[]).some(c => c.series === fSeries)) return false;
+      if (fPipeSize !== "Any" && est.pipeSize !== fPipeSize) return false;
+      if (fSysType !== "Any") {
+        const st = (est.systemType||"").toLowerCase();
+        if (fSysType === "Loop" && st !== "loop") return false;
+        if (fSysType === "Branch" && st !== "branch") return false;
+      }
+      const run = Number(est.totalRunFt)||0;
+      if (fRunRange === "Under 100ft" && run >= 100) return false;
+      if (fRunRange === "100-300ft"   && (run < 100 || run > 300)) return false;
+      if (fRunRange === "300ft+"      && run <= 300) return false;
+      return true;
+    });
+  }
 
   function handleFileUpload(e) {
     const file = e.target.files[0];
@@ -1689,6 +1776,87 @@ Be concise. Include exact part numbers. No fabricated prices.`;
 
   return (
     <div style={{padding:"16px 16px 80px",overflowY:"auto",height:"100%"}}>
+
+      {/* Past Estimates Panel */}
+      <div style={{marginBottom:16}}>
+        <button onClick={()=>setShowPast(p=>!p)} style={{
+          width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,
+          padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",
+          cursor:"pointer",fontFamily:F.mono,fontSize:11,color:C.mid,letterSpacing:2,
+        }}>
+          <span>📋 PAST ESTIMATES</span>
+          <span style={{fontSize:14,transform:showPast?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>▾</span>
+        </button>
+
+        {showPast && (
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderTopWidth:0,
+            borderRadius:"0 0 10px 10px",padding:"0 12px 12px"}}>
+
+            {/* Filters */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"12px 0 10px",borderBottom:`1px solid ${C.border}`,marginBottom:10}}>
+              {[
+                ["Series", ["Any","HD","HV","HT","HTV","HTM"], fSeries, setFSeries],
+                ["Pipe Size", ["Any",...PIPE_SIZES], fPipeSize, setFPipeSize],
+                ["System", ["Any","Loop","Branch"], fSysType, setFSysType],
+                ["Run", ["Any","Under 100ft","100-300ft","300ft+"], fRunRange, setFRunRange],
+              ].map(([label, opts, val, setter]) => (
+                <div key={label} style={{display:"flex",flexDirection:"column",gap:3}}>
+                  <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1}}>{label.toUpperCase()}</div>
+                  <select value={val} onChange={e=>setter(e.target.value)} style={{...inS,fontSize:12,padding:"5px 8px",minWidth:90}}>
+                    {opts.map(o=><option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {/* Estimate cards */}
+            {pastLoading && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,padding:"12px 0",letterSpacing:1}}>Loading...</div>}
+            {!pastLoading && filterPastList(pastList).length === 0 && (
+              <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,padding:"12px 0",letterSpacing:1}}>No estimates found.</div>
+            )}
+            {!pastLoading && filterPastList(pastList).map(est => {
+              const d = new Date(est.timestamp);
+              const dateStr = d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+              const compLabel = (est.compressors||[]).map(c=>c.model).join(", ")||"—";
+              const sysLabel = est.systemType === "loop" ? "Loop" : est.systemType === "branch" ? "Branch" : "—";
+              return (
+                <div key={est.id} style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:8,
+                  padding:"10px 12px",marginBottom:8,display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <div>
+                      <div style={{fontFamily:F.body,fontSize:14,color:C.text,fontWeight:600,lineHeight:1.2}}>
+                        {est.customer||"(no customer)"}
+                      </div>
+                      <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,marginTop:3}}>
+                        {est.repName} · {dateStr}
+                      </div>
+                    </div>
+                    <button onClick={()=>loadEstimateIntoForm(est)} style={{
+                      background:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+                      border:"none",borderRadius:6,padding:"6px 11px",
+                      fontFamily:F.mono,fontSize:9,letterSpacing:1,color:"#fff",
+                      cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"
+                    }}>LOAD →</button>
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {[
+                      ["Compressor", compLabel],
+                      ["Pipe", est.pipeSize+" "+est.pipeColor],
+                      ["Run", est.totalRunFt ? est.totalRunFt+" ft" : "—"],
+                      ["System", sysLabel],
+                    ].map(([lbl,val])=>(
+                      <div key={lbl} style={{background:C.surface3,borderRadius:4,padding:"3px 8px"}}>
+                        <span style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1}}>{lbl}: </span>
+                        <span style={{fontFamily:F.body,fontSize:11,color:C.mid}}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
@@ -1979,10 +2147,40 @@ Be concise. Include exact part numbers. No fabricated prices.`;
       </button>
 
       {bomText && (
-        <div style={{background:C.surface,border:`1px solid ${C.copper}44`,borderRadius:10,padding:16,marginBottom:20}}>
+        <div style={{background:C.surface,border:`1px solid ${C.copper}44`,borderRadius:10,padding:16,marginBottom:12}}>
           <Mono color={C.copper}>BILL OF MATERIALS</Mono>
           <div style={{fontSize:14,lineHeight:1.7,color:C.text}}
             dangerouslySetInnerHTML={{__html:formatMsg(bomText)}}/>
+        </div>
+      )}
+
+      {/* Save This Estimate */}
+      {bomText && (
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:16,marginBottom:20}}>
+          <Mono color={C.copper}>SAVE THIS ESTIMATE</Mono>
+          <div style={{display:"flex",gap:10,alignItems:"flex-end",marginTop:12,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:160}}>
+              <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}}>REP NAME</div>
+              <select value={saveRep} onChange={e=>setSaveRep(e.target.value)} style={{...inS,width:"100%"}}>
+                {REPS.map(r=><option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <button onClick={saveEstimate} disabled={saveBusy} style={{
+              background:saveBusy?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+              border:"none",borderRadius:7,padding:"10px 22px",
+              fontFamily:F.head,fontSize:15,letterSpacing:3,
+              color:saveBusy?C.dim:"#fff",cursor:saveBusy?"default":"pointer",transition:"all 0.2s",
+              boxShadow:saveBusy?"none":"0 0 18px rgba(193,122,53,0.2)",flexShrink:0
+            }}>
+              {saveBusy?"SAVING...":"SAVE →"}
+            </button>
+          </div>
+          {saveMsg && (
+            <div style={{marginTop:8,fontFamily:F.mono,fontSize:11,letterSpacing:1,
+              color:saveMsg.startsWith("⚠")?C.red:C.green}}>
+              {saveMsg}
+            </div>
+          )}
         </div>
       )}
     </div>
