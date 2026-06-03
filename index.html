@@ -37,14 +37,15 @@
     #print-portal{display:none;}
     @media print{
       @page{margin:0.5in;}
-      #root{display:none!important;}
+      html,body{height:auto!important;min-height:0!important;overflow:visible!important;background:white!important;}
+      #root{display:none!important;height:0!important;min-height:0!important;overflow:hidden!important;}
       #print-portal{
         display:block!important;
         background:white;
         font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10pt;line-height:1.45;
         -webkit-print-color-adjust:exact;print-color-adjust:exact;
       }
-      #print-portal .print-logo{max-height:48px!important;width:auto!important;height:auto!important;}
+      #print-portal .print-logo{max-height:48px!important;width:auto!important;}
       #print-portal table{width:100%;border-collapse:collapse;margin-bottom:10pt;page-break-inside:auto;}
       #print-portal tr{page-break-inside:avoid;page-break-after:auto;}
       #print-portal th{
