@@ -34,17 +34,30 @@
     #bom-print-area{display:none;}
     @media print{
       @page{margin:0.5in;}
-      html,body,#root{height:auto!important;overflow:visible!important;background:white!important;}
-      body *{visibility:hidden;}
+      /* Strip all height/overflow constraints from every ancestor so content
+         flows naturally across pages — position:absolute is NOT used because
+         it causes the print renderer to stop after the first page */
+      html,body{height:auto!important;overflow:visible!important;background:white!important;}
+      body *{
+        visibility:hidden;
+        overflow:visible!important;
+        height:auto!important;
+        max-height:none!important;
+      }
       #bom-print-area{
-        display:block!important;visibility:visible;
-        position:absolute;top:0;left:0;width:100%;background:white;
+        display:block!important;
+        visibility:visible;
+        /* normal flow — no position:absolute — lets content paginate freely */
+        background:white;
         font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10pt;line-height:1.45;
-        padding:0;z-index:9999;
         -webkit-print-color-adjust:exact;print-color-adjust:exact;
       }
       #bom-print-area *{visibility:visible;}
-      #bom-print-area table{width:100%;border-collapse:collapse;margin-bottom:10pt;}
+      #bom-print-area table{
+        width:100%;border-collapse:collapse;margin-bottom:10pt;
+        page-break-inside:auto;
+      }
+      #bom-print-area tr{page-break-inside:avoid;page-break-after:auto;}
       #bom-print-area th{
         background:#1E3A8A!important;color:#fff!important;
         padding:5pt 7pt;text-align:left;font-size:8.5pt;
@@ -1662,7 +1675,7 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
   let bom = null;
   try { bom = JSON.parse(bomText); } catch {}
   const date = new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
-  function sumLabor(rows){ return (rows||[]).reduce((s,r)=>s+(Number(r.laborHrs)||0)*(Number(r.qty)||1),0); }
+  function sumLabor(rows){ return (rows||[]).reduce((s,r)=>s+(Number(r.laborHrs)||0),0); }
   const secHead = {fontWeight:700,fontSize:"10pt",color:"#1E3A8A",letterSpacing:"0.06em",textTransform:"uppercase",
     margin:"12pt 0 5pt",borderBottom:"1.5pt solid #1E3A8A",paddingBottom:"3pt"};
   const pWrap = {padding:"0.45in"};
@@ -1785,7 +1798,7 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
                   <td>{r.description}</td>
                   <td>{r.partNumber||"—"}</td>
                   <td style={{textAlign:"center"}}>{r.qty}</td>
-                  <td style={{textAlign:"right"}}>{((Number(r.laborHrs)||0)*(Number(r.qty)||1)).toFixed(2)}</td>
+                  <td style={{textAlign:"right"}}>{(Number(r.laborHrs)||0)>0?(Number(r.laborHrs)).toFixed(2):"—"}</td>
                   <td style={{fontSize:"7.5pt",color:"#666"}}>{r.note||""}</td>
                 </tr>
               ))}
@@ -2162,8 +2175,9 @@ Use AI-extracted fitting counts as starting estimates in the AIRpipe Materials s
 OUTPUT — return ONLY a JSON object, no markdown, no other text. Exact schema:
 {"equipment":[{"description":"","partNumber":"","qty":1,"laborHrs":0,"note":""}],"materials":[{"description":"","partNumber":"","qty":1,"laborHrs":0.0,"note":""}],"notes":"","warnings":""}
 
+IMPORTANT: laborHrs in every row = TOTAL labor hours for that line item = qty × per-unit rate from the LABOR HOURS table. Never put the per-unit rate alone — always pre-multiply by qty.
 equipment rows: each compressor (laborHrs=0), its recommended HAD dryer (laborHrs=0), receiver tank (laborHrs=0). For HTM units note that tank+dryer are integrated — do not add separate rows for those.
-materials rows: First, header pipe — AIRpipe [header size] [color] sticks (qty=ceil(totalRun÷13.12)) with header part numbers and labor hours. If drop size differs from header size and drops count is known, add drop pipe and drop fittings as separate line items using drop part numbers. Then other fittings (unions, 90° elbows, equal tees, end caps, flex hose) using the verified part numbers and labor hours from the LABOR HOURS table. Then any additional dryers, filters, tanks, reels from the job.
+materials rows: First, header pipe — AIRpipe [header size] [color] sticks (qty=ceil(totalRun÷13.12)) with header part numbers and labor hours (laborHrs = qty × 0.15). If drop size differs from header size and drops count is known, add drop pipe and drop fittings as separate line items using drop part numbers. Then other fittings (unions, 90° elbows, equal tees, end caps, flex hose) using the verified part numbers; laborHrs for each = qty × per-unit rate. Then any additional dryers, filters, tanks, reels from the job.
 notes: brief sizing flags, HTM reminders, field-verification notes. One paragraph.
 warnings: critical issues only (missing info, sizing concern). Empty string if none.
 No fabricated prices.`;
