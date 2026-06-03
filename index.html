@@ -31,40 +31,29 @@
     .s6{animation:fadeUp 0.4s 0.34s cubic-bezier(0.16,1,0.3,1) both;}
     .s7{animation:fadeUp 0.4s 0.40s cubic-bezier(0.16,1,0.3,1) both;}
     /* ── Print / PDF styles ─────────────────────────────────────── */
-    #bom-print-area{display:none;}
+    /* #print-portal lives outside #root in the DOM — display:none hides the
+       entire app, display:block on the portal shows only the BOM, so the
+       content starts on page 1 with no blank pages from hidden UI elements */
+    #print-portal{display:none;}
     @media print{
       @page{margin:0.5in;}
-      /* Strip all height/overflow constraints from every ancestor so content
-         flows naturally across pages — position:absolute is NOT used because
-         it causes the print renderer to stop after the first page */
-      html,body{height:auto!important;overflow:visible!important;background:white!important;}
-      body *{
-        visibility:hidden;
-        overflow:visible!important;
-        height:auto!important;
-        max-height:none!important;
-      }
-      #bom-print-area{
+      #root{display:none!important;}
+      #print-portal{
         display:block!important;
-        visibility:visible;
-        /* normal flow — no position:absolute — lets content paginate freely */
         background:white;
         font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10pt;line-height:1.45;
         -webkit-print-color-adjust:exact;print-color-adjust:exact;
       }
-      #bom-print-area *{visibility:visible;}
-      #bom-print-area table{
-        width:100%;border-collapse:collapse;margin-bottom:10pt;
-        page-break-inside:auto;
-      }
-      #bom-print-area tr{page-break-inside:avoid;page-break-after:auto;}
-      #bom-print-area th{
+      #print-portal .print-logo{max-height:48px!important;width:auto!important;height:auto!important;}
+      #print-portal table{width:100%;border-collapse:collapse;margin-bottom:10pt;page-break-inside:auto;}
+      #print-portal tr{page-break-inside:avoid;page-break-after:auto;}
+      #print-portal th{
         background:#1E3A8A!important;color:#fff!important;
         padding:5pt 7pt;text-align:left;font-size:8.5pt;
         -webkit-print-color-adjust:exact;print-color-adjust:exact;
       }
-      #bom-print-area td{padding:4pt 7pt;border-bottom:0.5pt solid #ddd;font-size:8.5pt;vertical-align:top;}
-      #bom-print-area tr:nth-child(even) td{
+      #print-portal td{padding:4pt 7pt;border-bottom:0.5pt solid #ddd;font-size:8.5pt;vertical-align:top;}
+      #print-portal tr:nth-child(even) td{
         background:#f5f7fb!important;
         -webkit-print-color-adjust:exact;print-color-adjust:exact;
       }
@@ -73,6 +62,7 @@
 </head>
 <body>
 <div id="root"></div>
+<div id="print-portal"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -1683,9 +1673,9 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
     <div style={pWrap}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:14,paddingBottom:12,marginBottom:14,borderBottom:"2pt solid #1E3A8A"}}>
-        <img src={LOGO_SRC} style={{height:40,width:"auto"}} alt="Hodge Compressor"/>
+        <img src={LOGO_SRC} className="print-logo" style={{height:40,width:"auto"}} alt="Hodge Compressor"/>
         <img src="https://airpipeusa.com/wp-content/uploads/2026/05/airpipe-usa-icon-100x100-1.png"
-          style={{height:40,width:"auto"}} alt="AIRpipe"/>
+          className="print-logo" style={{height:40,width:"auto"}} alt="AIRpipe"/>
         <div style={{marginLeft:6}}>
           <div style={{fontWeight:700,fontSize:"14pt",color:"#1E3A8A",letterSpacing:"0.08em",lineHeight:1.1}}>
             AIRPIPE SYSTEM — BILL OF MATERIALS
@@ -2748,13 +2738,13 @@ No fabricated prices.`;
         </div>
       )}
 
-      {/* Hidden print area — visible only during window.print() */}
-      {bomText && (
-        <div id="bom-print-area">
-          <BOMPrintArea
-            job={job} layoutImgs={layoutImgs} layoutAnalysis={layoutAnalysis}
-            bomText={bomText} saveRep={saveRep}/>
-        </div>
+      {/* Portal: render BOM print area outside #root so #root{display:none}
+            hides all app UI and print content starts on page 1 */}
+      {bomText && ReactDOM.createPortal(
+        <BOMPrintArea
+          job={job} layoutImgs={layoutImgs} layoutAnalysis={layoutAnalysis}
+          bomText={bomText} saveRep={saveRep}/>,
+        document.getElementById("print-portal")
       )}
     </div>
   );
