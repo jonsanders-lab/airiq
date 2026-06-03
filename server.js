@@ -24,7 +24,7 @@ function writeEstimates(list) {
   fs.writeFileSync(ESTIMATES_FILE, JSON.stringify(list, null, 2), 'utf8');
 }
 
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static('.'));
 
 const PROXY_URL = 'https://airiq-st-proxy.jon-sanders.workers.dev';

@@ -1633,16 +1633,17 @@ function matchPipeSize(raw) {
 
 // ─── AIRPIPE ESTIMATOR COMPONENT ─────────────────────────────────────────────
 function Estimator() {
-  const [job, setJob]         = React.useState({customer:"",address:"",pipeSize:"1\"",pipeColor:"Blue",totalRun:""});
+  const [job, setJob]         = React.useState({customer:"",address:"",pipeSize:"1\"",pipeColor:"Blue",totalRun:"",dropSize:"3/4\""});
   const [comps, setComps]     = React.useState([]);
   const [dryers, setDryers]   = React.useState([]);
   const [tanks, setTanks]     = React.useState([]);
   const [reels, setReels]     = React.useState([]);
   const [bomText, setBomText] = React.useState("");
   const [bomBusy, setBomBusy] = React.useState(false);
-  const [layoutImg, setLayoutImg]           = React.useState(null);
+  const [layoutImgs, setLayoutImgs]         = React.useState([]);
   const [layoutAnalysis, setLayoutAnalysis] = React.useState(null);
   const [layoutBusy, setLayoutBusy]         = React.useState(false);
+  const [fileInputKey, setFileInputKey]     = React.useState(0);
   const fileInputRef = React.useRef(null);
   const [showPast, setShowPast]             = React.useState(false);
   const [pastList, setPastList]             = React.useState([]);
@@ -1704,6 +1705,7 @@ function Estimator() {
       customer:     job.customer,
       address:      job.address,
       pipeSize:     job.pipeSize,
+      dropSize:     job.dropSize,
       pipeColor:    job.pipeColor,
       totalRunFt:   Number(job.totalRun) || 0,
       systemType:   sysType,
@@ -1724,14 +1726,14 @@ function Estimator() {
   }
 
   function loadEstimateIntoForm(est) {
-    setJob({ customer: est.customer||"", address: est.address||"", pipeSize: est.pipeSize||"1\"", pipeColor: est.pipeColor||"Blue", totalRun: est.totalRunFt ? String(est.totalRunFt) : "" });
+    setJob({ customer: est.customer||"", address: est.address||"", pipeSize: est.pipeSize||"1\"", dropSize: est.dropSize||"3/4\"", pipeColor: est.pipeColor||"Blue", totalRun: est.totalRunFt ? String(est.totalRunFt) : "" });
     setComps((est.compressors||[]).map(c => ({ id:uid(), series:c.series||"HD", model:c.model||"HD30", pressure:c.pressure||116, inletTemp:100, ambientTemp:100 })));
     setDryers((est.dryers||[]).map(d => ({ id:uid(), qty:d.qty||1, name:d.name||"" })));
     setTanks((est.tanks||[]).map(t => ({ id:uid(), qty:t.qty||1, name:t.name||"" })));
     setReels((est.hoseReels||[]).map(r => ({ id:uid(), qty:r.qty||1, name:r.name||"" })));
     setBomText(est.bomOutput||"");
     setLayoutAnalysis(est.analysisNotes ? { notes: est.analysisNotes, systemType: est.systemType||"", confidence:"medium", totalRunFt:est.totalRunFt||null, elbows90:0, tees:0, drops:0, ceilingHeightFt:null } : null);
-    setLayoutImg(null);
+    setLayoutImgs([]);
     setShowPast(false);
   }
 
@@ -1753,38 +1755,51 @@ function Estimator() {
   }
 
   function handleFileUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.type === "application/pdf") {
-      alert("PDF detected. Please export your drawing as PNG or JPG first, then re-upload.");
-      e.target.value = "";
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = ev => {
-      setLayoutImg({ dataUrl: ev.target.result, mediaType: file.type || "image/png", name: file.name });
-      setLayoutAnalysis(null);
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files);
+    setFileInputKey(k => k + 1);  // remount input so onChange fires reliably on next use
+    if (!files.length) return;
+    files.forEach(file => {
+      if (file.type === "application/pdf") {
+        alert(`${file.name}: PDF detected — export as PNG or JPG first.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        setLayoutImgs(prev => [...prev, { dataUrl: ev.target.result, mediaType: file.type || "image/png", name: file.name }]);
+        setLayoutAnalysis(null);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function removeLayoutImg(idx) {
+    setLayoutImgs(prev => prev.filter((_,i) => i !== idx));
+    setLayoutAnalysis(null);
   }
 
   async function analyzeLayout() {
-    if (!layoutImg) return;
+    if (!layoutImgs.length) return;
     setLayoutBusy(true);
     setLayoutAnalysis(null);
     try {
-      const base64 = layoutImg.dataUrl.split(",")[1];
+      const imageBlocks = layoutImgs.map(img => ({
+        type: "image",
+        source: { type: "base64", media_type: img.mediaType, data: img.dataUrl.split(",")[1] }
+      }));
+      const multiNote = layoutImgs.length > 1
+        ? `${layoutImgs.length} images have been provided showing different areas or angles of the same facility. Analyze ALL images together and synthesize a single consolidated analysis covering everything visible across all images.\n\n`
+        : "";
       const res = await fetch("/api/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 1400,
+          max_tokens: 1800,
           messages: [{
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: layoutImg.mediaType, data: base64 } },
-              { type: "text", text: `You are analyzing a compressed air system layout for a Hodge Compressor AIRpipe piping installation. Extract ALL equipment and piping details visible in this facility drawing, sketch, GoodNotes export, or site photo.
+              ...imageBlocks,
+              { type: "text", text: `${multiNote}You are analyzing a compressed air system layout for a Hodge Compressor AIRpipe piping installation. Extract ALL equipment and piping details visible in this facility drawing, sketch, GoodNotes export, or site photo.
 
 COMPRESSOR: Identify model number or HP. Match to closest Hodge model from this list — return the exact model string:
 HD10,HD15,HD20,HD25,HD30,HD40,HD50,HD60,HD75,HD100,HD125,HD150,HD175,HD200,HD250,HV10,HV15,HV20,HV30,HV40,HV50,HV60,HV75,HV100,HV125,HV150,HV175,HV200,HV250,HV300,HV350,HT30,HT40,HT50,HT60,HT75,HT100,HT125,HT150,HT175,HT200,HT250,HT275,HT300,HT350,HTV200,HTV250,HTV350,HTV420,HTM7.5,HTM10,HTM15,HTM20
@@ -1808,8 +1823,12 @@ PIPING: Trace the layout — total run in feet, count 90° elbows, tees, drops (
 
 CEILING HEIGHT: In feet if labeled.
 
+PIPE SIZE RECOMMENDATIONS — based on system CFM and layout:
+- HEADER (main run): Target velocity <800 fpm. Size guide at 100 psi: 3/4"≤20cfm, 1"≤50cfm, 1.5"≤100cfm, 2"≤200cfm, 2.5"≤300cfm, 3"≤500cfm, 4"≤800cfm, 6"≤2000cfm, 8"≤3500cfm. For loop/ring main, size for 50% of total CFM; for dead-end, size for 100%. Return headerPipeSize and a brief headerPipeSizeReason (≤15 words).
+- DROPS (branch takeoffs to equipment): Based on equipment visible or typical pneumatic tool loads (15-50 CFM per station). Return dropPipeSize and a brief dropPipeSizeReason (≤15 words). If unsure, default to 3/4".
+
 Respond ONLY with this exact JSON — no other text, no markdown:
-{"compressor":{"model":null,"confidence":"low","notes":""},"dryer":{"model":null,"type":"refrigerated","confidence":"low","notes":""},"tank":{"size":null,"confidence":"low"},"filters":[],"oilWaterSeparator":false,"frl":{"qty":0},"pipeSize":null,"systemType":"unknown","totalRunFt":null,"elbows90":0,"tees":0,"drops":0,"ceilingHeightFt":null,"confidence":"low","notes":"","warnings":""}`
+{"compressor":{"model":null,"confidence":"low","notes":""},"dryer":{"model":null,"type":"refrigerated","confidence":"low","notes":""},"tank":{"size":null,"confidence":"low"},"filters":[],"oilWaterSeparator":false,"frl":{"qty":0},"pipeSize":null,"systemType":"unknown","totalRunFt":null,"elbows90":0,"tees":0,"drops":0,"ceilingHeightFt":null,"headerPipeSize":null,"headerPipeSizeReason":"","dropPipeSize":null,"dropPipeSizeReason":"","confidence":"low","notes":"","warnings":""}`
               }
             ]
           }]
@@ -1827,8 +1846,10 @@ Respond ONLY with this exact JSON — no other text, no markdown:
 
       // Job fields
       const jobPatch = {};
-      const ps = matchPipeSize(a.pipeSize);
-      if (ps) { jobPatch.pipeSize = ps; populated.push(`Pipe size: ${ps}`); }
+      const ps = matchPipeSize(a.headerPipeSize || a.pipeSize);
+      if (ps) { jobPatch.pipeSize = ps; populated.push(`Header pipe size: ${ps}`); }
+      const ds = matchPipeSize(a.dropPipeSize);
+      if (ds) { jobPatch.dropSize = ds; populated.push(`Drop pipe size: ${ds}`); }
       if (a.totalRunFt && !job.totalRun) { jobPatch.totalRun = String(a.totalRunFt); populated.push(`Total run: ${a.totalRunFt} ft`); }
       if (Object.keys(jobPatch).length) setJob(prev=>({...prev,...jobPatch}));
 
@@ -1899,20 +1920,20 @@ Respond ONLY with this exact JSON — no other text, no markdown:
       return `${i+1}. ${c.model} @ ${c.pressure} psi — ${cfm||"?"} CFM — ${conn}\n   Site: Inlet ${c.inletTemp}°F / Ambient ${c.ambientTemp}°F\n   Recommended HAD Dryer: ${dryerStr}\n   Recommended Tank: ${tankStr||"N/A"}`;
     }).join("\n\n");
 
+    const ds = job.dropSize||"3/4\"";
+    const dpfx = PIPE_PFX[ds]||"1";
     const prompt = `You are generating a professional Bill of Materials for an AIRpipe compressed air piping installation for Hodge Compressor.
 
 JOB INFO:
 Customer: ${job.customer||"TBD"} | Site: ${job.address||"TBD"}
-Pipe Size: ${job.pipeSize} | Color: ${job.pipeColor} | Total Run: ${job.totalRun||0} ft
+Header Pipe Size: ${job.pipeSize} | Drop/Branch Pipe Size: ${ds} | Color: ${job.pipeColor} | Total Run: ${job.totalRun||0} ft
 AIRpipe stick length: 13.12 ft (4 m)
 
-AIRPIPE PART NUMBERS (Verified — AIRpipe Quote Tool 2025):
-Pipe (${job.pipeSize} ${job.pipeColor}): PN ${apipePN(job.pipeSize,job.pipeColor)}
-Union: PN ${pp}002
-90° Elbow: PN ${pp}003
-Equal Tee: PN ${pp}005
-End Cap: PN ${pp}006
-Flex Hose: PN ${pp}055
+AIRPIPE PART NUMBERS — HEADER (${job.pipeSize} ${job.pipeColor}) (Verified — AIRpipe Quote Tool 2025):
+Pipe: PN ${apipePN(job.pipeSize,job.pipeColor)} | Union: PN ${pp}002 | 90° Elbow: PN ${pp}003 | Equal Tee: PN ${pp}005 | End Cap: PN ${pp}006 | Flex Hose: PN ${pp}055
+
+AIRPIPE PART NUMBERS — DROPS (${ds} ${job.pipeColor}):
+Pipe: PN ${apipePN(ds,job.pipeColor)} | 90° Elbow: PN ${dpfx}003 | Equal Tee: PN ${dpfx}005 | Flex Hose: PN ${dpfx}055
 
 LABOR HOURS (AIRpipe Quote Tool 2025):
 Pipe: ${smallPipe?"0.15":"0.20"} hrs/stick | Union: 0.15 hrs | 90° Elbow: ${smallElb?"0.12":"0.02"} hrs | Equal Tee: ${teeLaborRate} hrs | End Cap: 0.02 hrs | Flex Hose: 0.12 hrs
@@ -1941,7 +1962,7 @@ OUTPUT — return ONLY a JSON object, no markdown, no other text. Exact schema:
 {"equipment":[{"description":"","partNumber":"","qty":1,"laborHrs":0,"note":""}],"materials":[{"description":"","partNumber":"","qty":1,"laborHrs":0.0,"note":""}],"notes":"","warnings":""}
 
 equipment rows: each compressor (laborHrs=0), its recommended HAD dryer (laborHrs=0), receiver tank (laborHrs=0). For HTM units note that tank+dryer are integrated — do not add separate rows for those.
-materials rows: AIRpipe pipe sticks (qty=ceil(totalRun÷13.12), use description "AIRpipe [size] [color] — 13.12 ft stick"), then fittings (unions, 90° elbows, equal tees, end caps, flex hose) using verified part numbers and labor hours from the LABOR HOURS table above. Then any additional dryers, filters, tanks, reels from the job.
+materials rows: First, header pipe — AIRpipe [header size] [color] sticks (qty=ceil(totalRun÷13.12)) with header part numbers and labor hours. If drop size differs from header size and drops count is known, add drop pipe and drop fittings as separate line items using drop part numbers. Then other fittings (unions, 90° elbows, equal tees, end caps, flex hose) using the verified part numbers and labor hours from the LABOR HOURS table. Then any additional dryers, filters, tanks, reels from the job.
 notes: brief sizing flags, HTM reminders, field-verification notes. One paragraph.
 warnings: critical issues only (missing info, sizing concern). Empty string if none.
 No fabricated prices.`;
@@ -2077,12 +2098,19 @@ No fabricated prices.`;
                 placeholder="City, State" style={inS}/>
             </FieldRow>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <FieldRow label="PIPE SIZE">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <FieldRow label="HEADER SIZE" hint="main run">
               <select value={job.pipeSize} onChange={e=>setJob({...job,pipeSize:e.target.value})} style={inS}>
                 {PIPE_SIZES.map(s=><option key={s} value={s}>{s}</option>)}
               </select>
             </FieldRow>
+            <FieldRow label="DROP SIZE" hint="branch takeoffs">
+              <select value={job.dropSize||"3/4\""} onChange={e=>setJob({...job,dropSize:e.target.value})} style={inS}>
+                {PIPE_SIZES.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </FieldRow>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <FieldRow label="PIPE COLOR">
               <select value={job.pipeColor} onChange={e=>setJob({...job,pipeColor:e.target.value})} style={inS}>
                 {PIPE_COLORS.map(c=><option key={c} value={c}>{c}</option>)}
@@ -2252,33 +2280,46 @@ No fabricated prices.`;
 
       {/* Layout Drawing Upload */}
       <div style={card}>
-        <Mono color={C.copper}>LAYOUT DRAWING / PHOTO</Mono>
+        <Mono color={C.copper}>LAYOUT DRAWINGS / PHOTOS</Mono>
         <div style={{color:C.mid,fontSize:12,fontFamily:F.mono,letterSpacing:1,marginBottom:12}}>
-          Upload a facility sketch, GoodNotes export, or site photo — AI extracts pipe quantities
+          Upload one or more facility sketches, GoodNotes exports, or site photos — AI consolidates all images into a single analysis
         </div>
-        <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp"
-          style={{display:"none"}} onChange={handleFileUpload}/>
-        {!layoutImg ? (
+        <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp"
+          multiple style={{display:"none"}} onChange={handleFileUpload}/>
+        {layoutImgs.length === 0 ? (
           <button onClick={()=>fileInputRef.current?.click()} style={{
             width:"100%",background:C.surface2,border:`1px dashed ${C.border}`,
             borderRadius:8,padding:20,color:C.mid,fontSize:13,cursor:"pointer",
             fontFamily:F.body,display:"flex",flexDirection:"column",alignItems:"center",gap:8
           }}>
             <span style={{fontSize:26}}>📁</span>
-            <span>Tap to upload PNG or JPG</span>
+            <span>Tap to upload PNG or JPG (multiple files OK)</span>
             <span style={{fontSize:11,color:C.dim}}>GoodNotes export · facility sketch · site photo · PDF → export as PNG first</span>
           </button>
         ) : (
           <div>
-            <div style={{position:"relative",marginBottom:12}}>
-              <img src={layoutImg.dataUrl} alt="Layout" style={{
-                width:"100%",borderRadius:7,border:`1px solid ${C.border}`,
-                maxHeight:280,objectFit:"contain",background:C.surface2}}/>
-              <button onClick={()=>{setLayoutImg(null);setLayoutAnalysis(null);}} style={{
-                position:"absolute",top:6,right:6,background:"rgba(6,9,15,0.82)",
-                border:`1px solid ${C.border}`,borderRadius:4,color:C.mid,
-                padding:"3px 8px",cursor:"pointer",fontSize:11,fontFamily:F.mono}}>
-                ✕ Remove
+            {/* Thumbnail grid */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8,marginBottom:10}}>
+              {layoutImgs.map((img, idx) => (
+                <div key={idx} style={{position:"relative",borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:C.surface2}}>
+                  <img src={img.dataUrl} alt={img.name} style={{width:"100%",height:90,objectFit:"cover",display:"block"}}/>
+                  <button onClick={()=>removeLayoutImg(idx)} style={{
+                    position:"absolute",top:3,right:3,background:"rgba(6,9,15,0.85)",
+                    border:`1px solid ${C.border}`,borderRadius:3,color:C.mid,
+                    padding:"1px 5px",cursor:"pointer",fontSize:10,fontFamily:F.mono,lineHeight:1.5
+                  }}>✕</button>
+                  <div style={{fontFamily:F.mono,fontSize:7,color:C.dim,letterSpacing:0,padding:"2px 5px",
+                    whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{img.name}</div>
+                </div>
+              ))}
+              {/* Add more tile */}
+              <button onClick={()=>fileInputRef.current?.click()} style={{
+                background:"none",border:`1px dashed ${C.border}`,borderRadius:6,
+                height:90+20,color:C.dim,fontSize:11,cursor:"pointer",fontFamily:F.body,
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4
+              }}>
+                <span style={{fontSize:20}}>+</span>
+                <span>Add more</span>
               </button>
             </div>
             <button onClick={analyzeLayout} disabled={layoutBusy} style={{
@@ -2288,7 +2329,7 @@ No fabricated prices.`;
               color:layoutBusy?C.dim:"#fff",transition:"all 0.2s",marginBottom:12,
               boxShadow:layoutBusy?"none":"0 0 20px rgba(59,111,212,0.22)",cursor:layoutBusy?"default":"pointer"
             }}>
-              {layoutBusy?"ANALYZING LAYOUT...":"ANALYZE LAYOUT →"}
+              {layoutBusy?`ANALYZING ${layoutImgs.length} IMAGE${layoutImgs.length>1?"S":""}...`:`ANALYZE ${layoutImgs.length} IMAGE${layoutImgs.length>1?"S":""} →`}
             </button>
             {layoutAnalysis && !layoutAnalysis.error && (
               <div style={{background:C.surface2,border:`1px solid ${C.blueLight}44`,borderRadius:8,padding:12}}>
@@ -2360,10 +2401,46 @@ No fabricated prices.`;
                   </div>
                 )}
 
+                {/* Pipe size recommendations */}
+                {(layoutAnalysis.headerPipeSize || layoutAnalysis.dropPipeSize) && (
+                  <div style={{background:C.surface2,border:`1px solid ${C.blueLight}55`,borderRadius:7,padding:"10px 12px",marginBottom:10}}>
+                    <div style={{fontFamily:F.mono,fontSize:8,color:C.blueLight,letterSpacing:2,marginBottom:8}}>AI PIPE SIZE RECOMMENDATIONS — review and override in Job Info above</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                      {layoutAnalysis.headerPipeSize && (
+                        <div>
+                          <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,marginBottom:4}}>HEADER (MAIN RUN)</div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <select value={job.pipeSize} onChange={e=>setJob(prev=>({...prev,pipeSize:e.target.value}))}
+                              style={{...inS,fontSize:14,fontWeight:600,padding:"7px 10px",flex:1}}>
+                              {PIPE_SIZES.map(s=><option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          {layoutAnalysis.headerPipeSizeReason && (
+                            <div style={{fontFamily:F.mono,fontSize:8,color:C.mid,marginTop:4,lineHeight:1.4}}>{layoutAnalysis.headerPipeSizeReason}</div>
+                          )}
+                        </div>
+                      )}
+                      {layoutAnalysis.dropPipeSize && (
+                        <div>
+                          <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,marginBottom:4}}>DROPS (BRANCHES)</div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <select value={job.dropSize||"3/4\""} onChange={e=>setJob(prev=>({...prev,dropSize:e.target.value}))}
+                              style={{...inS,fontSize:14,fontWeight:600,padding:"7px 10px",flex:1}}>
+                              {PIPE_SIZES.map(s=><option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          {layoutAnalysis.dropPipeSizeReason && (
+                            <div style={{fontFamily:F.mono,fontSize:8,color:C.mid,marginTop:4,lineHeight:1.4}}>{layoutAnalysis.dropPipeSizeReason}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Piping grid */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
                   {[
-                    ["PIPE SIZE",   layoutAnalysis.pipeSize||"—"],
                     ["PIPE RUN",    layoutAnalysis.totalRunFt!=null?layoutAnalysis.totalRunFt+" ft":"—"],
                     ["SYSTEM TYPE", layoutAnalysis.systemType||"—"],
                     ["90° ELBOWS",  layoutAnalysis.elbows90??0],
