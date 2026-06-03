@@ -650,8 +650,8 @@ function App() {
       {/* Bottom Tab Bar */}
       <div style={{
         background:C.surface, borderTop:`1px solid ${C.border}`,
-        display:"flex", flexShrink:0,
-        paddingBottom:"env(safe-area-inset-bottom, 8px)",
+        display:"flex", flexShrink:0, gap:8, padding:"8px 10px",
+        paddingBottom:`calc(8px + env(safe-area-inset-bottom, 0px))`,
       }}>
         {[
           { id:"airiq",     icon:"💨", label:"AirIQ"     },
@@ -659,14 +659,17 @@ function App() {
           { id:"estimator", icon:"📐", label:"Estimator" },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex:1, background:"none", border:"none",
-            padding:"12px 8px 10px",
-            display:"flex", flexDirection:"column", alignItems:"center", gap:4,
-            borderTop:`2px solid ${tab===t.id ? C.orange : "transparent"}`,
+            flex:1,
+            background: tab===t.id ? C.orange : C.surface2,
+            border: `1.5px solid ${tab===t.id ? C.orange : C.border}`,
+            borderRadius:8, padding:"10px 8px 9px",
+            display:"flex", flexDirection:"column", alignItems:"center", gap:5,
+            cursor:"pointer", transition:"all 0.15s",
           }}>
-            <span style={{ fontSize:20 }}>{t.icon}</span>
-            <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:2,
-              color: tab===t.id ? C.orange : C.mid }}>{t.label}</span>
+            <span style={{ fontSize:20, lineHeight:1 }}>{t.icon}</span>
+            <span style={{ fontFamily:F.mono, fontSize:13, letterSpacing:1,
+              color: tab===t.id ? "#fff" : C.text,
+              fontWeight: tab===t.id ? 700 : 400 }}>{t.label}</span>
           </button>
         ))}
       </div>
@@ -1919,6 +1922,14 @@ function Estimator() {
     setSaveBusy(false);
   }
 
+  function resetEstimate() {
+    setJob({customer:"",address:"",pipeSize:"1\"",pipeColor:"Blue",totalRun:"",dropSize:"3/4\""});
+    setComps([]); setDryers([]); setTanks([]); setReels([]);
+    setLayoutImgs([]); setLayoutAnalysis(null);
+    setBomText(""); setSaveMsg("");
+    setFileInputKey(k => k + 1);
+  }
+
   function loadEstimateIntoForm(est) {
     setJob({ customer: est.customer||"", address: est.address||"", pipeSize: est.pipeSize||"1\"", dropSize: est.dropSize||"3/4\"", pipeColor: est.pipeColor||"Blue", totalRun: est.totalRunFt ? String(est.totalRunFt) : "" });
     setComps((est.compressors||[]).map(c => ({ id:uid(), series:c.series||"HD", model:c.model||"HD30", pressure:c.pressure||116, inletTemp:100, ambientTemp:100 })));
@@ -2728,6 +2739,13 @@ No fabricated prices.`;
               boxShadow:saveBusy?"none":"0 0 18px rgba(193,122,53,0.2)",flexShrink:0
             }}>
               {saveBusy?"SAVING...":"SAVE →"}
+            </button>
+            <button onClick={resetEstimate} style={{
+              background:"none",border:`1.5px solid ${C.border}`,borderRadius:7,padding:"10px 18px",
+              fontFamily:F.head,fontSize:15,letterSpacing:3,
+              color:C.mid,cursor:"pointer",transition:"all 0.2s",flexShrink:0
+            }}>
+              NEW ↺
             </button>
           </div>
           {saveMsg && (
