@@ -66,6 +66,12 @@
     @media (max-width:640px){
       .gbb-grid{grid-template-columns:1fr!important;}
     }
+    .pm-pillars{display:flex;gap:10px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;-ms-overflow-style:none;padding-bottom:4px;}
+    .pm-pillars::-webkit-scrollbar{display:none;}
+    @media (max-width:640px){
+      .pm-pillars{flex-wrap:wrap!important;overflow-x:visible!important;}
+      .pm-pillars>div{flex:0 0 calc(50% - 5px)!important;min-width:0!important;}
+    }
     @media (max-width:480px){
       .grid-2col{grid-template-columns:1fr!important;}
       .app-header-inner{padding:5px 12px!important;}
@@ -1931,6 +1937,10 @@ function Estimator() {
   const [sysRec, setSysRec]         = React.useState(null);
   const [sysStock, setSysStock]     = React.useState({});
   const sysFileRef                  = React.useRef(null);
+  const [pmData, setPmData]         = React.useState(null);
+  const [pmBusy, setPmBusy]         = React.useState(false);
+  const pmFileRef                   = React.useRef(null);
+  const [pmFileKey, setPmFileKey]   = React.useState(0);
 
   const uid = () => Date.now() + Math.random();
 
@@ -2138,6 +2148,31 @@ Return ONLY valid JSON, no markdown fence, no extra text:
     setSysOpen(false);
     setSysRec(null);
     setTimeout(()=>document.getElementById("comp-section")?.scrollIntoView({behavior:"smooth"}),100);
+  }
+
+  async function parsePmEstimate(file) {
+    setPmBusy(true); setPmData(null);
+    try {
+      const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
+      const isPdf = file.type==="application/pdf";
+      const isImg = file.type.startsWith("image/");
+      if (!isPdf && !isImg) { setPmData({error:"Please upload a PDF or image of the PM estimate."}); setPmBusy(false); return; }
+      const mediaBlock = isPdf
+        ? { type:"document", source:{ type:"base64", media_type:"application/pdf", data:b64 } }
+        : { type:"image",    source:{ type:"base64", media_type:file.type, data:b64 } };
+      const resp = await fetch("/api/claude",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
+        model:"claude-sonnet-4-6", max_tokens:512,
+        messages:[{ role:"user", content:[mediaBlock,{ type:"text", text:`Extract from this Hodge PM estimate and return ONLY valid JSON (no markdown):
+{"annualPmCost":number,"monthlySubscriptionCost":number|null,"servicesIncluded":["..."],"unitCovered":"string"}
+If a field is absent, use null.` }] }]
+      })});
+      const d = await resp.json();
+      if (d.error) throw new Error(d.error.message||JSON.stringify(d.error));
+      const raw = (d.content?.[0]?.text||"").trim();
+      const clean = raw.replace(/^```(?:json)?\n?|\n?```$/g,"").trim();
+      setPmData(JSON.parse(clean));
+    } catch(e) { setPmData({error:e.message}); }
+    setPmBusy(false);
   }
 
   function loadEstimateIntoForm(est) {
@@ -2832,6 +2867,158 @@ No fabricated prices.`;
           ⚠ Design error: {sysRec.error}
         </div>
       )}
+
+      {/* ── TCO & PM Value Section ── */}
+      {(()=>{
+        const goodEnergy   = sysRec && !sysRec.error ? (sysRec.good?.annualEnergyCost||null)   : null;
+        const betterEnergy = sysRec && !sysRec.error ? (sysRec.better?.annualEnergyCost||null) : null;
+        const bestEnergy   = sysRec && !sysRec.error ? (sysRec.best?.annualEnergyCost||null)   : null;
+        const annualPm = pmData && !pmData.error && pmData.annualPmCost!=null ? Number(pmData.annualPmCost) : null;
+        const bestVsGood5yr = (goodEnergy!=null && bestEnergy!=null && goodEnergy>bestEnergy) ? (goodEnergy-bestEnergy)*5 : null;
+        const tco = (e,pm,yrs) => (e!=null && pm!=null) ? Math.round(e*yrs+pm*yrs) : null;
+        const fmt = v => v!=null ? '$'+v.toLocaleString() : null;
+        const mailtoLink = `mailto:service@hodgecompressor.com?subject=PM%20Quote%20Request&body=Customer:%20${encodeURIComponent(job.customer||'')}%0AUnit:%20${encodeURIComponent((sysRec&&!sysRec.error&&sysRec.best?.model)||'')}%0ALocation:%20${encodeURIComponent(job.address||'')}`;
+        const tRows = [
+          { label:"Equipment Cost", vals:["Contact for pricing","Contact for pricing","Contact for pricing"], isText:true },
+          { label:"Annual Energy Cost", vals:[goodEnergy,betterEnergy,bestEnergy].map(v=>v!=null?'$'+Math.round(v).toLocaleString()+'/yr':"—") },
+          { label:"Annual PM Cost", isText:annualPm==null, vals:annualPm!=null
+              ? [annualPm,annualPm,annualPm].map(v=>'$'+v.toLocaleString()+'/yr')
+              : ["— Upload PM estimate to calculate","— Upload PM estimate to calculate","— Upload PM estimate to calculate"] },
+          { label:"1-Year TCO", bold:true, vals:[goodEnergy,betterEnergy,bestEnergy].map(e=>fmt(tco(e,annualPm,1))||"—") },
+          { label:"3-Year TCO", bold:true, vals:[goodEnergy,betterEnergy,bestEnergy].map(e=>fmt(tco(e,annualPm,3))||"—") },
+          { label:"5-Year TCO", bold:true, vals:[goodEnergy,betterEnergy,bestEnergy].map(e=>fmt(tco(e,annualPm,5))||"—") },
+        ];
+        const pillars = [
+          { icon:"⬆", num:"96%",       label:"Downtime Reduction",        desc:"Structured PM plans catch problems before they catch you off guard." },
+          { icon:"⚡", num:"1-2 Hr",    label:"Emergency Response",        desc:"Fastest in the industry. Resolved before it spirals into costly losses." },
+          { icon:"🕐", num:"24/7",      label:"Availability & Support",    desc:"Days, nights, weekends. We don't stop at 5 PM." },
+          { icon:"📦", num:"9 Branches",label:"Parts On Hand",             desc:"Never waiting on parts. We show up prepared." },
+          { icon:"👷", num:"Local",     label:"Factory-Trained Techs",     desc:"No subcontractors, no surprises." },
+        ];
+        return (
+          <div>
+            {/* PART 1 — TCO Calculator */}
+            <div style={card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                <Mono color={C.copper}>TOTAL COST OF OWNERSHIP</Mono>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  {pmData && !pmData.error && <span style={{fontFamily:F.mono,fontSize:9,color:C.green,letterSpacing:1}}>✓ PM LOADED</span>}
+                  <input key={pmFileKey} ref={pmFileRef} type="file" accept="application/pdf,image/*" style={{display:"none"}}
+                    onChange={e=>{ const f=e.target.files[0]; if(f) parsePmEstimate(f); setPmFileKey(k=>k+1); }}/>
+                  <button onClick={()=>pmFileRef.current?.click()} style={{
+                    padding:"6px 12px",borderRadius:6,border:`1px solid ${C.copper}`,
+                    background:C.copperSoft,color:C.copper,fontSize:11,fontFamily:F.mono,cursor:"pointer",letterSpacing:1
+                  }}>{pmBusy?"PARSING…":pmData&&!pmData.error?"↺ RE-UPLOAD ESTIMATE":"↑ LOAD PM ESTIMATE"}</button>
+                </div>
+              </div>
+              {pmData?.error && <div style={{color:C.red,fontFamily:F.mono,fontSize:11,marginBottom:10}}>⚠ {pmData.error}</div>}
+              {pmData && !pmData.error && (
+                <div style={{background:C.surface2,borderRadius:7,padding:"10px 12px",marginBottom:12,borderLeft:`3px solid ${C.copper}`}}>
+                  <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2,marginBottom:6}}>EXTRACTED FROM ESTIMATE</div>
+                  <div style={{fontSize:13,color:C.text,lineHeight:1.85}}>
+                    {pmData.unitCovered && <div><span style={{color:C.mid}}>Unit:</span> {pmData.unitCovered}</div>}
+                    {pmData.annualPmCost!=null && <div><span style={{color:C.mid}}>Annual PM Cost:</span> <strong>${Number(pmData.annualPmCost).toLocaleString()}/yr</strong></div>}
+                    {pmData.monthlySubscriptionCost!=null && <div><span style={{color:C.mid}}>Monthly Subscription:</span> ${Number(pmData.monthlySubscriptionCost).toLocaleString()}/mo</div>}
+                    {(pmData.servicesIncluded||[]).length>0 && <div style={{color:C.mid,fontSize:12}}>Includes: {pmData.servicesIncluded.join(", ")}</div>}
+                  </div>
+                </div>
+              )}
+              {sysRec && !sysRec.error ? (
+                <div>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontFamily:F.body,fontSize:12,minWidth:320}}>
+                      <thead>
+                        <tr>
+                          <th style={{textAlign:"left",padding:"6px 8px",fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}></th>
+                          {["GOOD","BETTER","BEST"].map((h,i)=>(
+                            <th key={h} style={{textAlign:"right",padding:"6px 8px",fontFamily:F.mono,fontSize:9,color:[C.mid,C.blueLight,C.copper][i],letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tRows.map((row,ri)=>(
+                          <tr key={ri} style={{background:ri%2===0?"transparent":C.surface2}}>
+                            <td style={{padding:"7px 8px",color:C.mid,fontFamily:F.mono,fontSize:9,letterSpacing:1,whiteSpace:"nowrap"}}>{row.label}</td>
+                            {row.vals.map((v,vi)=>(
+                              <td key={vi} style={{padding:"7px 8px",textAlign:"right",
+                                color:row.bold?[C.mid,C.blueLight,C.copper][vi]:C.text,
+                                fontWeight:row.bold?"bold":"normal",
+                                fontSize:row.isText?9:12,
+                                fontFamily:row.isText?F.mono:F.body}}>{v}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {bestVsGood5yr!=null && (
+                    <div style={{marginTop:10,background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:7,padding:"9px 14px",fontFamily:F.mono,fontSize:11,color:C.green,letterSpacing:1}}>
+                      ↓ Over 5 years the VSD option saves ${bestVsGood5yr.toLocaleString()} in energy vs fixed speed
+                    </div>
+                  )}
+                  {annualPm==null && (
+                    <div style={{marginTop:10,fontFamily:F.mono,fontSize:10,color:C.dim,textAlign:"center",letterSpacing:1}}>
+                      Upload the customer's PM estimate to complete the TCO
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{fontFamily:F.mono,fontSize:11,color:C.dim,letterSpacing:1,textAlign:"center",padding:"12px 0"}}>
+                  Run the AI advisor above to populate energy costs, then upload the PM estimate to complete the TCO.
+                </div>
+              )}
+            </div>
+
+            {/* PART 2 — Why Hodge PM */}
+            <div style={card}>
+              <Mono color={C.copper}>WHY CHOOSE HODGE PM</Mono>
+              <div style={{marginBottom:14}}></div>
+              <div className="pm-pillars">
+                {pillars.map((p,i)=>(
+                  <div key={i} style={{minWidth:140,flex:"0 0 140px",background:C.surface2,border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 10px",display:"flex",flexDirection:"column",gap:4}}>
+                    <div style={{fontSize:22,lineHeight:1}}>{p.icon}</div>
+                    <div style={{fontFamily:F.head,fontSize:22,letterSpacing:2,color:C.copper,lineHeight:1}}>{p.num}</div>
+                    <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,lineHeight:1.3,textTransform:"uppercase"}}>{p.label}</div>
+                    <div style={{fontSize:11,color:C.dim,lineHeight:1.4,marginTop:2}}>{p.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* PART 3 — PM Scope Summary */}
+            <div style={card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+                <Mono color={C.copper}>PM SCOPE SUMMARY</Mono>
+                <a href={mailtoLink} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${C.copper}`,background:C.copperSoft,color:C.copper,fontSize:11,fontFamily:F.mono,letterSpacing:1,textDecoration:"none"}}>GET PM QUOTE ↗</a>
+              </div>
+              <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {[
+                  {title:"MINOR SERVICE",sub:"Every 6 months / 2,000 hrs",copper:false,items:["Factory-certified technician on-site","Oil filter replacement","Air filter replacement","Oil sample & analysis","85-point inspection checklist","Internal & external equipment cleaning"]},
+                  {title:"MAJOR SERVICE",sub:"Annually / 4,000–8,000 hrs",copper:true,items:["Everything in Minor Service","Separator element replacement","Full synthetic oil change","Comprehensive system documentation"]},
+                ].map((svc,si)=>(
+                  <div key={si} style={{background:C.surface2,borderRadius:8,padding:"12px 14px",border:`1px solid ${svc.copper?C.copper+'55':C.border}`}}>
+                    <div style={{fontFamily:F.head,fontSize:14,letterSpacing:2,color:svc.copper?C.copper:C.mid,marginBottom:2}}>{svc.title}</div>
+                    <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1,marginBottom:10}}>{svc.sub}</div>
+                    {svc.items.map((item,ii)=>(
+                      <div key={ii} style={{display:"flex",gap:6,marginBottom:5,alignItems:"flex-start"}}>
+                        <span style={{color:svc.copper?C.copper:C.mid,fontSize:10,marginTop:2,flexShrink:0}}>▸</span>
+                        <span style={{fontSize:12,color:C.text,lineHeight:1.4}}>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* PART 4 — Competitive Positioning */}
+            <div style={{background:"linear-gradient(135deg,rgba(193,122,53,0.12),rgba(193,122,53,0.04))",border:"1px solid rgba(193,122,53,0.3)",borderRadius:10,padding:"16px 20px",marginBottom:12}}>
+              <div style={{fontFamily:F.body,fontSize:14,color:C.copper,lineHeight:1.75,fontStyle:"italic"}}>
+                "Hodge PM pricing may be higher than some alternatives. The difference: factory-trained technicians (not subcontractors), Hodge-certified parts (not generic), 9-branch parts network (no waiting on shipping), and 24/7 response (not next-business-day). We don't consider ourselves to have competition — there is no one else doing what we do at this level."
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Compressors */}
       <div id="comp-section" style={card}>
