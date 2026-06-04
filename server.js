@@ -2,6 +2,7 @@ const express = require('express');
 const fetch = require('node-fetch');
 const path = require('path');
 const XLSX = require('xlsx');
+const mammoth = require('mammoth');
 const fs = require('fs');
 const app = require('express')();
 
@@ -224,6 +225,19 @@ function aggregateInventory(rows) {
 }
 
 // ─── API ROUTES ───────────────────────────────────────────────────────────────
+
+// Parse Word doc (.docx) and extract raw text
+app.post('/api/parse-docx', async (req, res) => {
+  try {
+    const { base64 } = req.body;
+    if (!base64) return res.status(400).json({ error: 'No base64 data provided' });
+    const buffer = Buffer.from(base64, 'base64');
+    const result = await mammoth.extractRawText({ buffer });
+    res.json({ text: result.value });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Claude proxy
 app.post('/api/claude', async (req, res) => {

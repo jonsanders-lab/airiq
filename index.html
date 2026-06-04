@@ -1941,6 +1941,10 @@ function Estimator() {
   const [pmBusy, setPmBusy]         = React.useState(false);
   const pmFileRef                   = React.useRef(null);
   const [pmFileKey, setPmFileKey]   = React.useState(0);
+  const [equipPrice, setEquipPrice]           = React.useState("");
+  const [compToggle, setCompToggle]           = React.useState(false);
+  const [compEquipPrice, setCompEquipPrice]   = React.useState("");
+  const [compAnnualMaint, setCompAnnualMaint] = React.useState("");
   const [selectedTier, setSelectedTier] = React.useState(null);
 
   const uid = () => Date.now() + Math.random();
@@ -2159,19 +2163,26 @@ Return ONLY valid JSON, no markdown fence, no extra text:
   async function parsePmEstimate(file) {
     setPmBusy(true); setPmData(null);
     try {
+      const isDocx = file.type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.name?.toLowerCase().endsWith(".docx");
+      const isPdf  = file.type==="application/pdf";
+      const isImg  = file.type.startsWith("image/");
+      if (!isPdf && !isImg && !isDocx) { setPmData({error:"Please upload a PDF, Word doc (.docx), or image of the PM estimate."}); setPmBusy(false); return; }
       const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
-      const isPdf = file.type==="application/pdf";
-      const isImg = file.type.startsWith("image/");
-      if (!isPdf && !isImg) { setPmData({error:"Please upload a PDF or image of the PM estimate."}); setPmBusy(false); return; }
-      const mediaBlock = isPdf
-        ? { type:"document", source:{ type:"base64", media_type:"application/pdf", data:b64 } }
-        : { type:"image",    source:{ type:"base64", media_type:file.type, data:b64 } };
-      const resp = await fetch("/api/claude",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
-        model:"claude-sonnet-4-6", max_tokens:512,
-        messages:[{ role:"user", content:[mediaBlock,{ type:"text", text:`Extract from this Hodge PM estimate and return ONLY valid JSON (no markdown):
-{"annualPmCost":number,"monthlySubscriptionCost":number|null,"servicesIncluded":["..."],"unitCovered":"string"}
-If a field is absent, use null.` }] }]
-      })});
+      const EXTRACT_PROMPT = `{"annualPmCost":number,"monthlySubscriptionCost":number|null,"servicesIncluded":["..."],"unitCovered":"string"}
+If a field is absent, use null.`;
+      let messages;
+      if (isDocx) {
+        const textResp = await fetch("/api/parse-docx",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({base64:b64}) });
+        const textData = await textResp.json();
+        if (textData.error) throw new Error(textData.error);
+        messages = [{ role:"user", content:[{ type:"text", text:`Extract from this Hodge PM estimate and return ONLY valid JSON (no markdown):\n${EXTRACT_PROMPT}\n\nPM ESTIMATE TEXT:\n${textData.text}` }] }];
+      } else {
+        const mediaBlock = isPdf
+          ? { type:"document", source:{ type:"base64", media_type:"application/pdf", data:b64 } }
+          : { type:"image",    source:{ type:"base64", media_type:file.type, data:b64 } };
+        messages = [{ role:"user", content:[mediaBlock,{ type:"text", text:`Extract from this Hodge PM estimate and return ONLY valid JSON (no markdown):\n${EXTRACT_PROMPT}` }] }];
+      }
+      const resp = await fetch("/api/claude",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:512, messages }) });
       const d = await resp.json();
       if (d.error) throw new Error(d.error.message||JSON.stringify(d.error));
       const raw = (d.content?.[0]?.text||"").trim();
@@ -2876,7 +2887,6 @@ No fabricated prices.`;
 
       {/* ── TCO & PM Value Section ── */}
       {(()=>{
-        const mailtoLink = `mailto:service@hodgecompressor.com?subject=PM%20Quote%20Request&body=Customer:%20${encodeURIComponent(job.customer||'')}%0AUnit:%20${encodeURIComponent(selectedTier?.model||'')}%0ALocation:%20${encodeURIComponent(job.address||'')}`;
         const pillars = [
           { icon:"⬆", num:"96%",        label:"Downtime Reduction",     desc:"Structured PM plans catch problems before they catch you off guard." },
           { icon:"⚡", num:"1-2 Hr",     label:"Emergency Response",     desc:"Fastest in the industry. Resolved before it spirals into costly losses." },
@@ -2894,29 +2904,41 @@ No fabricated prices.`;
               const psiUsed    = selectedTier.psiUsed || null;
               const energy     = selectedTier.annualEnergyCost || null;
               const annualPm   = pmData && !pmData.error && pmData.annualPmCost!=null ? Number(pmData.annualPmCost) : null;
-              const tco = (e,pm,yrs) => (e!=null && pm!=null) ? Math.round(e*yrs+pm*yrs) : null;
+              const eqp       = equipPrice !== "" ? Number(equipPrice) : null;
+              const lifecycle = (eq,e,pm,yrs) => (eq==null||e==null||pm==null) ? null : Math.round(eq + e*yrs + pm*yrs);
               const fmt = v => v!=null ? '$'+v.toLocaleString() : null;
               const tRows = [
-                { label:"Equipment Cost",  val:"Contact for pricing", isText:true },
-                { label:"Annual Energy",   val:energy!=null?'$'+Math.round(energy).toLocaleString()+'/yr':"—" },
-                { label:"Annual PM Cost",  val:annualPm!=null?'$'+annualPm.toLocaleString()+'/yr':"— Upload PM estimate to calculate", isText:annualPm==null },
-                { label:"1-Year TCO",      val:fmt(tco(energy,annualPm,1))||"—", bold:true },
-                { label:"3-Year TCO",      val:fmt(tco(energy,annualPm,3))||"—", bold:true },
-                { label:"5-Year TCO",      val:fmt(tco(energy,annualPm,5))||"—", bold:true },
+                { label:"Annual Energy",    val:energy!=null?'$'+Math.round(energy).toLocaleString()+'/yr':"—" },
+                { label:"Annual PM Cost",   val:annualPm!=null?'$'+annualPm.toLocaleString()+'/yr':"— Upload PM estimate", isText:annualPm==null },
+                { label:"YEAR 1 TOTAL",     val:fmt(lifecycle(eqp,energy,annualPm,1))||"—",  bold:true },
+                { label:"YEAR 3 TOTAL",     val:fmt(lifecycle(eqp,energy,annualPm,3))||"—",  bold:true },
+                { label:"YEAR 5 TOTAL",     val:fmt(lifecycle(eqp,energy,annualPm,5))||"—",  bold:true },
+                { label:"YEAR 10 TOTAL",    val:fmt(lifecycle(eqp,energy,annualPm,10))||"—", bold:true },
               ];
               return (
                 <div style={card}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-                    <Mono color={C.copper}>TCO — {selectedTier.model}</Mono>
+                    <Mono color={C.copper}>LIFECYCLE COST — {selectedTier.model}</Mono>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
                       {pmData && !pmData.error && <span style={{fontFamily:F.mono,fontSize:9,color:C.green,letterSpacing:1}}>✓ PM LOADED</span>}
-                      <input key={pmFileKey} ref={pmFileRef} type="file" accept="application/pdf,image/*" style={{display:"none"}}
+                      <input key={pmFileKey} ref={pmFileRef} type="file" accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/*" style={{display:"none"}}
                         onChange={e=>{ const f=e.target.files[0]; if(f) parsePmEstimate(f); setPmFileKey(k=>k+1); }}/>
                       <button onClick={()=>pmFileRef.current?.click()} style={{
                         padding:"6px 12px",borderRadius:6,border:`1px solid ${C.copper}`,
                         background:C.copperSoft,color:C.copper,fontSize:11,fontFamily:F.mono,cursor:"pointer",letterSpacing:1
-                      }}>{pmBusy?"PARSING…":pmData&&!pmData.error?"↺ RE-UPLOAD ESTIMATE":"↑ LOAD PM ESTIMATE"}</button>
+                      }}>{pmBusy?"PARSING…":pmData&&!pmData.error?"↺ RE-UPLOAD ESTIMATE":"↑ UPLOAD PM ESTIMATE"}</button>
                     </div>
+                  </div>
+                  {/* Hodge equipment price input */}
+                  <div style={{background:C.surface2,borderRadius:7,padding:"10px 12px",marginBottom:12,borderLeft:`3px solid ${C.blueLight}`}}>
+                    <div style={{fontFamily:F.mono,fontSize:9,color:C.blueLight,letterSpacing:2,marginBottom:6}}>HODGE EQUIPMENT PRICE</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontFamily:F.mono,fontSize:13,color:C.mid}}>$</span>
+                      <input type="number" min="0" placeholder="Enter quoted price"
+                        value={equipPrice} onChange={e=>setEquipPrice(e.target.value)}
+                        style={{...inS,width:"100%",fontFamily:F.mono,fontSize:13}}/>
+                    </div>
+                    {eqp==null && <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,marginTop:5,letterSpacing:1}}>Enter equipment price to complete lifecycle totals</div>}
                   </div>
                   {/* Selected unit details */}
                   <div style={{background:C.surface2,borderRadius:7,padding:"10px 12px",marginBottom:12,borderLeft:`3px solid ${C.copper}`}}>
@@ -2959,11 +2981,91 @@ No fabricated prices.`;
                       ↓ Over 5 years this VSD saves ${(selectedTier.annualEnergySavings*5).toLocaleString()} in energy vs fixed speed
                     </div>
                   )}
-                  {annualPm==null && (
+                  {(eqp==null || annualPm==null) && (
                     <div style={{marginTop:10,fontFamily:F.mono,fontSize:10,color:C.dim,textAlign:"center",letterSpacing:1}}>
-                      Upload the customer's PM estimate to complete the TCO
+                      {eqp==null && annualPm==null ? "Enter equipment price and upload PM estimate to calculate lifecycle totals"
+                        : eqp==null ? "Enter equipment price above to calculate lifecycle totals"
+                        : "Upload PM estimate to complete lifecycle analysis"}
                     </div>
                   )}
+                  {/* vs Competition toggle */}
+                  <div style={{marginTop:14,borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+                    <button onClick={()=>setCompToggle(t=>!t)}
+                      style={{width:"100%",padding:"8px 12px",borderRadius:6,
+                        border:`1px solid ${compToggle?C.copper:C.border}`,
+                        background:compToggle?C.copperSoft:"transparent",
+                        color:compToggle?C.copper:C.mid,
+                        fontSize:11,fontFamily:F.mono,letterSpacing:1,cursor:"pointer",textAlign:"left"}}>
+                      {compToggle?"▼ HIDE":"▶ VS COMPETITION"} — side-by-side lifecycle comparison
+                    </button>
+                    {compToggle && (
+                      <div style={{marginTop:12}}>
+                        <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                          <div>
+                            <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,marginBottom:4}}>COMPETITOR EQUIPMENT PRICE</div>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{fontFamily:F.mono,fontSize:12,color:C.mid}}>$</span>
+                              <input type="number" min="0" placeholder="0"
+                                value={compEquipPrice} onChange={e=>setCompEquipPrice(e.target.value)}
+                                style={{...inS,fontFamily:F.mono,fontSize:12}}/>
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,marginBottom:4}}>COMPETITOR ANNUAL MAINT</div>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{fontFamily:F.mono,fontSize:12,color:C.mid}}>$</span>
+                              <input type="number" min="0" placeholder="0"
+                                value={compAnnualMaint} onChange={e=>setCompAnnualMaint(e.target.value)}
+                                style={{...inS,fontFamily:F.mono,fontSize:12}}/>
+                            </div>
+                          </div>
+                        </div>
+                        {(()=>{
+                          const cEqp   = compEquipPrice  !== "" ? Number(compEquipPrice)  : null;
+                          const cMaint = compAnnualMaint !== "" ? Number(compAnnualMaint) : null;
+                          const cVal   = yr => (cEqp!=null&&cMaint!=null) ? Math.round(cEqp+cMaint*yr) : null;
+                          const ready  = eqp!=null && annualPm!=null && cEqp!=null && cMaint!=null && energy!=null;
+                          return (
+                            <div>
+                              <table style={{width:"100%",borderCollapse:"collapse",fontFamily:F.body,fontSize:12}}>
+                                <thead>
+                                  <tr>
+                                    <th style={{padding:"6px 8px",textAlign:"left",fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}>YEAR</th>
+                                    <th style={{padding:"6px 8px",textAlign:"right",fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}>HODGE TOTAL</th>
+                                    <th style={{padding:"6px 8px",textAlign:"right",fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}>COMPETITOR</th>
+                                    <th style={{padding:"6px 8px",textAlign:"right",fontFamily:F.mono,fontSize:9,color:C.green,letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}>HODGE ADVANTAGE</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[1,3,5,10].map((yr,ri)=>{
+                                    const h   = lifecycle(eqp,energy,annualPm,yr);
+                                    const c   = cVal(yr);
+                                    const adv = (h!=null&&c!=null) ? c-h : null;
+                                    return (
+                                      <tr key={yr} style={{background:ri%2===0?"transparent":C.surface2}}>
+                                        <td style={{padding:"7px 8px",fontFamily:F.mono,fontSize:10,color:C.mid,letterSpacing:1}}>Yr {yr}</td>
+                                        <td style={{padding:"7px 8px",textAlign:"right",color:C.copper,fontWeight:"bold"}}>{h!=null?'$'+h.toLocaleString():"—"}</td>
+                                        <td style={{padding:"7px 8px",textAlign:"right",color:C.text}}>{c!=null?'$'+c.toLocaleString():"—"}</td>
+                                        <td style={{padding:"7px 8px",textAlign:"right",fontWeight:"bold",
+                                          color:adv==null?C.dim:adv>0?C.green:adv<0?C.red:C.mid}}>
+                                          {adv==null?"—":adv>0?'+$'+adv.toLocaleString():adv===0?"$0":'-$'+Math.abs(adv).toLocaleString()}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                              {!ready && (
+                                <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,textAlign:"center",marginTop:8,letterSpacing:1}}>
+                                  Fill in all fields above to see the full comparison
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })()}
@@ -2986,9 +3088,8 @@ No fabricated prices.`;
 
             {/* PART 3 — PM Scope Summary (always visible) */}
             <div style={card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+              <div style={{marginBottom:14}}>
                 <Mono color={C.copper}>PM SCOPE SUMMARY</Mono>
-                <a href={mailtoLink} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${C.copper}`,background:C.copperSoft,color:C.copper,fontSize:11,fontFamily:F.mono,letterSpacing:1,textDecoration:"none"}}>GET PM QUOTE ↗</a>
               </div>
               <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
