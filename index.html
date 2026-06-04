@@ -1882,7 +1882,7 @@ function Estimator() {
   // ── Design Advisor state ──
   const [sysOpen, setSysOpen]       = React.useState(false);
   const [sysMethod, setSysMethod]   = React.useState("manual");
-  const [sysReqs, setSysReqs]       = React.useState({ cfm:"", psi:"100", appType:"General Manufacturing", airQuality:"4", hours:"8", phase:"3ph", notes:"" });
+  const [sysReqs, setSysReqs]       = React.useState({ cfm:"", psi:"100", appType:"General Manufacturing", airQuality:"4", hours:"8", phase:"3ph", voltage:"460v3ph", notes:"" });
   const [sysFileBusy, setSysFileBusy] = React.useState(false);
   const [sysBusy, setSysBusy]       = React.useState(false);
   const [sysRec, setSysRec]         = React.useState(null);
@@ -2004,7 +2004,13 @@ function Estimator() {
 CUSTOMER REQUIREMENTS:
 Required CFM: ${sysReqs.cfm} CFM | Pressure: ${sysReqs.psi} PSIG | Application: ${sysReqs.appType}
 Air quality: ISO 8573-1 ${airQualityLabels[sysReqs.airQuality]||sysReqs.airQuality}
-Operating hours/day: ${sysReqs.hours} | Power: ${sysReqs.phase==="1ph"?"Single-phase (very limited Hodge options — recommend phase converter or HTM7.5(1Ph) only)":"Three-phase"}
+Operating hours/day: ${sysReqs.hours} | Power: ${sysReqs.phase==="1ph"?"Single-phase (very limited Hodge options — recommend phase converter or HTM7.5(1Ph) only)":"Three-phase"} | Voltage: ${{
+  "230v1ph":"208-230V Single Phase — only HD20 and smaller or HTM tank-mounts; flag if recommended model requires 3-phase",
+  "230v3ph":"208-230V Three Phase — available on most models, non-standard catalog voltage, note this to the rep",
+  "460v3ph":"460V Three Phase — standard Hodge catalog voltage, all models available",
+  "575v3ph":"575V Three Phase — available on most models, common in Canada, confirm with factory",
+  "380v3ph":"380V Three Phase — export voltage, factory order, confirm lead time"
+}[sysReqs.voltage]||sysReqs.voltage}
 ${sysReqs.notes?`Special requirements: ${sysReqs.notes}`:""}
 
 HODGE COMPRESSOR CATALOG (model@psi=cfm):
@@ -2562,11 +2568,50 @@ No fabricated prices.`;
               </select>
             </FieldRow>
             <FieldRow label="POWER AVAILABLE">
-              <select value={sysReqs.phase} onChange={e=>setSysReqs(p=>({...p,phase:e.target.value}))} style={inS}>
+              <select value={sysReqs.phase} onChange={e=>setSysReqs(p=>({...p,phase:e.target.value,
+                voltage:e.target.value==="1ph"?"230v1ph":sysReqs.voltage==="230v1ph"?"460v3ph":sysReqs.voltage}))} style={inS}>
                 <option value="3ph">Three-Phase</option>
                 <option value="1ph">Single-Phase</option>
               </select>
             </FieldRow>
+          </div>
+          <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <FieldRow label="VOLTAGE">
+              <select value={sysReqs.voltage} onChange={e=>setSysReqs(p=>({...p,voltage:e.target.value,
+                phase:e.target.value==="230v1ph"?"1ph":"3ph"}))} style={inS}>
+                {sysReqs.phase==="1ph"
+                  ? <option value="230v1ph">208-230V Single Phase</option>
+                  : <>
+                      <option value="230v3ph">208-230V Three Phase</option>
+                      <option value="460v3ph">460V Three Phase (most common)</option>
+                      <option value="575v3ph">575V Three Phase</option>
+                      <option value="380v3ph">380V Three Phase (export)</option>
+                    </>
+                }
+              </select>
+            </FieldRow>
+            <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}>
+              {sysReqs.voltage==="230v1ph" && (
+                <div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#f59e0b",lineHeight:1.5,width:"100%"}}>
+                  ⚠ 208-230V Single Phase limits available models to smaller HD units (≤HD20) and HTM tank-mounts only. Larger units require 3-phase or a phase converter.
+                </div>
+              )}
+              {sysReqs.voltage==="230v3ph" && (
+                <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
+                  ℹ 208-230V 3-phase is available on most Hodge models but confirm motor configuration with factory — standard catalog is 460V.
+                </div>
+              )}
+              {sysReqs.voltage==="575v3ph" && (
+                <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
+                  ℹ 575V available on most models — common in Canada. Confirm availability and lead time with factory.
+                </div>
+              )}
+              {sysReqs.voltage==="380v3ph" && (
+                <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
+                  ℹ 380V export configuration — not a standard stock voltage. Factory order required; confirm lead time.
+                </div>
+              )}
+            </div>
           </div>
           <FieldRow label="NOTES / SPECIAL REQUIREMENTS">
             <input value={sysReqs.notes} onChange={e=>setSysReqs(p=>({...p,notes:e.target.value}))}
