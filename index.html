@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="AirIQ"/>
@@ -58,6 +58,9 @@
         background:#f5f7fb!important;
         -webkit-print-color-adjust:exact;print-color-adjust:exact;
       }
+    }
+    @media (max-width:480px){
+      .grid-2col{grid-template-columns:1fr!important;}
     }
   </style>
 </head>
@@ -662,8 +665,8 @@ function App() {
             flex:1,
             background: tab===t.id ? C.orange : C.surface2,
             border: `1.5px solid ${tab===t.id ? C.orange : C.border}`,
-            borderRadius:8, padding:"10px 8px 9px",
-            display:"flex", flexDirection:"column", alignItems:"center", gap:5,
+            borderRadius:8, padding:"10px 8px 9px", minHeight:64,
+            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5,
             cursor:"pointer", transition:"all 0.15s",
           }}>
             <span style={{ fontSize:20, lineHeight:1 }}>{t.icon}</span>
@@ -812,22 +815,22 @@ function AirIQ() {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:C.bg }}>
-      {/* ST Status bar */}
-      <div style={{ padding:"4px 16px 6px", background:C.surface, borderBottom:`1px solid ${C.border}`,
-        display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {ST_VENDORS.map((v,i) => (
-            <a key={i} href={v.url} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize:10, fontWeight:600, padding:"2px 8px", borderRadius:20,
-                background:"#1e2535", color:"#60a5fa", textDecoration:"none",
-                display:"flex", alignItems:"center", gap:3, border:"1px solid #2a3a55" }}>
-              <span style={{ fontSize:7 }}>↗</span>{v.short}
-            </a>
-          ))}
-        </div>
+      {/* ST Status bar — single scrollable row */}
+      <div style={{ padding:"4px 12px 6px", background:C.surface, borderBottom:`1px solid ${C.border}`,
+        display:"flex", alignItems:"center", gap:6, overflowX:"auto", flexWrap:"nowrap",
+        flexShrink:0, WebkitOverflowScrolling:"touch" }}>
+        {ST_VENDORS.map((v,i) => (
+          <a key={i} href={v.url} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize:10, fontWeight:600, padding:"2px 8px", borderRadius:20,
+              background:"#1e2535", color:"#60a5fa", textDecoration:"none",
+              display:"flex", alignItems:"center", gap:3, border:"1px solid #2a3a55",
+              flexShrink:0, whiteSpace:"nowrap" }}>
+            <span style={{ fontSize:7 }}>↗</span>{v.short}
+          </a>
+        ))}
         <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, background:"#1e2535",
           border:"1px solid #2a3a55", color:"#60a5fa", fontWeight:500,
-          display:"flex", alignItems:"center", gap:4, flexShrink:0, marginLeft:8 }}>
+          display:"flex", alignItems:"center", gap:4, flexShrink:0, whiteSpace:"nowrap" }}>
           {stLookupActive
             ? <><span style={{ width:5,height:5,borderRadius:"50%",background:"#f59e0b",display:"inline-block",animation:"blink 1s infinite" }}/> ST…</>
             : "ST Price + Stock"}
@@ -917,11 +920,11 @@ function AirIQ() {
           onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
           placeholder="Ask a question or check availability — e.g. 'price and stock on HD30'"
           style={{ flex:1, resize:"none", border:"1px solid #2a2d3a", borderRadius:8,
-            padding:"8px 11px", fontSize:14, fontFamily:"inherit", outline:"none",
-            height:40, minHeight:40, maxHeight:120, lineHeight:1.5,
+            padding:"11px 11px", fontSize:14, fontFamily:"inherit", outline:"none",
+            height:44, minHeight:44, maxHeight:120, lineHeight:1.5,
             color:"#e2e6f0", background:"#0f1117" }}/>
         <button onClick={startListening} disabled={loading} style={{
-          width:38, height:38, borderRadius:8, border:"none",
+          minWidth:44, height:44, borderRadius:8, border:"none",
           background:isListening?"#7f1d1d":"#1e2535",
           color:isListening?"#f87171":"#60a5fa",
           cursor:loading?"not-allowed":"pointer",
@@ -932,7 +935,7 @@ function AirIQ() {
           </svg>
         </button>
         <button onClick={()=>submit()} disabled={loading||!input.trim()} style={{
-          width:38, height:38, borderRadius:8, border:"none",
+          minWidth:44, height:44, borderRadius:8, border:"none",
           background:loading||!input.trim()?"#1e2535":"#e87c2a",
           color:"#fff", cursor:loading||!input.trim()?"not-allowed":"pointer",
           display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -2305,7 +2308,7 @@ No fabricated prices.`;
       <div style={card}>
         <Mono color={C.copper}>JOB INFO</Mono>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <FieldRow label="CUSTOMER">
               <input value={job.customer} onChange={e=>setJob({...job,customer:e.target.value})}
                 placeholder="Customer name" style={inS}/>
@@ -2315,7 +2318,7 @@ No fabricated prices.`;
                 placeholder="City, State" style={inS}/>
             </FieldRow>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <FieldRow label="HEADER SIZE" hint="main run">
               <select value={job.pipeSize} onChange={e=>setJob({...job,pipeSize:e.target.value})} style={inS}>
                 {PIPE_SIZES.map(s=><option key={s} value={s}>{s}</option>)}
@@ -2327,7 +2330,7 @@ No fabricated prices.`;
               </select>
             </FieldRow>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <FieldRow label="PIPE COLOR">
               <select value={job.pipeColor} onChange={e=>setJob({...job,pipeColor:e.target.value})} style={inS}>
                 {PIPE_COLORS.map(c=><option key={c} value={c}>{c}</option>)}
@@ -2370,7 +2373,7 @@ No fabricated prices.`;
                 <button onClick={()=>rmComp(c.id)}
                   style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                 <FieldRow label="SERIES">
                   <select value={c.series} onChange={e=>updComp(c.id,"series",e.target.value)} style={inS}>
                     {Object.keys(COMP_DB).map(s=><option key={s} value={s}>{COMP_DB[s].label}</option>)}
@@ -2389,7 +2392,7 @@ No fabricated prices.`;
                   ))}
                 </select>
               </FieldRow>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+              <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
                 <FieldRow label="INLET TEMP (°F)" hint="dryer sizing">
                   <select value={c.inletTemp} onChange={e=>updComp(c.id,"inletTemp",Number(e.target.value))} style={inS}>
                     {Object.keys(CF_INLET).map(t=><option key={t} value={t}>{t}°F</option>)}
@@ -2622,7 +2625,7 @@ No fabricated prices.`;
                 {(layoutAnalysis.headerPipeSize || layoutAnalysis.dropPipeSize) && (
                   <div style={{background:C.surface2,border:`1px solid ${C.blueLight}55`,borderRadius:7,padding:"10px 12px",marginBottom:10}}>
                     <div style={{fontFamily:F.mono,fontSize:8,color:C.blueLight,letterSpacing:2,marginBottom:8}}>AI PIPE SIZE RECOMMENDATIONS — review and override in Job Info above</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                       {layoutAnalysis.headerPipeSize && (
                         <div>
                           <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,marginBottom:4}}>HEADER (MAIN RUN)</div>
