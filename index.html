@@ -1941,6 +1941,7 @@ function Estimator() {
   const [pmBusy, setPmBusy]         = React.useState(false);
   const pmFileRef                   = React.useRef(null);
   const [pmFileKey, setPmFileKey]   = React.useState(0);
+  const [selectedTier, setSelectedTier] = React.useState(null);
 
   const uid = () => Date.now() + Math.random();
 
@@ -2017,6 +2018,7 @@ function Estimator() {
     setLayoutImgs([]); setLayoutAnalysis(null);
     setBomText(""); setSaveMsg("");
     setFileInputKey(k => k + 1);
+    setSelectedTier(null);
   }
 
   async function extractFromSpec(file) {
@@ -2042,7 +2044,7 @@ function Estimator() {
 
   async function designSystem() {
     if (!sysReqs.cfm) return;
-    setSysBusy(true); setSysRec(null); setSysStock({});
+    setSysBusy(true); setSysRec(null); setSysStock({}); setSelectedTier(null);
     const compCatalog = Object.entries(COMP_DB).map(([k,v])=>
       `${k} (${v.label}): `+Object.entries(v.cfm||{}).map(([m,ps])=>
         `${m}@${Object.entries(ps).map(([p,c])=>`${p}psi=${c}cfm`).join("/")}`)
@@ -2109,10 +2111,13 @@ Return ONLY valid JSON, no markdown fence, no extra text:
       const reqCFM    = Number(sysReqs.cfm);
       ["good","better","best"].forEach(k => {
         const t = rec[k]; if (!t) return;
-        const cfmTbl = ((COMP_DB[t.series] || {}).cfm || {})[t.model] || {};
-        const psiKey = Object.keys(cfmTbl).map(Number).sort((a,b)=>a-b).find(p => p >= Number(sysReqs.psi));
-        const ratedCFM = psiKey ? cfmTbl[psiKey] : (t.cfmAtPsi || 0);
-        t.annualEnergyCost = calcEnergyCost(t.model, t.series, ratedCFM, reqCFM, annualHrs);
+        const normModel  = String(t.model||"").toUpperCase().replace(/[-\s]/g,"");
+        const normSeries = String(t.series||"").toUpperCase();
+        const cfmTbl = ((COMP_DB[normSeries] || {}).cfm || {})[normModel] || {};
+        const psiKeys = Object.keys(cfmTbl).map(Number).sort((a,b)=>a-b);
+        const psiKey  = psiKeys.find(p => p >= Number(sysReqs.psi)) || psiKeys[psiKeys.length-1];
+        const ratedCFM = (psiKey && cfmTbl[psiKey]) || Number(t.cfmAtPsi) || 0;
+        t.annualEnergyCost = calcEnergyCost(normModel, normSeries, ratedCFM, reqCFM, annualHrs);
       });
       if (rec.good && rec.best)
         rec.best.annualEnergySavings = Math.max(0, rec.good.annualEnergyCost - rec.best.annualEnergyCost);
@@ -2145,6 +2150,7 @@ Return ONLY valid JSON, no markdown fence, no extra text:
     const gal = String(tier.tankGal||"");
     const tOpt = TANK_OPTS.find(t=>t.startsWith(gal));
     if (tOpt) setTanks([{id:uid(),qty:1,name:tOpt}]); else setTanks([]);
+    setSelectedTier(tier);
     setSysOpen(false);
     setSysRec(null);
     setTimeout(()=>document.getElementById("comp-section")?.scrollIntoView({behavior:"smooth"}),100);
@@ -2870,90 +2876,87 @@ No fabricated prices.`;
 
       {/* ── TCO & PM Value Section ── */}
       {(()=>{
-        const goodEnergy   = sysRec && !sysRec.error ? (sysRec.good?.annualEnergyCost||null)   : null;
-        const betterEnergy = sysRec && !sysRec.error ? (sysRec.better?.annualEnergyCost||null) : null;
-        const bestEnergy   = sysRec && !sysRec.error ? (sysRec.best?.annualEnergyCost||null)   : null;
-        const annualPm = pmData && !pmData.error && pmData.annualPmCost!=null ? Number(pmData.annualPmCost) : null;
-        const bestVsGood5yr = (goodEnergy!=null && bestEnergy!=null && goodEnergy>bestEnergy) ? (goodEnergy-bestEnergy)*5 : null;
-        const tco = (e,pm,yrs) => (e!=null && pm!=null) ? Math.round(e*yrs+pm*yrs) : null;
-        const fmt = v => v!=null ? '$'+v.toLocaleString() : null;
-        const mailtoLink = `mailto:service@hodgecompressor.com?subject=PM%20Quote%20Request&body=Customer:%20${encodeURIComponent(job.customer||'')}%0AUnit:%20${encodeURIComponent((sysRec&&!sysRec.error&&sysRec.best?.model)||'')}%0ALocation:%20${encodeURIComponent(job.address||'')}`;
-        const tRows = [
-          { label:"Equipment Cost", vals:["Contact for pricing","Contact for pricing","Contact for pricing"], isText:true },
-          { label:"Annual Energy Cost", vals:[goodEnergy,betterEnergy,bestEnergy].map(v=>v!=null?'$'+Math.round(v).toLocaleString()+'/yr':"—") },
-          { label:"Annual PM Cost", isText:annualPm==null, vals:annualPm!=null
-              ? [annualPm,annualPm,annualPm].map(v=>'$'+v.toLocaleString()+'/yr')
-              : ["— Upload PM estimate to calculate","— Upload PM estimate to calculate","— Upload PM estimate to calculate"] },
-          { label:"1-Year TCO", bold:true, vals:[goodEnergy,betterEnergy,bestEnergy].map(e=>fmt(tco(e,annualPm,1))||"—") },
-          { label:"3-Year TCO", bold:true, vals:[goodEnergy,betterEnergy,bestEnergy].map(e=>fmt(tco(e,annualPm,3))||"—") },
-          { label:"5-Year TCO", bold:true, vals:[goodEnergy,betterEnergy,bestEnergy].map(e=>fmt(tco(e,annualPm,5))||"—") },
-        ];
+        const mailtoLink = `mailto:service@hodgecompressor.com?subject=PM%20Quote%20Request&body=Customer:%20${encodeURIComponent(job.customer||'')}%0AUnit:%20${encodeURIComponent(selectedTier?.model||'')}%0ALocation:%20${encodeURIComponent(job.address||'')}`;
         const pillars = [
-          { icon:"⬆", num:"96%",       label:"Downtime Reduction",        desc:"Structured PM plans catch problems before they catch you off guard." },
-          { icon:"⚡", num:"1-2 Hr",    label:"Emergency Response",        desc:"Fastest in the industry. Resolved before it spirals into costly losses." },
-          { icon:"🕐", num:"24/7",      label:"Availability & Support",    desc:"Days, nights, weekends. We don't stop at 5 PM." },
-          { icon:"📦", num:"9 Branches",label:"Parts On Hand",             desc:"Never waiting on parts. We show up prepared." },
-          { icon:"👷", num:"Local",     label:"Factory-Trained Techs",     desc:"No subcontractors, no surprises." },
+          { icon:"⬆", num:"96%",        label:"Downtime Reduction",     desc:"Structured PM plans catch problems before they catch you off guard." },
+          { icon:"⚡", num:"1-2 Hr",     label:"Emergency Response",     desc:"Fastest in the industry. Resolved before it spirals into costly losses." },
+          { icon:"🕐", num:"24/7",       label:"Availability & Support", desc:"Days, nights, weekends. We don't stop at 5 PM." },
+          { icon:"📦", num:"9 Branches", label:"Parts On Hand",          desc:"Never waiting on parts. We show up prepared." },
+          { icon:"👷", num:"Local",      label:"Factory-Trained Techs",  desc:"No subcontractors, no surprises." },
         ];
         return (
           <div>
-            {/* PART 1 — TCO Calculator */}
-            <div style={card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-                <Mono color={C.copper}>TOTAL COST OF OWNERSHIP</Mono>
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  {pmData && !pmData.error && <span style={{fontFamily:F.mono,fontSize:9,color:C.green,letterSpacing:1}}>✓ PM LOADED</span>}
-                  <input key={pmFileKey} ref={pmFileRef} type="file" accept="application/pdf,image/*" style={{display:"none"}}
-                    onChange={e=>{ const f=e.target.files[0]; if(f) parsePmEstimate(f); setPmFileKey(k=>k+1); }}/>
-                  <button onClick={()=>pmFileRef.current?.click()} style={{
-                    padding:"6px 12px",borderRadius:6,border:`1px solid ${C.copper}`,
-                    background:C.copperSoft,color:C.copper,fontSize:11,fontFamily:F.mono,cursor:"pointer",letterSpacing:1
-                  }}>{pmBusy?"PARSING…":pmData&&!pmData.error?"↺ RE-UPLOAD ESTIMATE":"↑ LOAD PM ESTIMATE"}</button>
-                </div>
-              </div>
-              {pmData?.error && <div style={{color:C.red,fontFamily:F.mono,fontSize:11,marginBottom:10}}>⚠ {pmData.error}</div>}
-              {pmData && !pmData.error && (
-                <div style={{background:C.surface2,borderRadius:7,padding:"10px 12px",marginBottom:12,borderLeft:`3px solid ${C.copper}`}}>
-                  <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2,marginBottom:6}}>EXTRACTED FROM ESTIMATE</div>
-                  <div style={{fontSize:13,color:C.text,lineHeight:1.85}}>
-                    {pmData.unitCovered && <div><span style={{color:C.mid}}>Unit:</span> {pmData.unitCovered}</div>}
-                    {pmData.annualPmCost!=null && <div><span style={{color:C.mid}}>Annual PM Cost:</span> <strong>${Number(pmData.annualPmCost).toLocaleString()}/yr</strong></div>}
-                    {pmData.monthlySubscriptionCost!=null && <div><span style={{color:C.mid}}>Monthly Subscription:</span> ${Number(pmData.monthlySubscriptionCost).toLocaleString()}/mo</div>}
-                    {(pmData.servicesIncluded||[]).length>0 && <div style={{color:C.mid,fontSize:12}}>Includes: {pmData.servicesIncluded.join(", ")}</div>}
+            {/* PART 1 — TCO Calculator (only after loading a tier) */}
+            {selectedTier && (()=>{
+              const normModel  = String(selectedTier.model||"").toUpperCase().replace(/[-\s]/g,"");
+              const motorKw    = MOTOR_KW[normModel] || null;
+              const ratedCFM   = selectedTier.cfmAtPsi || null;
+              const psiUsed    = selectedTier.psiUsed || null;
+              const energy     = selectedTier.annualEnergyCost || null;
+              const annualPm   = pmData && !pmData.error && pmData.annualPmCost!=null ? Number(pmData.annualPmCost) : null;
+              const tco = (e,pm,yrs) => (e!=null && pm!=null) ? Math.round(e*yrs+pm*yrs) : null;
+              const fmt = v => v!=null ? '$'+v.toLocaleString() : null;
+              const tRows = [
+                { label:"Equipment Cost",  val:"Contact for pricing", isText:true },
+                { label:"Annual Energy",   val:energy!=null?'$'+Math.round(energy).toLocaleString()+'/yr':"—" },
+                { label:"Annual PM Cost",  val:annualPm!=null?'$'+annualPm.toLocaleString()+'/yr':"— Upload PM estimate to calculate", isText:annualPm==null },
+                { label:"1-Year TCO",      val:fmt(tco(energy,annualPm,1))||"—", bold:true },
+                { label:"3-Year TCO",      val:fmt(tco(energy,annualPm,3))||"—", bold:true },
+                { label:"5-Year TCO",      val:fmt(tco(energy,annualPm,5))||"—", bold:true },
+              ];
+              return (
+                <div style={card}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                    <Mono color={C.copper}>TCO — {selectedTier.model}</Mono>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      {pmData && !pmData.error && <span style={{fontFamily:F.mono,fontSize:9,color:C.green,letterSpacing:1}}>✓ PM LOADED</span>}
+                      <input key={pmFileKey} ref={pmFileRef} type="file" accept="application/pdf,image/*" style={{display:"none"}}
+                        onChange={e=>{ const f=e.target.files[0]; if(f) parsePmEstimate(f); setPmFileKey(k=>k+1); }}/>
+                      <button onClick={()=>pmFileRef.current?.click()} style={{
+                        padding:"6px 12px",borderRadius:6,border:`1px solid ${C.copper}`,
+                        background:C.copperSoft,color:C.copper,fontSize:11,fontFamily:F.mono,cursor:"pointer",letterSpacing:1
+                      }}>{pmBusy?"PARSING…":pmData&&!pmData.error?"↺ RE-UPLOAD ESTIMATE":"↑ LOAD PM ESTIMATE"}</button>
+                    </div>
                   </div>
-                </div>
-              )}
-              {sysRec && !sysRec.error ? (
-                <div>
-                  <div style={{overflowX:"auto"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontFamily:F.body,fontSize:12,minWidth:320}}>
-                      <thead>
-                        <tr>
-                          <th style={{textAlign:"left",padding:"6px 8px",fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}></th>
-                          {["GOOD","BETTER","BEST"].map((h,i)=>(
-                            <th key={h} style={{textAlign:"right",padding:"6px 8px",fontFamily:F.mono,fontSize:9,color:[C.mid,C.blueLight,C.copper][i],letterSpacing:1,borderBottom:`1px solid ${C.border}`,fontWeight:"normal"}}>{h}</th>
-                          ))}
+                  {/* Selected unit details */}
+                  <div style={{background:C.surface2,borderRadius:7,padding:"10px 12px",marginBottom:12,borderLeft:`3px solid ${C.copper}`}}>
+                    <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2,marginBottom:6}}>SELECTED UNIT</div>
+                    <div style={{fontSize:13,color:C.text,lineHeight:1.85}}>
+                      <div><span style={{color:C.mid}}>Model:</span> <strong>{selectedTier.model}</strong> — {selectedTier.headline}</div>
+                      {motorKw && <div><span style={{color:C.mid}}>Motor:</span> {motorKw} kW nameplate</div>}
+                      {ratedCFM && psiUsed && <div><span style={{color:C.mid}}>Rated Output:</span> {ratedCFM} CFM @ {psiUsed} PSI</div>}
+                      {energy>0 && <div><span style={{color:C.mid}}>Est. Annual Energy:</span> <strong>${Math.round(energy).toLocaleString()}/yr</strong></div>}
+                    </div>
+                  </div>
+                  {/* PM data extracted */}
+                  {pmData?.error && <div style={{color:C.red,fontFamily:F.mono,fontSize:11,marginBottom:10}}>⚠ {pmData.error}</div>}
+                  {pmData && !pmData.error && (
+                    <div style={{background:C.surface2,borderRadius:7,padding:"10px 12px",marginBottom:12,borderLeft:`3px solid ${C.copper}`}}>
+                      <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2,marginBottom:6}}>EXTRACTED FROM PM ESTIMATE</div>
+                      <div style={{fontSize:13,color:C.text,lineHeight:1.85}}>
+                        {pmData.unitCovered && <div><span style={{color:C.mid}}>Unit:</span> {pmData.unitCovered}</div>}
+                        {pmData.annualPmCost!=null && <div><span style={{color:C.mid}}>Annual PM Cost:</span> <strong>${Number(pmData.annualPmCost).toLocaleString()}/yr</strong></div>}
+                        {pmData.monthlySubscriptionCost!=null && <div><span style={{color:C.mid}}>Monthly Subscription:</span> ${Number(pmData.monthlySubscriptionCost).toLocaleString()}/mo</div>}
+                        {(pmData.servicesIncluded||[]).length>0 && <div style={{color:C.mid,fontSize:12}}>Includes: {pmData.servicesIncluded.join(", ")}</div>}
+                      </div>
+                    </div>
+                  )}
+                  {/* TCO table — single selected unit */}
+                  <table style={{width:"100%",borderCollapse:"collapse",fontFamily:F.body,fontSize:12}}>
+                    <tbody>
+                      {tRows.map((row,ri)=>(
+                        <tr key={ri} style={{background:ri%2===0?"transparent":C.surface2}}>
+                          <td style={{padding:"7px 8px",color:C.mid,fontFamily:F.mono,fontSize:9,letterSpacing:1,width:"55%"}}>{row.label}</td>
+                          <td style={{padding:"7px 8px",textAlign:"right",
+                            color:row.bold?C.copper:C.text,fontWeight:row.bold?"bold":"normal",
+                            fontSize:row.isText?9:12,fontFamily:row.isText?F.mono:F.body}}>{row.val}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {tRows.map((row,ri)=>(
-                          <tr key={ri} style={{background:ri%2===0?"transparent":C.surface2}}>
-                            <td style={{padding:"7px 8px",color:C.mid,fontFamily:F.mono,fontSize:9,letterSpacing:1,whiteSpace:"nowrap"}}>{row.label}</td>
-                            {row.vals.map((v,vi)=>(
-                              <td key={vi} style={{padding:"7px 8px",textAlign:"right",
-                                color:row.bold?[C.mid,C.blueLight,C.copper][vi]:C.text,
-                                fontWeight:row.bold?"bold":"normal",
-                                fontSize:row.isText?9:12,
-                                fontFamily:row.isText?F.mono:F.body}}>{v}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {bestVsGood5yr!=null && (
+                      ))}
+                    </tbody>
+                  </table>
+                  {selectedTier.annualEnergySavings>0 && (
                     <div style={{marginTop:10,background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:7,padding:"9px 14px",fontFamily:F.mono,fontSize:11,color:C.green,letterSpacing:1}}>
-                      ↓ Over 5 years the VSD option saves ${bestVsGood5yr.toLocaleString()} in energy vs fixed speed
+                      ↓ Over 5 years this VSD saves ${(selectedTier.annualEnergySavings*5).toLocaleString()} in energy vs fixed speed
                     </div>
                   )}
                   {annualPm==null && (
@@ -2962,14 +2965,10 @@ No fabricated prices.`;
                     </div>
                   )}
                 </div>
-              ) : (
-                <div style={{fontFamily:F.mono,fontSize:11,color:C.dim,letterSpacing:1,textAlign:"center",padding:"12px 0"}}>
-                  Run the AI advisor above to populate energy costs, then upload the PM estimate to complete the TCO.
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
-            {/* PART 2 — Why Hodge PM */}
+            {/* PART 2 — Why Hodge PM (always visible) */}
             <div style={card}>
               <Mono color={C.copper}>WHY CHOOSE HODGE PM</Mono>
               <div style={{marginBottom:14}}></div>
@@ -2985,7 +2984,7 @@ No fabricated prices.`;
               </div>
             </div>
 
-            {/* PART 3 — PM Scope Summary */}
+            {/* PART 3 — PM Scope Summary (always visible) */}
             <div style={card}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
                 <Mono color={C.copper}>PM SCOPE SUMMARY</Mono>
@@ -3010,7 +3009,7 @@ No fabricated prices.`;
               </div>
             </div>
 
-            {/* PART 4 — Competitive Positioning */}
+            {/* PART 4 — Competitive Positioning (always visible) */}
             <div style={{background:"linear-gradient(135deg,rgba(193,122,53,0.12),rgba(193,122,53,0.04))",border:"1px solid rgba(193,122,53,0.3)",borderRadius:10,padding:"16px 20px",marginBottom:12}}>
               <div style={{fontFamily:F.body,fontSize:14,color:C.copper,lineHeight:1.75,fontStyle:"italic"}}>
                 "Hodge PM pricing may be higher than some alternatives. The difference: factory-trained technicians (not subcontractors), Hodge-certified parts (not generic), 9-branch parts network (no waiting on shipping), and 24/7 response (not next-business-day). We don't consider ourselves to have competition — there is no one else doing what we do at this level."
