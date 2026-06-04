@@ -21,7 +21,9 @@
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
     @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
     @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+    @keyframes copperGlow{0%,100%{box-shadow:0 0 20px rgba(193,122,53,0.45),0 4px 12px rgba(0,0,0,0.3);}50%{box-shadow:0 0 48px rgba(193,122,53,0.85),0 0 28px rgba(232,134,10,0.55),0 4px 12px rgba(0,0,0,0.3);}}
     .pulse{animation:pulse 1.6s ease infinite;}
+    .copper-pulse{animation:copperGlow 2.2s ease-in-out infinite;}
     .fadeUp{animation:fadeUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards;}
     .s1{animation:fadeUp 0.4s 0.04s cubic-bezier(0.16,1,0.3,1) both;}
     .s2{animation:fadeUp 0.4s 0.10s cubic-bezier(0.16,1,0.3,1) both;}
@@ -2541,19 +2543,21 @@ No fabricated prices.`;
 
       {/* ── System Requirements & Design Advisor ── */}
       <div style={{
-        background:C.surface, borderRadius:10, marginBottom:12, overflow:"hidden",
+        background:`linear-gradient(135deg,rgba(193,122,53,0.08) 0%,${C.surface} 60%)`,
+        borderRadius:10, marginBottom:12, overflow:"hidden",
         border:`1.5px solid ${C.copper}`,
-        boxShadow:`0 0 24px rgba(193,122,53,0.18), 0 2px 8px rgba(0,0,0,0.4)`,
+        borderLeft:`4px solid ${C.copper}`,
+        boxShadow:`0 0 40px rgba(193,122,53,0.28), 0 4px 16px rgba(0,0,0,0.5)`,
       }}>
         {/* Copper accent bar */}
         <div style={{height:3,background:`linear-gradient(90deg,${C.copper},#E8860A,${C.orange})`}}/>
         <div style={{padding:16}}>
         <div onClick={()=>setSysOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",cursor:"pointer",userSelect:"none",marginBottom:sysOpen?14:0}}>
           <div>
-            <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.copper,lineHeight:1,marginBottom:4}}>
-              🛠 SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR
+            <div style={{fontFamily:F.head,fontSize:26,letterSpacing:3,color:C.copper,lineHeight:1,marginBottom:6}}>
+              ⚙️ SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR
             </div>
-            <div style={{fontFamily:F.body,fontSize:13,color:C.mid,lineHeight:1.4}}>
+            <div style={{fontFamily:F.body,fontSize:13,color:C.mid,lineHeight:1.4,fontStyle:"italic"}}>
               Tell us what the customer needs — we'll design the right system.
             </div>
           </div>
@@ -2561,8 +2565,13 @@ No fabricated prices.`;
         </div>
 
         {sysOpen && (<>
+          {/* Instruction callout */}
+          <div style={{background:`linear-gradient(90deg,rgba(193,122,53,0.14),rgba(193,122,53,0.04))`,borderLeft:`3px solid ${C.copper}`,borderRadius:6,padding:"9px 14px",marginBottom:14,fontFamily:F.body,fontSize:13,color:C.text,lineHeight:1.5}}>
+            Start here to get a <strong style={{color:C.copper}}>Good / Better / Best</strong> system recommendation with energy costs and equipment specs.
+          </div>
+
           {/* Method toggle */}
-          <div style={{display:"flex",gap:8,marginTop:14,marginBottom:12}}>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
             {[["manual","✏️ Manual Input"],["upload","📄 Upload Spec Sheet"]].map(([k,lbl])=>(
               <button key={k} onClick={()=>setSysMethod(k)} style={{
                 flex:1, padding:"8px 0", borderRadius:7, fontSize:13, cursor:"pointer",
@@ -2691,12 +2700,13 @@ No fabricated prices.`;
               placeholder="Existing equipment, special conditions, future expansion plans…" style={inS}/>
           </FieldRow>
 
-          <button onClick={designSystem} disabled={sysBusy||!sysReqs.cfm} style={{
-            marginTop:16, width:"100%", padding:"16px 0", borderRadius:8, border:"none",
+          <button onClick={designSystem} disabled={sysBusy||!sysReqs.cfm}
+            className={!sysBusy&&sysReqs.cfm?"copper-pulse":""}
+            style={{
+            marginTop:16, width:"100%", padding:"18px 0", borderRadius:8, border:"none",
             background:sysBusy||!sysReqs.cfm?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#E8860A 50%,#A0632A 100%)`,
-            color:sysBusy||!sysReqs.cfm?C.dim:"#fff", fontSize:20, letterSpacing:4,
-            fontFamily:F.head, cursor:sysBusy||!sysReqs.cfm?"default":"pointer", transition:"all 0.2s",
-            boxShadow:sysBusy||!sysReqs.cfm?"none":"0 0 32px rgba(193,122,53,0.45), 0 4px 12px rgba(0,0,0,0.3)",
+            color:sysBusy||!sysReqs.cfm?C.dim:"#fff", fontSize:18, letterSpacing:4,
+            fontFamily:F.head, cursor:sysBusy||!sysReqs.cfm?"default":"pointer", transition:"background 0.2s, color 0.2s",
             fontWeight:700
           }}>
             {sysBusy ? "⏳ DESIGNING SYSTEM…" : "⚡ DESIGN SYSTEM →"}
