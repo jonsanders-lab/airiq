@@ -61,6 +61,9 @@
     }
     .app-header{position:sticky;top:0;z-index:100;}
     .vendor-bar{position:sticky;top:0;z-index:99;}
+    @media (max-width:640px){
+      .gbb-grid{grid-template-columns:1fr!important;}
+    }
     @media (max-width:480px){
       .grid-2col{grid-template-columns:1fr!important;}
       .app-header-inner{padding:5px 12px!important;}
@@ -1876,6 +1879,16 @@ function Estimator() {
   const [saveBusy, setSaveBusy]             = React.useState(false);
   const [saveMsg, setSaveMsg]               = React.useState("");
 
+  // ── Design Advisor state ──
+  const [sysOpen, setSysOpen]       = React.useState(false);
+  const [sysMethod, setSysMethod]   = React.useState("manual");
+  const [sysReqs, setSysReqs]       = React.useState({ cfm:"", psi:"100", appType:"General Manufacturing", airQuality:"4", hours:"8", phase:"3ph", notes:"" });
+  const [sysFileBusy, setSysFileBusy] = React.useState(false);
+  const [sysBusy, setSysBusy]       = React.useState(false);
+  const [sysRec, setSysRec]         = React.useState(null);
+  const [sysStock, setSysStock]     = React.useState({});
+  const sysFileRef                  = React.useRef(null);
+
   const uid = () => Date.now() + Math.random();
 
   function addComp() {
@@ -1951,6 +1964,119 @@ function Estimator() {
     setLayoutImgs([]); setLayoutAnalysis(null);
     setBomText(""); setSaveMsg("");
     setFileInputKey(k => k + 1);
+  }
+
+  async function extractFromSpec(file) {
+    setSysFileBusy(true);
+    try {
+      const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
+      const isImg = file.type.startsWith("image/");
+      const mediaBlock = isImg
+        ? { type:"image", source:{ type:"base64", media_type:file.type, data:b64 } }
+        : { type:"document", source:{ type:"base64", media_type:"application/pdf", data:b64 } };
+      const res = await fetch("/api/claude",{ method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:600,
+          messages:[{ role:"user", content:[mediaBlock,{ type:"text",
+            text:`Extract compressed air system requirements from this document. Return only JSON:
+{"cfm":number_or_null,"psi":number_or_null,"appType":"string_or_null","airQuality":"1"|"2"|"3"|"4"|"5"|null,"hours":"8"|"10"|"16"|"24"|null,"phase":"1ph"|"3ph"|null,"notes":"string_or_null"}` }] }] }) });
+      const d = await res.json(); if (d.error) throw new Error(d.error.message);
+      const text = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+      const m = text.match(/\{[\s\S]*?\}/);
+      if (m) { const ex=JSON.parse(m[0]); setSysReqs(p=>({ cfm:ex.cfm?String(ex.cfm):p.cfm, psi:ex.psi?String(ex.psi):p.psi, appType:ex.appType||p.appType, airQuality:ex.airQuality||p.airQuality, hours:ex.hours||p.hours, phase:ex.phase||p.phase, notes:ex.notes||p.notes })); }
+    } catch(e) { console.warn("extractFromSpec:",e); }
+    setSysFileBusy(false);
+  }
+
+  async function designSystem() {
+    if (!sysReqs.cfm) return;
+    setSysBusy(true); setSysRec(null); setSysStock({});
+    const compCatalog = Object.entries(COMP_DB).map(([k,v])=>
+      `${k} (${v.label}): `+Object.entries(v.cfm||{}).map(([m,ps])=>
+        `${m}@${Object.entries(ps).map(([p,c])=>`${p}psi=${c}cfm`).join("/")}`)
+      .join(", ")
+    ).join("\n");
+    const hadCatalog = HAD_DRYERS.map(d=>`${d.model}=${d.cfm}CFM`).join(", ");
+    const airQualityLabels = {"1":"Class 1 — Pharmaceutical/food (oil-free)","2":"Class 2 — Electronics/painting","3":"Class 3 — Instrument air","4":"Class 4 — General manufacturing","5":"Class 5 — Basic"};
+    const filterPkgs = {"1":"Desiccant dryer + coalescing pre-filter + coalescing after-filter + carbon filter + sterile filter (consider oil-free compressor)","2":"Refrigerant dryer + coalescing pre-filter + coalescing after-filter + carbon filter","3":"Refrigerant dryer + coalescing pre-filter + coalescing after-filter","4":"Refrigerant dryer + coalescing filter","5":"Coalescing filter only (dryer recommended)"};
+    const prompt =
+`You are a compressed air system design engineer for Hodge Compressor. Design Good/Better/Best recommendations.
+
+CUSTOMER REQUIREMENTS:
+Required CFM: ${sysReqs.cfm} CFM | Pressure: ${sysReqs.psi} PSIG | Application: ${sysReqs.appType}
+Air quality: ISO 8573-1 ${airQualityLabels[sysReqs.airQuality]||sysReqs.airQuality}
+Operating hours/day: ${sysReqs.hours} | Power: ${sysReqs.phase==="1ph"?"Single-phase (very limited Hodge options — recommend phase converter or HTM7.5(1Ph) only)":"Three-phase"}
+${sysReqs.notes?`Special requirements: ${sysReqs.notes}`:""}
+
+HODGE COMPRESSOR CATALOG (model@psi=cfm):
+${compCatalog}
+
+HAD REFRIGERANT DRYERS: ${hadCatalog} — always prefer HAD if CFM fits; use Beko DRYPOINT if above HAD487.
+
+FILTER PACKAGES BY AIR QUALITY CLASS:
+Class 1: ${filterPkgs["1"]}
+Class 2: ${filterPkgs["2"]}
+Class 3: ${filterPkgs["3"]}
+Class 4: ${filterPkgs["4"]}
+Class 5: ${filterPkgs["5"]}
+
+DESIGN RULES:
+1. Apply 15% safety factor: minimum safe CFM = required × 1.15 = ${Math.ceil(Number(sysReqs.cfm)*1.15)} CFM
+2. Choose the closest PSI column at or above ${sysReqs.psi} psig
+3. GOOD: Fixed speed HD (direct drive single-stage) — smallest model meeting safety CFM
+4. BETTER: HT series (two-stage fixed speed) — better efficiency, lower discharge temp, same or next tier up
+5. BEST: HV or HTV series (variable speed) — calculate 30% avg energy savings vs GOOD
+6. If no single unit meets demand, set dual=true and recommend 2× the same model
+7. HTM units: set htmPolicy=true to trigger deposit policy notice
+8. Receiver tank: use 2 gal/CFM as minimum (round to nearest standard: 80,120,200,240,400,500,1000 gal)
+9. Energy cost: HP×0.746×${sysReqs.hours}hrs×365days×$0.085/kWh (estimate HP as CFM/4.5 for fixed speed, ×0.70 for VSD)
+10. annualEnergySavings in best = GOOD annual cost × 0.30
+
+Return ONLY valid JSON, no markdown fence, no extra text:
+{
+  "good":   { "series":"HD","model":"HD30","cfmAtPsi":113,"psiUsed":116,"dual":false,"headline":"Fixed Speed — Direct Drive","why":"…one sentence…","dryer":"HAD135","tankGal":120,"filters":["…"],"annualEnergyCost":2800,"htmPolicy":false,"loadAction":{"series":"HD","model":"HD30","pressure":116} },
+  "better": { "series":"HT","model":"HT30","cfmAtPsi":144,"psiUsed":116,"dual":false,"headline":"Two-Stage Fixed Speed","why":"…","dryer":"HAD135","tankGal":120,"filters":["…"],"annualEnergyCost":2600,"htmPolicy":false,"loadAction":{"series":"HT","model":"HT30","pressure":116} },
+  "best":   { "series":"HV","model":"HV30","cfmAtPsi":127,"psiUsed":116,"dual":false,"headline":"Variable Speed Drive","why":"…","dryer":"HAD135","tankGal":120,"filters":["…"],"annualEnergyCost":1960,"annualEnergySavings":840,"auditNote":"A data-logging audit can quantify exact demand, identify leaks, find pressure drops, and validate right-sizing — offer this as a value-add service.","htmPolicy":false,"loadAction":{"series":"HV","model":"HV30","pressure":116} }
+}`;
+    try {
+      const res = await fetch("/api/claude",{ method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1800, messages:[{role:"user",content:prompt}] }) });
+      const d = await res.json(); if(d.error) throw new Error(d.error.message||"Claude error");
+      const text = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error("No JSON returned");
+      const rec = JSON.parse(m[0]);
+      setSysRec(rec);
+      // ST stock lookups for all 3 models
+      const models = [rec.good,rec.better,rec.best].filter(Boolean);
+      const stockMap = {};
+      await Promise.all(models.map(async tier => {
+        try {
+          const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(tier.model)}`);
+          if (invRes.ok) {
+            const inv = await invRes.json();
+            const rows = (inv.items||[]).flatMap(i=>(i.rawRows||[]));
+            const match = rows.find(r=>r.name?.toUpperCase().includes(tier.model.toUpperCase()));
+            if (match) stockMap[tier.model] = { onHand:match.quantityOnHand, available:match.quantityAvailable };
+          }
+        } catch {}
+      }));
+      setSysStock(stockMap);
+    } catch(e) { setSysRec({ error:e.message }); }
+    setSysBusy(false);
+  }
+
+  function loadTierIntoEstimator(tier) {
+    const { series, model, pressure } = tier.loadAction || {};
+    if (!series||!model) return;
+    setComps([{ id:uid(), series, model, pressure:pressure||116, inletTemp:100, ambientTemp:100 }]);
+    const dOpt = DRYER_OPTS.find(d=>d.startsWith(tier.dryer||""));
+    if (dOpt) setDryers([{id:uid(),qty:1,name:dOpt}]); else setDryers([]);
+    const gal = String(tier.tankGal||"");
+    const tOpt = TANK_OPTS.find(t=>t.startsWith(gal));
+    if (tOpt) setTanks([{id:uid(),qty:1,name:tOpt}]); else setTanks([]);
+    setSysOpen(false);
+    setSysRec(null);
+    setTimeout(()=>document.getElementById("comp-section")?.scrollIntoView({behavior:"smooth"}),100);
   }
 
   function loadEstimateIntoForm(est) {
@@ -2365,8 +2491,208 @@ No fabricated prices.`;
         </div>
       </div>
 
+      {/* ── System Requirements & Design Advisor ── */}
+      <div style={{...card,borderColor:sysOpen?C.copper+88:C.border}}>
+        <div onClick={()=>setSysOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
+          <Mono color={C.copper}>📋 SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR</Mono>
+          <span style={{color:C.mid,fontSize:14}}>{sysOpen?"▲":"▼"}</span>
+        </div>
+
+        {sysOpen && (<>
+          {/* Method toggle */}
+          <div style={{display:"flex",gap:8,marginTop:14,marginBottom:12}}>
+            {[["manual","✏️ Manual Input"],["upload","📄 Upload Spec Sheet"]].map(([k,lbl])=>(
+              <button key={k} onClick={()=>setSysMethod(k)} style={{
+                flex:1, padding:"8px 0", borderRadius:7, fontSize:13, cursor:"pointer",
+                fontFamily:F.body, background:sysMethod===k?C.copper:"none",
+                border:`1.5px solid ${sysMethod===k?C.copper:C.border}`,
+                color:sysMethod===k?"#fff":C.mid, transition:"all 0.15s"
+              }}>{lbl}</button>
+            ))}
+          </div>
+
+          {/* Option A — file upload */}
+          {sysMethod==="upload" && (
+            <div style={{marginBottom:14}}>
+              <div style={{color:C.mid,fontSize:12,fontFamily:F.mono,letterSpacing:1,marginBottom:8}}>Upload a spec sheet, RFQ, or photo — AI will extract requirements into the fields below</div>
+              <input type="file" accept="image/*,application/pdf" ref={sysFileRef} style={{display:"none"}}
+                onChange={e=>{ const f=e.target.files[0]; if(f) extractFromSpec(f); e.target.value=""; }}/>
+              <button onClick={()=>sysFileRef.current?.click()} disabled={sysFileBusy} style={{
+                background:sysFileBusy?C.surface2:"none", border:`1.5px dashed ${C.border}`, borderRadius:7,
+                padding:"10px 18px", color:sysFileBusy?C.mid:C.text, cursor:sysFileBusy?"default":"pointer",
+                fontFamily:F.body, fontSize:13, display:"flex", alignItems:"center", gap:8
+              }}>
+                {sysFileBusy ? "⏳ Reading document…" : "📎 Choose file (image or PDF)"}
+              </button>
+            </div>
+          )}
+
+          {/* Manual input fields */}
+          <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <FieldRow label="REQUIRED CFM">
+              <input type="number" value={sysReqs.cfm} onChange={e=>setSysReqs(p=>({...p,cfm:e.target.value}))}
+                placeholder="e.g. 100" style={inS}/>
+            </FieldRow>
+            <FieldRow label="OPERATING PRESSURE">
+              <select value={sysReqs.psi} onChange={e=>setSysReqs(p=>({...p,psi:e.target.value}))} style={inS}>
+                {["80","100","116","125","145","175"].map(v=><option key={v} value={v}>{v} PSIG</option>)}
+              </select>
+            </FieldRow>
+          </div>
+          <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <FieldRow label="APPLICATION TYPE">
+              <select value={sysReqs.appType} onChange={e=>setSysReqs(p=>({...p,appType:e.target.value}))} style={inS}>
+                {["General Manufacturing","Automotive/Body Shop","Food & Beverage","Woodworking","Pharmaceutical/Medical","Painting/Coating","Electronics","Textile","Other"].map(a=><option key={a} value={a}>{a}</option>)}
+              </select>
+            </FieldRow>
+            <FieldRow label="AIR QUALITY (ISO 8573-1)">
+              <select value={sysReqs.airQuality} onChange={e=>setSysReqs(p=>({...p,airQuality:e.target.value}))} style={inS}>
+                <option value="1">Class 1 — Pharmaceutical/Oil-free</option>
+                <option value="2">Class 2 — Electronics/Painting</option>
+                <option value="3">Class 3 — Instrument Air</option>
+                <option value="4">Class 4 — General Manufacturing</option>
+                <option value="5">Class 5 — Basic Compressed Air</option>
+              </select>
+            </FieldRow>
+          </div>
+          <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <FieldRow label="OPERATING HRS / DAY">
+              <select value={sysReqs.hours} onChange={e=>setSysReqs(p=>({...p,hours:e.target.value}))} style={inS}>
+                {["8","10","16","24"].map(h=><option key={h} value={h}>{h} hrs/day</option>)}
+              </select>
+            </FieldRow>
+            <FieldRow label="POWER AVAILABLE">
+              <select value={sysReqs.phase} onChange={e=>setSysReqs(p=>({...p,phase:e.target.value}))} style={inS}>
+                <option value="3ph">Three-Phase</option>
+                <option value="1ph">Single-Phase</option>
+              </select>
+            </FieldRow>
+          </div>
+          <FieldRow label="NOTES / SPECIAL REQUIREMENTS">
+            <input value={sysReqs.notes} onChange={e=>setSysReqs(p=>({...p,notes:e.target.value}))}
+              placeholder="Existing equipment, special conditions, future expansion plans…" style={inS}/>
+          </FieldRow>
+
+          <button onClick={designSystem} disabled={sysBusy||!sysReqs.cfm} style={{
+            marginTop:14, width:"100%", padding:"13px 0", borderRadius:8, border:"none",
+            background:sysBusy||!sysReqs.cfm?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+            color:sysBusy||!sysReqs.cfm?C.dim:"#fff", fontSize:16, letterSpacing:3,
+            fontFamily:F.head, cursor:sysBusy||!sysReqs.cfm?"default":"pointer", transition:"all 0.2s",
+            boxShadow:sysBusy||!sysReqs.cfm?"none":"0 0 20px rgba(193,122,53,0.25)"
+          }}>
+            {sysBusy ? "⏳ DESIGNING SYSTEM…" : "DESIGN SYSTEM →"}
+          </button>
+        </>)}
+      </div>
+
+      {/* ── Good / Better / Best Output ── */}
+      {sysRec && !sysRec.error && (() => {
+        const tiers = [
+          { key:"good",   rec:sysRec.good,   label:"GOOD",   sub:"Fixed Speed",          borderColor:C.border,  headColor:C.mid },
+          { key:"better", rec:sysRec.better, label:"BETTER", sub:"Two-Stage / Enhanced",  borderColor:C.blue,    headColor:C.blueLight },
+          { key:"best",   rec:sysRec.best,   label:"BEST",   sub:"Variable Speed Drive",  borderColor:C.copper,  headColor:C.copper },
+        ];
+        return (
+          <div style={{marginBottom:12}}>
+            <Mono color={C.copper} style={{marginBottom:10}}>SYSTEM RECOMMENDATION</Mono>
+            <div className="gbb-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+              {tiers.map(({key,rec,label,sub,borderColor,headColor})=>{
+                if (!rec) return null;
+                const stock = sysStock[rec.model];
+                const isHTM = rec.htmPolicy;
+                const dual = rec.dual;
+                return (
+                  <div key={key} style={{background:C.surface,border:`1.5px solid ${borderColor}`,borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:8}}>
+                    {/* Tier badge */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{fontFamily:F.head,fontSize:18,letterSpacing:3,color:headColor,lineHeight:1}}>{label}</div>
+                        <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:2,marginTop:2}}>{sub}</div>
+                      </div>
+                      {key==="best" && <span style={{fontSize:10,background:C.copperSoft,color:C.copper,border:`1px solid ${C.copper}44`,borderRadius:4,padding:"2px 6px",fontFamily:F.mono}}>VSD</span>}
+                    </div>
+
+                    {/* Model */}
+                    <div style={{background:C.surface2,borderRadius:7,padding:"8px 10px"}}>
+                      <div style={{fontFamily:F.head,fontSize:20,letterSpacing:2,color:C.text,lineHeight:1}}>
+                        {dual ? `2× ${rec.model}` : rec.model}
+                      </div>
+                      <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,marginTop:3}}>
+                        {rec.cfmAtPsi} CFM @ {rec.psiUsed} PSI {dual?"(combined)":""}
+                      </div>
+                    </div>
+
+                    {/* Why */}
+                    <div style={{fontSize:12,color:C.text,lineHeight:1.5}}>{rec.headline} — {rec.why}</div>
+
+                    {/* Stock */}
+                    {stock ? (
+                      <div style={{fontFamily:F.mono,fontSize:10,color:stock.available>0?C.green:C.red,letterSpacing:1}}>
+                        {stock.available>0 ? `✓ ${stock.available} available` : "⚠ Out of stock"}
+                        {stock.onHand>0 && stock.available!==stock.onHand ? ` (${stock.onHand} on hand)` : ""}
+                      </div>
+                    ) : (
+                      <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1}}>ST lookup pending…</div>
+                    )}
+
+                    {/* Treatment package */}
+                    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+                      <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1,marginBottom:5}}>TREATMENT PACKAGE</div>
+                      <div style={{fontSize:12,color:C.mid}}>{rec.dryer}</div>
+                      {rec.tankGal && <div style={{fontSize:12,color:C.mid}}>{rec.tankGal} gal receiver tank</div>}
+                      {(rec.filters||[]).map((f,i)=><div key={i} style={{fontSize:11,color:C.dim}}>{f}</div>)}
+                    </div>
+
+                    {/* Energy */}
+                    {rec.annualEnergyCost>0 && (
+                      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+                        <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}}>EST. ANNUAL ENERGY COST</div>
+                        <div style={{fontFamily:F.head,fontSize:18,letterSpacing:2,color:headColor}}>${rec.annualEnergyCost?.toLocaleString()}/yr</div>
+                        {rec.annualEnergySavings>0 && (
+                          <div style={{fontFamily:F.mono,fontSize:10,color:C.green,marginTop:3}}>
+                            ↓ Save ~${rec.annualEnergySavings?.toLocaleString()}/yr vs fixed speed
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Audit note (BEST only) */}
+                    {rec.auditNote && (
+                      <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"8px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5}}>
+                        📊 {rec.auditNote}
+                      </div>
+                    )}
+
+                    {/* HTM policy */}
+                    {isHTM && (
+                      <div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:6,padding:"8px 10px",fontSize:11,color:"#f59e0b",lineHeight:1.5}}>
+                        ⏱ 2-3 day assembly lead time. 50% deposit required to begin. Hot rush = 100% upfront.
+                      </div>
+                    )}
+
+                    {/* Load button */}
+                    <button onClick={()=>loadTierIntoEstimator(rec)} style={{
+                      marginTop:"auto", padding:"9px 0", borderRadius:7, border:`1px solid ${borderColor}`,
+                      background:"none", color:headColor, fontSize:13, letterSpacing:2,
+                      fontFamily:F.head, cursor:"pointer", transition:"all 0.15s"
+                    }}>
+                      LOAD INTO ESTIMATOR ↓
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+      {sysRec?.error && (
+        <div style={{...card,borderColor:C.red,color:C.red,fontFamily:F.mono,fontSize:12}}>
+          ⚠ Design error: {sysRec.error}
+        </div>
+      )}
+
       {/* Compressors */}
-      <div style={card}>
+      <div id="comp-section" style={card}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <Mono color={C.copper}>COMPRESSORS</Mono>
           {addBtn("Add Compressor", addComp)}
