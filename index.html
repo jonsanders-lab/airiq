@@ -682,7 +682,7 @@ function App() {
         {[
           { id:"airiq",     icon:"💨", label:"AirIQ"     },
           { id:"wingman",   icon:"🎯", label:"Wingman"   },
-          { id:"estimator", icon:"📐", label:"Estimator" },
+          { id:"estimator", icon:"⚙️", label:"SysEng" },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex:1,
@@ -1725,17 +1725,26 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
   return (
     <div style={pWrap}>
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",gap:14,paddingBottom:12,marginBottom:14,borderBottom:"2pt solid #1E3A8A"}}>
-        <img src={LOGO_SRC} className="print-logo" style={{height:40,width:"auto"}} alt="Hodge Compressor"/>
-        <img src="https://airpipeusa.com/wp-content/uploads/2026/05/airpipe-usa-icon-100x100-1.png"
-          className="print-logo" style={{height:40,width:"auto"}} alt="AIRpipe"/>
-        <div style={{marginLeft:6}}>
-          <div style={{fontWeight:700,fontSize:"14pt",color:"#1E3A8A",letterSpacing:"0.08em",lineHeight:1.1}}>
-            AIRPIPE SYSTEM — BILL OF MATERIALS
+      {(() => {
+        const hasPiping = bom && (bom.materials||[]).some(r => /pipe|airpipe|stick|fitting|elbow|tee|union|end cap|flex hose/i.test(r.description||""));
+        return (
+          <div style={{display:"flex",alignItems:"center",gap:14,paddingBottom:12,marginBottom:14,borderBottom:"2pt solid #1E3A8A"}}>
+            <img src={LOGO_SRC} className="print-logo" style={{height:40,width:"auto"}} alt="Hodge Compressor"/>
+            {hasPiping && (
+              <img src="https://airpipeusa.com/wp-content/uploads/2026/05/airpipe-usa-icon-100x100-1.png"
+                className="print-logo" style={{height:40,width:"auto"}} alt="AIRpipe"/>
+            )}
+            <div style={{marginLeft:6}}>
+              <div style={{fontWeight:700,fontSize:"14pt",color:"#1E3A8A",letterSpacing:"0.08em",lineHeight:1.1}}>
+                COMPRESSED AIR SYSTEM — BILL OF MATERIALS
+              </div>
+              <div style={{fontSize:"7.5pt",color:"#888",marginTop:3}}>
+                Hodge Compressor · hodgecompressor.com{hasPiping?" · airpipeusa.com":""}
+              </div>
+            </div>
           </div>
-          <div style={{fontSize:"7.5pt",color:"#888",marginTop:3}}>Hodge Compressor · hodgecompressor.com · airpipeusa.com</div>
-        </div>
-      </div>
+        );
+      })()}
       {/* Job info */}
       <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:"9pt"}}>
         <tbody>
@@ -2402,7 +2411,7 @@ No fabricated prices.`;
           padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",
           cursor:"pointer",fontFamily:F.mono,fontSize:11,color:C.mid,letterSpacing:2,
         }}>
-          <span>📋 PAST ESTIMATES</span>
+          <span>📋 PAST SYSTEM DESIGNS</span>
           <span style={{fontSize:14,transform:showPast?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>▾</span>
         </button>
 
@@ -2478,13 +2487,11 @@ No fabricated prices.`;
 
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-        <img src="https://airpipeusa.com/wp-content/uploads/2026/05/airpipe-usa-icon-100x100-1.png"
-          height="36" alt="AIRpipe" style={{borderRadius:4,background:"white",padding:2}}/>
         <img src="https://mldp0hrp4tx9.i.optimole.com/cb:YTLn.459d0/w:1026/h:1020/q:100/f:best/https://hodgecompressor.com/wp-content/uploads/2025/03/HC-logo-dk-1.png"
           height="36" alt="Hodge" style={{borderRadius:4,background:"white",padding:"2px 6px"}}/>
         <div>
-          <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.text,lineHeight:1}}>AIRPIPE ESTIMATOR</div>
-          <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:3,marginTop:2}}>PIPING SYSTEM BOM TOOL</div>
+          <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.text,lineHeight:1}}>SYSTEM ENGINEER</div>
+          <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:2,marginTop:3}}>Compressed Air System Design &amp; Estimation</div>
         </div>
       </div>
 
@@ -3161,7 +3168,7 @@ No fabricated prices.`;
         color:bomBusy?C.dim:"#fff",transition:"all 0.2s",marginBottom:16,
         boxShadow:bomBusy?"none":"0 0 28px rgba(193,122,53,0.25)",
       }}>
-        {bomBusy?"GENERATING BOM...":"GENERATE BOM →"}
+        {bomBusy?"GENERATING SYSTEM BOM...":"GENERATE SYSTEM BOM →"}
       </button>
 
       {bomText && (
