@@ -1,0 +1,21 @@
+{
+  "name": "AirIQ — Hodge Compressor",
+  "short_name": "AirIQ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://mldp0hrp4tx9.i.optimole.com/cb:YTLn.459d0/w:1026/h:1020/q:100/f:best/https://hodgecompressor.com/wp-content/uploads/2025/03/HC-logo-dk-1.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://mldp0hrp4tx9.i.optimole.com/cb:YTLn.459d0/w:1026/h:1020/q:100/f:best/https://hodgecompressor.com/wp-content/uploads/2025/03/HC-logo-dk-1.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
