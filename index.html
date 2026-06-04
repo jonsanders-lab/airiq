@@ -988,6 +988,19 @@ function AirIQ() {
   );
 }
 
+// ─── BRANCH LOCAL INTEL ──────────────────────────────────────────────────────
+const BRANCH_INTEL = {
+  "Atlanta":    "Hodge HQ city. Braves, Falcons, Hawks. Southern hospitality, relationship-first culture. Hot humid summers — customers feel compressor heat issues acutely.",
+  "Charlotte":  "NASCAR country. Panthers, Hornets. Fast-growing manufacturing corridor. BMW nearby in Spartanburg. Pride in the region's industrial growth.",
+  "Tampa":      "Buccaneers, Rays, Lightning. Beach/outdoor lifestyle. Retirement-friendly area mixed with serious industrial. Weather extremes matter for compressor placement.",
+  "Greenville": "BMW plant is the anchor of the regional economy. Aerospace and automotive suppliers dominate. Clemson Tigers football — huge deal locally. SEC country.",
+  "Nashville":  "Predators, Titans. One of the fastest-growing cities in the US. Country music culture. Lots of new manufacturing moving in. Pride in the boom.",
+  "Dallas":     "Cowboys, Rangers, Mavericks, Stars. Texas pride is everything — don't mess with it. Oil & gas adjacent mindset. Big personalities, big decisions.",
+  "Detroit":    "CEO Tony Gilleland is from Detroit. Lions, Red Wings, Tigers, Pistons. Auto industry is the heartbeat — GM, Ford, Stellantis suppliers everywhere. Resilient, no-nonsense culture. Deep pride in the comeback of the city.",
+  "Cleveland":  "Browns, Guardians, Cavaliers. Steel and manufacturing roots. Extremely proud sports city — acknowledge the passion. Hardworking, straight-talking culture.",
+  "Chicago":    "Bears, Cubs, White Sox, Blackhawks, Bulls. Massive manufacturing hub. Midwest no-nonsense. Deep dish pizza debates are real. Strong union culture in many facilities.",
+};
+
 // ─── WINGMAN COMPONENT ───────────────────────────────────────────────────────
 function Wingman() {
   const [tab, setTab]     = React.useState("brief");
@@ -1050,6 +1063,13 @@ function MissionBrief({ stories }) {
   const [loading,  setLoading]  = React.useState(false);
   const [brief,    setBrief]    = React.useState(null);
   const [err,      setErr]      = React.useState("");
+  const [branch,   setBranch]   = React.useState(() => localStorage.getItem("wingman_branch") || "");
+  const [repNotes, setRepNotes] = React.useState("");
+
+  const handleBranchChange = (val) => {
+    setBranch(val);
+    localStorage.setItem("wingman_branch", val);
+  };
 
   const ready = industry && entry;
 
@@ -1060,15 +1080,23 @@ function MissionBrief({ stories }) {
       `[ID:${s.id}] ${INDUSTRIES.find(x=>x.id===s.industry)?.label||s.industry} | Problem: ${s.problem.slice(0,90)} | Outcome: ${s.outcome.slice(0,70)}`
     ).join("\n");
 
+    const branchLine = branch && BRANCH_INTEL[branch]
+      ? `\nBranch territory (${branch}): ${BRANCH_INTEL[branch]}`
+      : "";
+    const notesLine = repNotes.trim()
+      ? `\nCustomer intel from rep: ${repNotes.trim()}`
+      : "";
+
     const prompt = `You are an elite field sales coach for Hodge Compressors, an industrial compressed air equipment company with branches across the Southeast and Midwest. A sales rep is in the parking lot, about to cold-call a manufacturing facility — no appointment, no contact.
 
 Company: ${company || "(unknown — rep will identify on arrival)"}
 Industry: ${ind?.label}
 Industry pain points: ${ind?.pains}
-Entry approach: ${entry==="back" ? "Back door / shipping dock (primary)" : "Front door / reception (fallback)"}
+Entry approach: ${entry==="back" ? "Back door / shipping dock (primary)" : "Front door / reception (fallback)"}${branchLine}${notesLine}
 
 War stories available:
 ${storySummaries}
+${branchLine ? `\nUse the branch territory intel to suggest hyper-local rapport builders — specific sports teams, local pride points, regional references — woven naturally into conversation starters and facility tips.` : ""}${notesLine ? `\nThe rep has shared specific customer context above. Weave this directly into rapport suggestions, opening lines, and facility tips — make it feel like the rep already knows this person.` : ""}
 
 Respond ONLY with valid JSON, zero markdown:
 {
@@ -1078,6 +1106,7 @@ Respond ONLY with valid JSON, zero markdown:
   "hook": "One punchy sentence dropping the right pain angle for this industry naturally",
   "door_strategy": "4-5 sentences of specific tactical advice for ${entry==="back"?"working the shipping dock and back door":"navigating front desk reception without getting screened out"}",
   "facility_tips": ["Specific visual cue or physical observation that opens a real conversation","Another concrete tip","Another tip"],
+  "rapport_starters": ["A hyper-local or customer-specific conversation starter based on the branch intel or rep notes","Another one","A third one"],
   "matched_story_id": "Best matching story ID or null",
   "matched_story_reason": "One sentence on why this story fits"
 }`;
@@ -1104,6 +1133,41 @@ Respond ONLY with valid JSON, zero markdown:
   return (
     <div>
       <SectionHeader label="MISSION BRIEF" sub="You're in the parking lot. Get armed before you walk in."/>
+
+      {/* LOCAL INTEL card */}
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
+        padding:20, marginBottom:12, boxShadow:"0 4px 40px rgba(0,0,0,0.4)" }}>
+        <div style={{ fontFamily:F.mono, fontSize:9, color:C.copper, letterSpacing:2, marginBottom:12 }}>
+          📍 LOCAL INTEL
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <FieldRow label="YOUR BRANCH">
+            <select value={branch} onChange={e=>handleBranchChange(e.target.value)} style={inS}>
+              <option value="">— Select your branch —</option>
+              {Object.keys(BRANCH_INTEL).map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+          </FieldRow>
+          {branch && (
+            <div style={{ marginTop:8, fontSize:11, color:C.mid, lineHeight:1.6,
+              padding:"8px 10px", background:C.surface2, borderRadius:6,
+              border:`1px solid ${C.border}`, fontStyle:"italic" }}>
+              {BRANCH_INTEL[branch]}
+            </div>
+          )}
+        </div>
+        <FieldRow label="CUSTOMER CONTEXT" hint="optional">
+          <textarea
+            value={repNotes}
+            onChange={e=>setRepNotes(e.target.value)}
+            placeholder="Add anything you know — sports teams, hometown, hobbies, shared interests, kids in same school, anything..."
+            rows={3}
+            style={{ ...inS, resize:"vertical", lineHeight:1.6 }}
+          />
+        </FieldRow>
+      </div>
+
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
         padding:20, marginBottom:16, boxShadow:"0 4px 40px rgba(0,0,0,0.4)" }}>
         <div style={{ marginBottom:16 }}>
@@ -1202,6 +1266,20 @@ function BriefOutput({ brief, entry, onReset, stories }) {
           ))}
         </div>
       </BriefCard></div>
+      {brief.rapport_starters?.length > 0 && (
+        <div className="s6b"><BriefCard label="// RAPPORT STARTERS" color={C.copper}>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {brief.rapport_starters.map((line,i)=>(
+              <div key={i} style={{ display:"flex", gap:12 }}>
+                <span style={{ fontFamily:F.mono, fontSize:10, color:C.copper, minWidth:20, paddingTop:1 }}>
+                  {String(i+1).padStart(2,"0")}
+                </span>
+                <p style={{ fontSize:13, lineHeight:1.65, color:C.mid }}>{line}</p>
+              </div>
+            ))}
+          </div>
+        </BriefCard></div>
+      )}
       {brief.matchedStory && (
         <div className="s7"><BriefCard label="// STORY TO HAVE READY" color={C.green}>
           <div style={{ background:C.greenSoft, border:"1px solid rgba(34,197,94,0.2)",
