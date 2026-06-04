@@ -2005,8 +2005,8 @@ CUSTOMER REQUIREMENTS:
 Required CFM: ${sysReqs.cfm} CFM | Pressure: ${sysReqs.psi} PSIG | Application: ${sysReqs.appType}
 Air quality: ISO 8573-1 ${airQualityLabels[sysReqs.airQuality]||sysReqs.airQuality}
 Operating hours/day: ${sysReqs.hours} | Power: ${sysReqs.phase==="1ph"?"Single-phase (very limited Hodge options — recommend phase converter or HTM7.5(1Ph) only)":"Three-phase"} | Voltage: ${{
-  "230v1ph":"208-230V Single Phase — only HD20 and smaller or HTM tank-mounts; flag if recommended model requires 3-phase",
-  "230v3ph":"208-230V Three Phase — available on most models, non-standard catalog voltage, note this to the rep",
+  "230v1ph":"208-230V Single Phase — restrict recommendations to: HTM series (HTM7.5, HTM10, HTM15, HTM20 — all run on 208V despite tech data) and small HD models (HD10, HD15, HD20, HD25 only). HV/HT/HTV and larger HD units require 3-phase; flag and recommend phase converter if needed.",
+  "230v3ph":"208-230V Three Phase — available on smaller HD models (HD10–HD25) and HTM series (HTM units run on 208V). Most HV/HT/HTV models are 460V standard; note non-standard motor configuration and confirm with factory for larger models.",
   "460v3ph":"460V Three Phase — standard Hodge catalog voltage, all models available",
   "575v3ph":"575V Three Phase — available on most models, common in Canada, confirm with factory",
   "380v3ph":"380V Three Phase — export voltage, factory order, confirm lead time"
@@ -2593,12 +2593,12 @@ No fabricated prices.`;
             <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}>
               {sysReqs.voltage==="230v1ph" && (
                 <div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:6,padding:"7px 10px",fontSize:11,color:"#f59e0b",lineHeight:1.5,width:"100%"}}>
-                  ⚠ 208-230V Single Phase limits available models to smaller HD units (≤HD20) and HTM tank-mounts only. Larger units require 3-phase or a phase converter.
+                  ⚠ Single phase limits to HTM series (HTM7.5/10/15/20 — all run on 208V) and small HD models (HD10, HD15, HD20, HD25) only. HV, HT, HTV, and larger HD units require 3-phase or a phase converter.
                 </div>
               )}
               {sysReqs.voltage==="230v3ph" && (
                 <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
-                  ℹ 208-230V 3-phase is available on most Hodge models but confirm motor configuration with factory — standard catalog is 460V.
+                  ℹ HTM series and small HD models (HD10–HD25) are available in 208-230V. Most HV/HT/HTV units are 460V standard — confirm motor configuration with factory for larger models.
                 </div>
               )}
               {sysReqs.voltage==="575v3ph" && (
