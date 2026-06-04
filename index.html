@@ -1592,6 +1592,30 @@ function estRecTank(cfm) {
   return TANK_TBL.find(r => cfm <= r.max) || TANK_TBL[TANK_TBL.length-1];
 }
 
+// ─── EQUIPMENT INSTALL LABOR MINIMUMS ────────────────────────────────────────
+// First compressor: 8 hrs min. Each additional compressor: 4 hrs/unit.
+// Each dryer row: 4 hrs/unit. Each tank row: 4 hrs/unit.
+function applyEquipLabor(equipment) {
+  let firstComp = true;
+  return (equipment || []).map(r => {
+    const desc = r.description || "";
+    const qty  = Number(r.qty) || 1;
+    const isComp  = /compressor|htv|htm|hv\d|ht\d|hd\d/i.test(desc) && !/dryer|tank|receiver|filter/i.test(desc);
+    const isDryer = /dryer|had\b|desiccant|refrigerat/i.test(desc);
+    const isTank  = /\btank\b|receiver/i.test(desc);
+    let minHrs = 0;
+    if (isComp) {
+      minHrs = firstComp ? 8 + (qty - 1) * 4 : qty * 4;
+      firstComp = false;
+    } else if (isDryer) {
+      minHrs = qty * 4;
+    } else if (isTank) {
+      minHrs = qty * 4;
+    }
+    return minHrs > 0 ? { ...r, laborHrs: Math.max(Number(r.laborHrs) || 0, minHrs) } : r;
+  });
+}
+
 // ─── BOM TABLE RENDERER ──────────────────────────────────────────────────────
 function BOMTable({ raw }) {
   let data = null;
@@ -1605,11 +1629,12 @@ function BOMTable({ raw }) {
     );
   }
 
-  const equipment = data.equipment || [];
-  const materials = data.materials || [];
-  const allRows   = [...equipment, ...materials];
-  const totalLaborHrs = allRows.reduce((s,r) => s + (Number(r.laborHrs)||0), 0);
-  const totalLineItems = allRows.filter(r => (r.qty||0) > 0).length;
+  const equipment     = applyEquipLabor(data.equipment || []);
+  const materials     = data.materials || [];
+  const equipLaborHrs = equipment.reduce((s,r) => s + (Number(r.laborHrs)||0), 0);
+  const pipingLaborHrs = materials.reduce((s,r) => s + (Number(r.laborHrs)||0), 0);
+  const totalLaborHrs = equipLaborHrs + pipingLaborHrs;
+  const totalLineItems = [...equipment, ...materials].filter(r => (r.qty||0) > 0).length;
   const pipeRow   = materials.find(r => /stick|pipe stick/i.test(r.description||""));
   const pipeSticks = pipeRow ? (pipeRow.qty||0) : null;
 
@@ -1661,7 +1686,30 @@ function BOMTable({ raw }) {
                 {materials.map((r,i) => <Row key={i} row={r} shade={i%2===0}/>)}
               </>
             )}
-            {/* Summary row */}
+            {/* Labor subtotals */}
+            {equipLaborHrs > 0 && (
+              <tr style={{background:C.surface2}}>
+                <td colSpan={2} style={{...TD,borderBottom:`1px solid ${C.border}`,fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid,paddingTop:10}}>
+                  EQUIPMENT INSTALL LABOR
+                </td>
+                <td style={{...TD,borderBottom:`1px solid ${C.border}`}}></td>
+                <td style={{...TD,borderBottom:`1px solid ${C.border}`,textAlign:"right",fontFamily:F.mono,fontSize:12,color:C.text}}>
+                  {equipLaborHrs.toFixed(2)}
+                </td>
+              </tr>
+            )}
+            {pipingLaborHrs > 0 && (
+              <tr style={{background:C.surface2}}>
+                <td colSpan={2} style={{...TD,borderBottom:`1px solid ${C.border}`,fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid}}>
+                  PIPING LABOR
+                </td>
+                <td style={{...TD,borderBottom:`1px solid ${C.border}`}}></td>
+                <td style={{...TD,borderBottom:`1px solid ${C.border}`,textAlign:"right",fontFamily:F.mono,fontSize:12,color:C.text}}>
+                  {pipingLaborHrs.toFixed(2)}
+                </td>
+              </tr>
+            )}
+            {/* Total row */}
             <tr style={{background:C.surface3}}>
               <td colSpan={2} style={{...TD,borderBottom:"none",fontFamily:F.mono,fontSize:9,letterSpacing:1}}>
                 <span style={{color:C.copper}}>TOTAL</span>
@@ -1736,6 +1784,10 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
   try { bom = JSON.parse(bomText); } catch {}
   const date = new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
   function sumLabor(rows){ return (rows||[]).reduce((s,r)=>s+(Number(r.laborHrs)||0),0); }
+  const equipRows     = applyEquipLabor(bom?.equipment || []);
+  const equipLaborHrs = sumLabor(equipRows);
+  const pipingLaborHrs = sumLabor(bom?.materials || []);
+  const totalLaborHrs = equipLaborHrs + pipingLaborHrs;
   const secHead = {fontWeight:700,fontSize:"10pt",color:"#1E3A8A",letterSpacing:"0.06em",textTransform:"uppercase",
     margin:"12pt 0 5pt",borderBottom:"1.5pt solid #1E3A8A",paddingBottom:"3pt"};
   const pWrap = {padding:"0.45in"};
@@ -1836,7 +1888,7 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
               <th style={{width:"22%"}}>Note</th>
             </tr></thead>
             <tbody>
-              {bom.equipment.map((r,i)=>(
+              {equipRows.map((r,i)=>(
                 <tr key={i}>
                   <td>{r.description}</td>
                   <td>{r.partNumber||"—"}</td>
@@ -1845,6 +1897,16 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
                   <td style={{fontSize:"7.5pt",color:"#666"}}>{r.note||""}</td>
                 </tr>
               ))}
+              {equipLaborHrs > 0 && (
+                <tr>
+                  <td colSpan={2} style={{fontWeight:700,textAlign:"right",
+                    borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>Equipment Install Labor</td>
+                  <td style={{borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}></td>
+                  <td style={{fontWeight:700,textAlign:"right",
+                    borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>{equipLaborHrs.toFixed(2)}</td>
+                  <td style={{borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}></td>
+                </tr>
+              )}
             </tbody>
           </table>
         </>
@@ -1873,15 +1935,38 @@ function BOMPrintArea({ job, layoutImgs, layoutAnalysis, bomText, saveRep }) {
               ))}
               <tr>
                 <td colSpan={2} style={{fontWeight:700,textAlign:"right",
-                  borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>Total Labor Hours</td>
+                  borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>Piping Labor</td>
                 <td style={{borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}></td>
                 <td style={{fontWeight:700,textAlign:"right",
-                  borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>{sumLabor(bom.materials).toFixed(2)}</td>
+                  borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>{pipingLaborHrs.toFixed(2)}</td>
                 <td style={{borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}></td>
               </tr>
             </tbody>
           </table>
         </>
+      )}
+      {/* Labor summary */}
+      {totalLaborHrs > 0 && (
+        <table style={{width:"100%",borderCollapse:"collapse",marginTop:8,fontSize:"9pt"}}>
+          <tbody>
+            {equipLaborHrs > 0 && (
+              <tr>
+                <td style={{color:"#555",paddingBottom:"3pt"}}>Equipment Install Labor</td>
+                <td style={{textAlign:"right",fontFamily:"monospace",paddingBottom:"3pt"}}>{equipLaborHrs.toFixed(2)} hrs</td>
+              </tr>
+            )}
+            {pipingLaborHrs > 0 && (
+              <tr>
+                <td style={{color:"#555",paddingBottom:"3pt"}}>Piping Labor</td>
+                <td style={{textAlign:"right",fontFamily:"monospace",paddingBottom:"3pt"}}>{pipingLaborHrs.toFixed(2)} hrs</td>
+              </tr>
+            )}
+            <tr>
+              <td style={{fontWeight:700,color:"#1E3A8A",borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>TOTAL LABOR HOURS</td>
+              <td style={{fontWeight:700,textAlign:"right",fontFamily:"monospace",color:"#1E3A8A",borderTop:"1.5pt solid #1E3A8A",paddingTop:"5pt"}}>{totalLaborHrs.toFixed(2)} hrs</td>
+            </tr>
+          </tbody>
+        </table>
       )}
       {/* Notes & warnings */}
       {(bom?.notes||bom?.warnings||layoutAnalysis?.warnings) && (
