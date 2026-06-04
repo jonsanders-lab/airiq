@@ -2035,8 +2035,13 @@ DESIGN RULES:
 6. If no single unit meets demand, set dual=true and recommend 2× the same model
 7. HTM units: set htmPolicy=true to trigger deposit policy notice
 8. Receiver tank: use 2 gal/CFM as minimum (round to nearest standard: 80,120,200,240,400,500,1000 gal)
-9. Energy cost: HP×0.746×${Number(sysReqs.hours)*Number(sysReqs.days)*Number(sysReqs.weeks)} annual hrs×$0.085/kWh (estimate HP as CFM/4.5 for fixed speed, ×0.70 for VSD at avg load)
-10. annualEnergySavings in best = GOOD annual cost × 0.30
+9. ENERGY COST — use load-factor method with nameplate motor kW (do NOT use generic HP/CFM ratios):
+   Motor kW by model size (nameplate): HD10/HV10=7.5kW, HD15/HV15=11kW, HD20/HV20=15kW, HD25/HV25=18.5kW, HD30/HV30=22kW, HD40/HV40=30kW, HD50/HV50=37kW, HD60/HV60=45kW, HD75/HV75=55kW, HD100/HV100=75kW, HD125/HV125=90kW, HD150/HV150=110kW, HD175/HV175=132kW, HD200/HV200=160kW, HD250/HV250=185kW. HT models use same kW as same-number HD (HT30=22kW, etc). HTV uses same kW as HT.
+   Annual hours = ${Number(sysReqs.hours)*Number(sysReqs.days)*Number(sysReqs.weeks)}
+   Rate = $0.085/kWh
+   FIXED SPEED (Good/Better): load_factor = required_CFM / rated_CFM_at_selected_pressure. input_kW = motor_kW × load_factor × 0.92. annualEnergyCost = round(input_kW × annual_hours × 0.085)
+   VSD (Best): input_kW = motor_kW × (load_factor ^ 1.6) × 0.92. annualEnergyCost = round(input_kW × annual_hours × 0.085)
+   annualEnergySavings in best = good annualEnergyCost − best annualEnergyCost (must be positive; VSD always cheaper at partial load)
 
 Return ONLY valid JSON, no markdown fence, no extra text:
 {
@@ -2716,6 +2721,9 @@ No fabricated prices.`;
                             ↓ Save ~${rec.annualEnergySavings?.toLocaleString()}/yr vs fixed speed
                           </div>
                         )}
+                        <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,marginTop:6,lineHeight:1.5}}>
+                          Based on motor nameplate kW × load factor. Actual consumption varies. A data-logging air audit provides measured results.
+                        </div>
                       </div>
                     )}
 
