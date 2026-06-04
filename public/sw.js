@@ -1,4 +1,4 @@
-const CACHE = 'airiq-v2';
+const CACHE = 'airiq-v3';
 
 self.addEventListener('install', e => {
   e.waitUntil(self.skipWaiting());
