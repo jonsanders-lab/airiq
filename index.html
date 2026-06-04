@@ -2530,10 +2530,24 @@ No fabricated prices.`;
       </div>
 
       {/* ── System Requirements & Design Advisor ── */}
-      <div style={{...card,borderColor:sysOpen?C.copper+88:C.border}}>
-        <div onClick={()=>setSysOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
-          <Mono color={C.copper}>📋 SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR</Mono>
-          <span style={{color:C.mid,fontSize:14}}>{sysOpen?"▲":"▼"}</span>
+      <div style={{
+        background:C.surface, borderRadius:10, marginBottom:12, overflow:"hidden",
+        border:`1.5px solid ${C.copper}`,
+        boxShadow:`0 0 24px rgba(193,122,53,0.18), 0 2px 8px rgba(0,0,0,0.4)`,
+      }}>
+        {/* Copper accent bar */}
+        <div style={{height:3,background:`linear-gradient(90deg,${C.copper},#E8860A,${C.orange})`}}/>
+        <div style={{padding:16}}>
+        <div onClick={()=>setSysOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",cursor:"pointer",userSelect:"none",marginBottom:sysOpen?14:0}}>
+          <div>
+            <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.copper,lineHeight:1,marginBottom:4}}>
+              🛠 SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR
+            </div>
+            <div style={{fontFamily:F.body,fontSize:13,color:C.mid,lineHeight:1.4}}>
+              Tell us what the customer needs — we'll design the right system.
+            </div>
+          </div>
+          <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0,marginTop:2}}>{sysOpen?"▲":"▼"}</span>
         </div>
 
         {sysOpen && (<>
@@ -2668,15 +2682,17 @@ No fabricated prices.`;
           </FieldRow>
 
           <button onClick={designSystem} disabled={sysBusy||!sysReqs.cfm} style={{
-            marginTop:14, width:"100%", padding:"13px 0", borderRadius:8, border:"none",
-            background:sysBusy||!sysReqs.cfm?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
-            color:sysBusy||!sysReqs.cfm?C.dim:"#fff", fontSize:16, letterSpacing:3,
+            marginTop:16, width:"100%", padding:"16px 0", borderRadius:8, border:"none",
+            background:sysBusy||!sysReqs.cfm?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#E8860A 50%,#A0632A 100%)`,
+            color:sysBusy||!sysReqs.cfm?C.dim:"#fff", fontSize:20, letterSpacing:4,
             fontFamily:F.head, cursor:sysBusy||!sysReqs.cfm?"default":"pointer", transition:"all 0.2s",
-            boxShadow:sysBusy||!sysReqs.cfm?"none":"0 0 20px rgba(193,122,53,0.25)"
+            boxShadow:sysBusy||!sysReqs.cfm?"none":"0 0 32px rgba(193,122,53,0.45), 0 4px 12px rgba(0,0,0,0.3)",
+            fontWeight:700
           }}>
-            {sysBusy ? "⏳ DESIGNING SYSTEM…" : "DESIGN SYSTEM →"}
+            {sysBusy ? "⏳ DESIGNING SYSTEM…" : "⚡ DESIGN SYSTEM →"}
           </button>
         </>)}
+        </div>{/* end padding div */}
       </div>
 
       {/* ── Good / Better / Best Output ── */}
