@@ -59,8 +59,14 @@
         -webkit-print-color-adjust:exact;print-color-adjust:exact;
       }
     }
+    .app-header{position:sticky;top:0;z-index:100;}
+    .vendor-bar{position:sticky;top:0;z-index:99;}
     @media (max-width:480px){
       .grid-2col{grid-template-columns:1fr!important;}
+      .app-header-inner{padding:5px 12px!important;}
+      .app-header-logo{height:32px!important;}
+      .app-header-title{font-size:16px!important;}
+      .app-header-sub{font-size:9px!important;}
     }
   </style>
 </head>
@@ -610,20 +616,22 @@ function App() {
     <div style={{ height:"100vh", display:"flex", flexDirection:"column", background:C.bg, overflow:"hidden" }}>
 
       {/* Header */}
-      <div style={{
+      <div className="app-header" style={{
         background:C.surface, borderBottom:`1px solid ${C.border}`,
-        flexShrink:0, position:"relative", overflow:"hidden",
+        flexShrink:0, overflow:"hidden",
+        paddingTop:"env(safe-area-inset-top, 0px)",
       }}>
         <div style={{ height:3, background:`linear-gradient(90deg,${C.blue},${C.blueLight},${C.orange})` }}/>
-        <div style={{ display:"flex", alignItems:"center", gap:14, padding:"10px 16px" }}>
+        <div className="app-header-inner" style={{ display:"flex", alignItems:"center", gap:14, padding:"10px 16px" }}>
           <img src="https://hodgecompressor.com/wp-content/uploads/2025/03/HC-logo-dk-1.png" alt="Hodge"
+            className="app-header-logo"
             style={{ height:40, width:"auto", background:"white", borderRadius:6,
               padding:"3px 6px", boxShadow:"0 2px 10px rgba(0,0,0,0.4)", flexShrink:0 }}/>
           <div style={{ borderLeft:`1px solid ${C.border}`, paddingLeft:14 }}>
-            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:5, color:C.text, lineHeight:1 }}>
+            <div className="app-header-title" style={{ fontFamily:F.head, fontSize:20, letterSpacing:5, color:C.text, lineHeight:1 }}>
               AirIQ<span style={{ color:C.orange }}> | </span>WINGMAN
             </div>
-            <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:3, marginTop:2 }}>
+            <div className="app-header-sub" style={{ fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:3, marginTop:2 }}>
               HODGE COMPRESSOR FIELD TOOLS
             </div>
           </div>
@@ -817,7 +825,7 @@ function AirIQ() {
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:C.bg }}>
       {/* ST Status bar — single scrollable row */}
-      <div style={{ padding:"4px 12px 6px", background:C.surface, borderBottom:`1px solid ${C.border}`,
+      <div className="vendor-bar" style={{ padding:"4px 12px 6px", background:C.surface, borderBottom:`1px solid ${C.border}`,
         display:"flex", alignItems:"center", gap:6, overflowX:"auto", flexWrap:"nowrap",
         flexShrink:0, WebkitOverflowScrolling:"touch" }}>
         {ST_VENDORS.map((v,i) => (
