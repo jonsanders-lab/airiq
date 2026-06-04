@@ -1452,6 +1452,29 @@ const COMP_DB = {
   },
 };
 
+// Nameplate motor kW by model (from Hodge spec sheets)
+const MOTOR_KW = {
+  HD10:7.5,  HD15:11,   HD20:15,   HD25:18.5, HD30:22,  HD40:30,  HD50:37,
+  HD60:45,   HD75:55,   HD100:75,  HD125:90,  HD150:110, HD175:132, HD200:160, HD250:185,
+  HV10:7.5,  HV15:11,   HV20:15,   HV25:18.5, HV30:22,  HV40:30,  HV50:37,
+  HV60:45,   HV75:55,   HV100:75,  HV125:90,  HV150:110, HV175:132, HV200:160,
+  HV250:185, HV300:220, HV350:260,
+  HT30:22,   HT40:30,   HT50:37,   HT60:45,   HT75:55,   HT100:75,  HT125:90,
+  HT150:110, HT175:132, HT200:160, HT250:185, HT275:200, HT300:220, HT350:260,
+  HTV200:160, HTV250:185, HTV350:260, HTV420:315,
+  "HTM7.5":5.5, "HTM7.5(1Ph)":5.5, HTM10:7.5, HTM15:11, HTM20:15,
+};
+
+// Energy cost calculated in JS — never trust LLM arithmetic for this
+function calcEnergyCost(model, series, ratedCFM, requiredCFM, annualHours) {
+  const motorKw = MOTOR_KW[model];
+  if (!motorKw || !ratedCFM || !annualHours) return 0;
+  const loadFactor = Math.min(requiredCFM / ratedCFM, 1.0);
+  const isVSD = series === "HV" || series === "HTV";
+  const inputKw = motorKw * (isVSD ? Math.pow(loadFactor, 1.6) : loadFactor) * 0.92;
+  return Math.round(inputKw * annualHours * 0.085);
+}
+
 const HAD_DRYERS = [
   {model:"HAD18", cfm:18,  conn:"1\" NPT"},
   {model:"HAD42", cfm:42,  conn:"1\" NPT"},
@@ -2035,19 +2058,13 @@ DESIGN RULES:
 6. If no single unit meets demand, set dual=true and recommend 2× the same model
 7. HTM units: set htmPolicy=true to trigger deposit policy notice
 8. Receiver tank: use 2 gal/CFM as minimum (round to nearest standard: 80,120,200,240,400,500,1000 gal)
-9. ENERGY COST — use load-factor method with nameplate motor kW (do NOT use generic HP/CFM ratios):
-   Motor kW by model size (nameplate): HD10/HV10=7.5kW, HD15/HV15=11kW, HD20/HV20=15kW, HD25/HV25=18.5kW, HD30/HV30=22kW, HD40/HV40=30kW, HD50/HV50=37kW, HD60/HV60=45kW, HD75/HV75=55kW, HD100/HV100=75kW, HD125/HV125=90kW, HD150/HV150=110kW, HD175/HV175=132kW, HD200/HV200=160kW, HD250/HV250=185kW. HT models use same kW as same-number HD (HT30=22kW, etc). HTV uses same kW as HT.
-   Annual hours = ${Number(sysReqs.hours)*Number(sysReqs.days)*Number(sysReqs.weeks)}
-   Rate = $0.085/kWh
-   FIXED SPEED (Good/Better): load_factor = required_CFM / rated_CFM_at_selected_pressure. input_kW = motor_kW × load_factor × 0.92. annualEnergyCost = round(input_kW × annual_hours × 0.085)
-   VSD (Best): input_kW = motor_kW × (load_factor ^ 1.6) × 0.92. annualEnergyCost = round(input_kW × annual_hours × 0.085)
-   annualEnergySavings in best = good annualEnergyCost − best annualEnergyCost (must be positive; VSD always cheaper at partial load)
+9. Do NOT compute annualEnergyCost or annualEnergySavings — omit those fields or set to 0. Energy costs are calculated client-side from your model selection and cfmAtPsi values.
 
 Return ONLY valid JSON, no markdown fence, no extra text:
 {
-  "good":   { "series":"HD","model":"HD30","cfmAtPsi":113,"psiUsed":116,"dual":false,"headline":"Fixed Speed — Direct Drive","why":"…one sentence…","dryer":"HAD135","tankGal":120,"filters":["…"],"annualEnergyCost":2800,"htmPolicy":false,"loadAction":{"series":"HD","model":"HD30","pressure":116} },
-  "better": { "series":"HT","model":"HT30","cfmAtPsi":144,"psiUsed":116,"dual":false,"headline":"Two-Stage Fixed Speed","why":"…","dryer":"HAD135","tankGal":120,"filters":["…"],"annualEnergyCost":2600,"htmPolicy":false,"loadAction":{"series":"HT","model":"HT30","pressure":116} },
-  "best":   { "series":"HV","model":"HV30","cfmAtPsi":127,"psiUsed":116,"dual":false,"headline":"Variable Speed Drive","why":"…","dryer":"HAD135","tankGal":120,"filters":["…"],"annualEnergyCost":1960,"annualEnergySavings":840,"auditNote":"A data-logging audit can quantify exact demand, identify leaks, find pressure drops, and validate right-sizing — offer this as a value-add service.","htmPolicy":false,"loadAction":{"series":"HV","model":"HV30","pressure":116} }
+  "good":   { "series":"HD","model":"HD30","cfmAtPsi":113,"psiUsed":116,"dual":false,"headline":"Fixed Speed — Direct Drive","why":"…one sentence…","dryer":"HAD135","tankGal":120,"filters":["…"],"htmPolicy":false,"loadAction":{"series":"HD","model":"HD30","pressure":116} },
+  "better": { "series":"HT","model":"HT30","cfmAtPsi":144,"psiUsed":116,"dual":false,"headline":"Two-Stage Fixed Speed","why":"…","dryer":"HAD135","tankGal":120,"filters":["…"],"htmPolicy":false,"loadAction":{"series":"HT","model":"HT30","pressure":116} },
+  "best":   { "series":"HV","model":"HV30","cfmAtPsi":127,"psiUsed":116,"dual":false,"headline":"Variable Speed Drive","why":"…","dryer":"HAD135","tankGal":120,"filters":["…"],"auditNote":"A data-logging audit can quantify exact demand, identify leaks, find pressure drops, and validate right-sizing — offer this as a value-add service.","htmPolicy":false,"loadAction":{"series":"HV","model":"HV30","pressure":116} }
 }`;
     try {
       const res = await fetch("/api/claude",{ method:"POST", headers:{"Content-Type":"application/json"},
@@ -2057,6 +2074,15 @@ Return ONLY valid JSON, no markdown fence, no extra text:
       const m = text.match(/\{[\s\S]*\}/);
       if (!m) throw new Error("No JSON returned");
       const rec = JSON.parse(m[0]);
+      // Compute energy costs in JS — do not trust LLM arithmetic
+      const annualHrs = Number(sysReqs.hours) * Number(sysReqs.days) * Number(sysReqs.weeks);
+      const reqCFM    = Number(sysReqs.cfm);
+      ["good","better","best"].forEach(k => {
+        const t = rec[k]; if (!t) return;
+        t.annualEnergyCost = calcEnergyCost(t.model, t.series, t.cfmAtPsi, reqCFM, annualHrs);
+      });
+      if (rec.good && rec.best)
+        rec.best.annualEnergySavings = Math.max(0, rec.good.annualEnergyCost - rec.best.annualEnergyCost);
       setSysRec(rec);
       // ST stock lookups for all 3 models
       const models = [rec.good,rec.better,rec.best].filter(Boolean);
