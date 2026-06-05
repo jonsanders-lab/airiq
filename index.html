@@ -3850,6 +3850,11 @@ function SiteSurvey() {
   const [showPast, setShowPast]   = React.useState(false);
   const [pastList, setPastList]   = React.useState([]);
   const [pastLoading, setPastLoading] = React.useState(false);
+  const [savedData, setSavedData] = React.useState(null);
+  const [repEmail, setRepEmail]   = React.useState(() => {
+    try { return localStorage.getItem("airiq_rep_email")||""; } catch { return ""; }
+  });
+  const [repEmailInput, setRepEmailInput] = React.useState("");
 
   function setForm(update) {
     setFormRaw(prev => {
@@ -3893,6 +3898,76 @@ function SiteSurvey() {
     </select>
   );
 
+  function buildEmailBody(data) {
+    const lines = ["SITE SURVEY — INSTALLATION QUOTING FORM",""];
+    const yn = v => v===true?"Yes":v===false?"No":null;
+    function add(lbl,v){ if(v!==null&&v!==undefined&&v!==""&&v!==false) lines.push(`${lbl}: ${v}`); }
+    function h(t){ lines.push(""); lines.push(t); lines.push("-".repeat(t.length)); }
+
+    h("JOB INFO");
+    add("Date",data.date); add("Sales Rep",data.rep); add("Branch",data.branch);
+    add("Customer",data.customer); add("Contact",data.contact); add("Drive Time",data.driveTime);
+
+    h("DELIVERY & RESPONSIBILITY");
+    add("Delivery",data.delivery); add("Electrical",data.electrical); add("Piping",data.piping);
+
+    const equip=[data.eqRotaryScrew&&"Rotary Screw Compressor",data.eqRecip&&"Reciprocating Compressor",
+      data.eqDryer&&"Air Dryer",data.eqReceiver&&"Receiver Tank",data.eqFilter&&"Filter",
+      data.eqOWSep&&"O/W Separator",data.eqAutoDrains&&"Auto Drains",
+      data.eqSafetyValve&&"Safety Valve & Gauge for Tank",
+      data.eqOther&&(data.eqOtherText||"Other")].filter(Boolean);
+    if(equip.length){h("NEW EQUIPMENT");equip.forEach(e=>lines.push("• "+e));}
+
+    h("EXISTING EQUIPMENT"); add("Description",data.existingEquip);
+
+    h("SITE CONDITIONS");
+    add("Equipment Location",data.equipLocation);
+    add("Loading Dock",yn(data.hasDock)); add("Customer Forklift",yn(data.hasForklift));
+    add("Forklift Drive Out/Ramp",yn(data.forkRamp));
+    if(data.unloadingIssues!==null) add("Unloading Issues",yn(data.unloadingIssues)+(data.unloadingNotes?": "+data.unloadingNotes:""));
+    add("Forklift Can Set Equipment",yn(data.forkCanSet)); add("Clear Path",yn(data.clearPath));
+    if(data.doorsHalls!==null) add("Doors or Halls",yn(data.doorsHalls)+(data.doorsHallsNotes?": "+data.doorsHallsNotes:""));
+    add("Grass/Gravel/Unlevel",yn(data.grassGravel)); add("Levelers or Pads",yn(data.needLevelers));
+    if(data.placingChallenges!==null) add("Placing Challenges",yn(data.placingChallenges)+(data.placingChallengesNotes?": "+data.placingChallengesNotes:""));
+
+    h("ELECTRICAL");
+    add("Fusible Disconnect <10ft",yn(data.fusDisconnect));
+    add("Room for Circuit Breaker",yn(data.circuitBreaker));
+    add("Wire Size",data.wireSize); add("Notes",data.electricalNotes);
+
+    h("PIPING");
+    add("Description",data.pipingDescription); add("Material",data.pipeMaterial);
+    add("Pipe Size",data.pipeSize); add("Linear Feet",data.linearFeet?data.linearFeet+" ft":null);
+    if(data.pipeAbove8ft!==null) add("Pipe Above 8ft",yn(data.pipeAbove8ft)+(data.pipeHeightNotes?": "+data.pipeHeightNotes:""));
+    [["90 Elbows",data.elbows90],["Tees",data.tees],["Couplings",data.couplings],
+     ["Ball Valves",data.ballValves],["NPT Connectors",data.nptConnectors],["Bushings/Reducers",data.bushings],
+     ["Unions",data.unions],["Pipe Clips",data.pipeClips],["Unistrut",data.unistrut],
+     ["Quick Branch",data.quickBranch],["Bypasses",data.bypasses],["# of Drops",data.numDrops],
+     ["Drop Length & Size",data.dropLength],["Termination Blocks",data.terminationBlocks],
+     ["Quick Connects",data.quickConnects],
+    ].forEach(([l,v])=>add(l,v));
+    if(data.equipObstructions!==null) add("Equipment Obstructions",yn(data.equipObstructions)+(data.equipObstructionsNotes?": "+data.equipObstructionsNotes:""));
+    if(data.beams!==null) add("Beams/Workarounds",yn(data.beams)+(data.beamsNotes?": "+data.beamsNotes:""));
+    add("Piping Notes",data.pipingNotes);
+
+    const rental=[data.rentalDiesel&&"Diesel Compressor",data.rentalScissor&&"Scissor Lift",
+      data.rentalForklift&&"Forklift",data.rentalLugging&&"Lugging Tool",data.rentalOther||null].filter(Boolean);
+    if(rental.length){h("RENTAL EQUIPMENT");rental.forEach(r=>lines.push("• "+r));}
+
+    const drawing=[data.drawDrops&&"Locations of all drops",
+      data.drawElectrical&&"Locations of disconnects and all electrical",
+      data.drawBypasses&&"Locations of bypasses",data.drawEquipment&&"All new and existing equipment",
+      data.drawBeams&&"Beams and other workarounds",data.drawDock&&"Dock, ramp, delivery areas",
+      data.drawCustomerEquip&&"Customer equipment or shelving",data.drawPiping&&"Locations of all piping",
+      data.drawDiagrams&&"All diagrams, sketches, drawings"].filter(Boolean);
+    if(drawing.length){h("DRAWING CHECKLIST");drawing.forEach(d=>lines.push("✓ "+d));}
+
+    h("APPROVAL");
+    add("Manager Approval",yn(data.managerApproval)); add("Notes",data.approvalNotes);
+
+    return lines.join("\n");
+  }
+
   async function loadPastSurveys() {
     setPastLoading(true);
     try {
@@ -3918,14 +3993,17 @@ function SiteSurvey() {
   async function handleSave() {
     setBusy(true); setSaveMsg("");
     try {
+      const snapshot = {...form};
       const res = await fetch("/api/estimates", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({type:"site-survey", data:form, savedAt:new Date().toISOString()})
+        body:JSON.stringify({type:"site-survey", data:snapshot, savedAt:new Date().toISOString()})
       });
       if (!res.ok) throw new Error();
-      setSaveMsg("Saved!");
       try { localStorage.removeItem(LS_KEY); } catch(e) {}
-      setTimeout(()=>setSaveMsg(""),3000);
+      setForm(()=>initForm());
+      setOpen([0]);
+      setSavedData(snapshot);
+      setTimeout(() => setSavedData(null), 10000);
     } catch(e) {
       setSaveMsg("Save failed — check connection");
     } finally { setBusy(false); }
@@ -3938,7 +4016,7 @@ function SiteSurvey() {
   ];
 
   return (
-    <div style={{padding:"16px 16px 32px", maxWidth:600, margin:"0 auto"}}>
+    <div style={{padding:"16px 16px 32px", maxWidth:600, margin:"0 auto"}} onClick={()=>setSavedData(null)}>
 
       {/* Past Site Surveys Panel */}
       <div style={{marginBottom:16}}>
@@ -4301,8 +4379,62 @@ function SiteSurvey() {
       </button>
       {saveMsg && (
         <div style={{textAlign:"center", marginTop:10, fontFamily:F.mono, fontSize:13,
-          letterSpacing:1, color: saveMsg.includes("failed") ? C.red : C.green}}>
+          letterSpacing:1, color:C.red}}>
           {saveMsg}
+        </div>
+      )}
+
+      {savedData && (
+        <div onClick={e=>e.stopPropagation()} style={{
+          marginTop:12, background:C.surface, border:`1px solid ${C.copper}`,
+          borderRadius:10, padding:"14px 16px",
+        }}>
+          <div style={{fontFamily:F.mono, fontSize:11, color:C.copper, letterSpacing:2, marginBottom:12}}>
+            ✓ SURVEY SAVED
+          </div>
+          <div style={{display:"flex", gap:8, marginBottom:repEmail?0:10}}>
+            <button onClick={()=>{
+              const subj = `Installation Quoting Form — ${savedData.customer||"Customer"}`;
+              const body = buildEmailBody(savedData);
+              window.location.href = `mailto:service@hodgeindustrial.com?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+            }} style={{
+              flex:1, background:C.surface2, border:`1px solid ${C.border}`, borderRadius:7,
+              padding:"10px 8px", fontFamily:F.mono, fontSize:10, letterSpacing:1,
+              color:C.text, cursor:"pointer",
+            }}>📧 Email to Service</button>
+            <button onClick={()=>{
+              if(!repEmail) return;
+              const subj = `Installation Quoting Form — ${savedData.customer||"Customer"}`;
+              const body = buildEmailBody(savedData);
+              window.location.href = `mailto:${repEmail}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+            }} style={{
+              flex:1, background:C.surface2,
+              border:`1px solid ${repEmail ? C.border : C.dim}`, borderRadius:7,
+              padding:"10px 8px", fontFamily:F.mono, fontSize:10, letterSpacing:1,
+              color:repEmail ? C.text : C.dim, cursor:repEmail ? "pointer" : "default",
+            }}>📧 Email to Me</button>
+          </div>
+          {!repEmail && (
+            <div style={{display:"flex", gap:6}}>
+              <input value={repEmailInput} onChange={e=>setRepEmailInput(e.target.value)}
+                placeholder="your@email.com" type="email"
+                style={{...inS, flex:1, fontSize:13}}/>
+              <button onClick={()=>{
+                const email = repEmailInput.trim();
+                if(!email) return;
+                try { localStorage.setItem("airiq_rep_email", email); } catch(e) {}
+                setRepEmail(email);
+                const subj = `Installation Quoting Form — ${savedData.customer||"Customer"}`;
+                const body = buildEmailBody(savedData);
+                window.location.href = `mailto:${email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+              }} style={{
+                background:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+                border:"none", borderRadius:7, padding:"10px 14px",
+                fontFamily:F.mono, fontSize:10, letterSpacing:1,
+                color:"#fff", cursor:"pointer", whiteSpace:"nowrap",
+              }}>Save & Send</button>
+            </div>
+          )}
         </div>
       )}
 
