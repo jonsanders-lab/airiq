@@ -3800,47 +3800,42 @@ function SurveyCard({ title, done, open, onToggle, children }) {
 function SiteSurvey() {
   const LS_KEY = "airiq_site_survey_draft";
   const today = new Date().toISOString().slice(0,10);
+  const BLANK_FORM = {
+    date:today, rep:"", branch:"", customer:"", contact:"", driveTime:"",
+    delivery:"", electrical:"", piping:"",
+    eqRotaryScrew:false, eqRecip:false, eqDryer:false, eqReceiver:false,
+    eqFilter:false, eqOWSep:false, eqAutoDrains:false, eqSafetyValve:false,
+    eqOther:false, eqOtherText:"",
+    existingEquip:"",
+    equipLocation:"", hasDock:null, hasForklift:null, forkRamp:null,
+    unloadingIssues:null, unloadingNotes:"", forkCanSet:null,
+    clearPath:null, doorsHalls:null, doorsHallsNotes:"",
+    grassGravel:null, needLevelers:null, placingChallenges:null, placingChallengesNotes:"",
+    fusDisconnect:null, circuitBreaker:null, wireSize:"", electricalNotes:"",
+    pipingDescription:"", pipeMaterial:"", pipeSize:"1\"", linearFeet:"",
+    pipeAbove8ft:null, pipeHeightNotes:"",
+    elbows90:"", tees:"", couplings:"", ballValves:"", nptConnectors:"",
+    bushings:"", unions:"", pipeClips:"", unistrut:"", quickBranch:"",
+    bypasses:"", numDrops:"", dropLength:"", terminationBlocks:"", quickConnects:"",
+    equipObstructions:null, equipObstructionsNotes:"",
+    beams:null, beamsNotes:"", pipingNotes:"",
+    rentalDiesel:false, rentalScissor:false, rentalForklift:false,
+    rentalLugging:false, rentalOther:"",
+    drawDrops:false, drawElectrical:false, drawBypasses:false, drawEquipment:false,
+    drawBeams:false, drawDock:false, drawCustomerEquip:false, drawPiping:false, drawDiagrams:false,
+    managerApproval:null, approvalNotes:"",
+  };
 
   function initForm() {
     try {
       const saved = localStorage.getItem(LS_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const draft = JSON.parse(saved);
+        // Only restore if the draft has meaningful data — skip blank forms
+        if (draft.customer || draft.rep) return draft;
+      }
     } catch(e) {}
-    return {
-      // S1
-      date:today, rep:"", branch:"", customer:"", contact:"", driveTime:"",
-      // S2
-      delivery:"", electrical:"", piping:"",
-      // S3
-      eqRotaryScrew:false, eqRecip:false, eqDryer:false, eqReceiver:false,
-      eqFilter:false, eqOWSep:false, eqAutoDrains:false, eqSafetyValve:false,
-      eqOther:false, eqOtherText:"",
-      // S4
-      existingEquip:"",
-      // S5
-      equipLocation:"", hasDock:null, hasForklift:null, forkRamp:null,
-      unloadingIssues:null, unloadingNotes:"", forkCanSet:null,
-      clearPath:null, doorsHalls:null, doorsHallsNotes:"",
-      grassGravel:null, needLevelers:null, placingChallenges:null, placingChallengesNotes:"",
-      // S6
-      fusDisconnect:null, circuitBreaker:null, wireSize:"", electricalNotes:"",
-      // S7
-      pipingDescription:"", pipeMaterial:"", pipeSize:"1\"", linearFeet:"",
-      pipeAbove8ft:null, pipeHeightNotes:"",
-      elbows90:"", tees:"", couplings:"", ballValves:"", nptConnectors:"",
-      bushings:"", unions:"", pipeClips:"", unistrut:"", quickBranch:"",
-      bypasses:"", numDrops:"", dropLength:"", terminationBlocks:"", quickConnects:"",
-      equipObstructions:null, equipObstructionsNotes:"",
-      beams:null, beamsNotes:"", pipingNotes:"",
-      // S8
-      rentalDiesel:false, rentalScissor:false, rentalForklift:false,
-      rentalLugging:false, rentalOther:"",
-      // S9
-      drawDrops:false, drawElectrical:false, drawBypasses:false, drawEquipment:false,
-      drawBeams:false, drawDock:false, drawCustomerEquip:false, drawPiping:false, drawDiagrams:false,
-      // S10
-      managerApproval:null, approvalNotes:"",
-    };
+    return {...BLANK_FORM};
   }
 
   const [form, setFormRaw] = React.useState(initForm);
@@ -3859,7 +3854,10 @@ function SiteSurvey() {
   function setForm(update) {
     setFormRaw(prev => {
       const next = typeof update === "function" ? update(prev) : {...prev, ...update};
-      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch(e) {}
+      // Only persist drafts with meaningful data — don't save blank forms
+      if (next.customer || next.rep) {
+        try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch(e) {}
+      }
       return next;
     });
   }
@@ -4000,7 +3998,7 @@ function SiteSurvey() {
       });
       if (!res.ok) throw new Error();
       try { localStorage.removeItem(LS_KEY); } catch(e) {}
-      setForm(()=>initForm());
+      setFormRaw({...BLANK_FORM});
       setOpen([0]);
       setSavedData(snapshot);
       setTimeout(() => setSavedData(null), 10000);
@@ -4020,14 +4018,21 @@ function SiteSurvey() {
 
       {/* Past Site Surveys Panel */}
       <div style={{marginBottom:16}}>
-        <button onClick={()=>setShowPast(p=>!p)} style={{
-          width:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
-          padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center",
-          cursor:"pointer", fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:2,
-        }}>
-          <span>📋 PAST SITE SURVEYS</span>
-          <span style={{fontSize:14, transform:showPast?"rotate(180deg)":"rotate(0deg)", transition:"transform 0.2s"}}>▾</span>
-        </button>
+        <div style={{display:"flex", gap:8}}>
+          <button onClick={()=>setShowPast(p=>!p)} style={{
+            flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
+            padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center",
+            cursor:"pointer", fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:2,
+          }}>
+            <span>📋 PAST SITE SURVEYS</span>
+            <span style={{fontSize:14, transform:showPast?"rotate(180deg)":"rotate(0deg)", transition:"transform 0.2s"}}>▾</span>
+          </button>
+          <button onClick={e=>{ e.stopPropagation(); try{localStorage.removeItem(LS_KEY);}catch(e){} setFormRaw({...BLANK_FORM}); setOpen([0]); }} style={{
+            background:"none", border:`1px solid ${C.border}`, borderRadius:10,
+            padding:"12px 14px", fontFamily:F.mono, fontSize:10, letterSpacing:1,
+            color:C.dim, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
+          }}>↺ Fresh</button>
+        </div>
 
         {showPast && (
           <div style={{background:C.surface, border:`1px solid ${C.border}`, borderTopWidth:0,
