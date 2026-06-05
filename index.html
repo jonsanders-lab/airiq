@@ -702,6 +702,10 @@ function App() {
           height:"100%", overflowY:"auto" }}>
           <Estimator/>
         </div>
+        <div style={{ display: tab==="site-design" ? "block" : "none",
+          height:"100%", overflowY:"auto" }}>
+          <SiteSurvey/>
+        </div>
       </div>
 
       {/* Bottom Tab Bar */}
@@ -711,9 +715,10 @@ function App() {
         paddingBottom:`calc(8px + env(safe-area-inset-bottom, 0px))`,
       }}>
         {[
-          { id:"airiq",     icon:"💨", label:"AirIQ"     },
-          { id:"wingman",   icon:"🎯", label:"Wingman"   },
-          { id:"estimator", icon:null,  label:"System Eng" },
+          { id:"airiq",       icon:"💨", label:"AirIQ"       },
+          { id:"wingman",     icon:"🎯", label:"Wingman"     },
+          { id:"estimator",   icon:null,  label:"System Eng" },
+          { id:"site-design", icon:"📋", label:"Site Design" },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex:1,
@@ -3744,6 +3749,469 @@ No fabricated prices.`;
           bomText={bomText} saveRep={saveRep}/>,
         document.getElementById("print-portal")
       )}
+    </div>
+  );
+}
+
+// ─── SITE SURVEY HELPERS ─────────────────────────────────────────────────────
+const LUGGING_SIZES = ["2.5\"","3\"","4\"","6\"","8\""];
+
+function YNToggle({ value, onChange }) {
+  return (
+    <div style={{ display:"flex", gap:6 }}>
+      <ToggleBtn active={value===true}  onClick={()=>onChange(value===true  ? null : true)}>Yes</ToggleBtn>
+      <ToggleBtn active={value===false} onClick={()=>onChange(value===false ? null : false)}>No</ToggleBtn>
+    </div>
+  );
+}
+
+function SurveyChk({ checked, onChange, label, highlight }) {
+  return (
+    <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
+      <input type="checkbox" checked={!!checked} onChange={e=>onChange(e.target.checked)}
+        style={{ width:18, height:18, marginTop:1, accentColor:C.orange, cursor:"pointer", flexShrink:0 }}/>
+      <span style={{ fontSize:14, color:highlight ? C.orange : C.text, lineHeight:1.4 }}>{label}</span>
+    </label>
+  );
+}
+
+function SurveyCard({ title, done, open, onToggle, children }) {
+  return (
+    <div style={{ background:C.surface, border:`1px solid ${done ? C.copper : C.border}`,
+      borderRadius:10, marginBottom:10, overflow:"hidden" }}>
+      <button onClick={onToggle} style={{
+        width:"100%", background: done ? C.copperSoft : "none", border:"none", padding:"14px 16px",
+        display:"flex", alignItems:"center", gap:10, cursor:"pointer", textAlign:"left",
+      }}>
+        <span style={{ fontFamily:F.head, fontSize:17, letterSpacing:2, color:done?C.copper:C.text, flex:1 }}>{title}</span>
+        {done && <span style={{ fontSize:14, color:C.copper }}>✓</span>}
+        <span style={{ color:C.mid, fontSize:13 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{ padding:"0 16px 16px", display:"flex", flexDirection:"column", gap:14 }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SITE SURVEY COMPONENT ────────────────────────────────────────────────────
+function SiteSurvey() {
+  const LS_KEY = "airiq_site_survey_draft";
+  const today = new Date().toISOString().slice(0,10);
+
+  function initForm() {
+    try {
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return {
+      // S1
+      date:today, rep:"", branch:"", customer:"", contact:"", driveTime:"",
+      // S2
+      delivery:"", electrical:"", piping:"",
+      // S3
+      eqRotaryScrew:false, eqRecip:false, eqDryer:false, eqReceiver:false,
+      eqFilter:false, eqOWSep:false, eqAutoDrains:false, eqSafetyValve:false,
+      eqOther:false, eqOtherText:"",
+      // S4
+      existingEquip:"",
+      // S5
+      equipLocation:"", hasDock:null, hasForklift:null, forkRamp:null,
+      unloadingIssues:null, unloadingNotes:"", forkCanSet:null,
+      clearPath:null, doorsHalls:null, doorsHallsNotes:"",
+      grassGravel:null, needLevelers:null, placingChallenges:null, placingChallengesNotes:"",
+      // S6
+      fusDisconnect:null, circuitBreaker:null, wireSize:"", electricalNotes:"",
+      // S7
+      pipingDescription:"", pipeMaterial:"", pipeSize:"1\"", linearFeet:"",
+      pipeAbove8ft:null, pipeHeightNotes:"",
+      elbows90:"", tees:"", couplings:"", ballValves:"", nptConnectors:"",
+      bushings:"", unions:"", pipeClips:"", unistrut:"", quickBranch:"",
+      bypasses:"", numDrops:"", dropLength:"", terminationBlocks:"", quickConnects:"",
+      equipObstructions:null, equipObstructionsNotes:"",
+      beams:null, beamsNotes:"", pipingNotes:"",
+      // S8
+      rentalDiesel:false, rentalScissor:false, rentalForklift:false,
+      rentalLugging:false, rentalOther:"",
+      // S9
+      drawDrops:false, drawElectrical:false, drawBypasses:false, drawEquipment:false,
+      drawBeams:false, drawDock:false, drawCustomerEquip:false, drawPiping:false, drawDiagrams:false,
+      // S10
+      managerApproval:null, approvalNotes:"",
+    };
+  }
+
+  const [form, setFormRaw] = React.useState(initForm);
+  const [open, setOpen]   = React.useState([0]);
+  const [busy, setBusy]   = React.useState(false);
+  const [saveMsg, setSaveMsg] = React.useState("");
+
+  function setForm(update) {
+    setFormRaw(prev => {
+      const next = typeof update === "function" ? update(prev) : {...prev, ...update};
+      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch(e) {}
+      return next;
+    });
+  }
+
+  function f(field, val) { setForm({[field]:val}); }
+
+  React.useEffect(() => {
+    if (LUGGING_SIZES.includes(form.pipeSize) && !form.rentalLugging) {
+      setForm({rentalLugging:true});
+    }
+  }, [form.pipeSize]);
+
+  const sectionDone = [
+    !!(form.date && form.rep && form.branch && form.customer),
+    !!(form.delivery && form.electrical && form.piping),
+    !!(form.eqRotaryScrew||form.eqRecip||form.eqDryer||form.eqReceiver||form.eqFilter||form.eqOWSep||form.eqAutoDrains||form.eqSafetyValve||form.eqOther),
+    !!(form.existingEquip.trim()),
+    !!(form.equipLocation.trim()),
+    !!(form.wireSize.trim()),
+    !!(form.pipingDescription.trim() && form.pipeMaterial && form.linearFeet),
+    true,
+    !!(form.drawDrops && form.drawElectrical && form.drawBypasses && form.drawEquipment &&
+       form.drawBeams && form.drawDock && form.drawCustomerEquip && form.drawPiping && form.drawDiagrams),
+    form.managerApproval !== null,
+  ];
+  const completedCount = sectionDone.filter(Boolean).length;
+
+  function toggleSection(i) {
+    setOpen(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev,i]);
+  }
+
+  const sel = (field, options, placeholder) => (
+    <select value={form[field]} onChange={e=>f(field,e.target.value)} style={inS}>
+      <option value="">{placeholder||"— Select —"}</option>
+      {options.map(o=><option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+
+  async function handleSave() {
+    setBusy(true); setSaveMsg("");
+    try {
+      const res = await fetch("/api/estimates", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({type:"site-survey", data:form, savedAt:new Date().toISOString()})
+      });
+      if (!res.ok) throw new Error();
+      setSaveMsg("Saved!");
+      try { localStorage.removeItem(LS_KEY); } catch(e) {}
+      setTimeout(()=>setSaveMsg(""),3000);
+    } catch(e) {
+      setSaveMsg("Save failed — check connection");
+    } finally { setBusy(false); }
+  }
+
+  const SECTION_TITLES = [
+    "1 — JOB INFO","2 — DELIVERY & RESPONSIBILITY","3 — NEW EQUIPMENT",
+    "4 — EXISTING EQUIPMENT","5 — SITE CONDITIONS","6 — ELECTRICAL",
+    "7 — PIPING","8 — RENTAL EQUIPMENT NEEDED","9 — DRAWING CHECKLIST","10 — APPROVAL",
+  ];
+
+  return (
+    <div style={{padding:"16px 16px 32px", maxWidth:600, margin:"0 auto"}}>
+
+      {/* Header + completion bar */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontFamily:F.head, fontSize:26, letterSpacing:4, color:C.text, marginBottom:8}}>
+          SITE SURVEY
+        </div>
+        <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:4}}>
+          <div style={{flex:1, height:6, background:C.surface2, borderRadius:3, overflow:"hidden"}}>
+            <div style={{height:"100%", width:`${completedCount*10}%`,
+              background:C.copper, borderRadius:3, transition:"width 0.3s"}}/>
+          </div>
+          <span style={{fontFamily:F.mono, fontSize:11, color:C.copper, letterSpacing:1, whiteSpace:"nowrap"}}>
+            {completedCount}/10
+          </span>
+        </div>
+        <div style={{fontFamily:F.mono, fontSize:10, color:C.dim, letterSpacing:1}}>
+          {completedCount===10
+            ? "ALL SECTIONS COMPLETE"
+            : completedCount===0
+              ? "TAP SECTIONS TO EXPAND"
+              : `${10-completedCount} SECTION${10-completedCount!==1?"S":""} REMAINING`}
+        </div>
+      </div>
+
+      {/* S1 — JOB INFO */}
+      <SurveyCard title={SECTION_TITLES[0]} done={sectionDone[0]} open={open.includes(0)} onToggle={()=>toggleSection(0)}>
+        <FieldRow label="DATE">
+          <input type="date" value={form.date} onChange={e=>f("date",e.target.value)} style={inS}/>
+        </FieldRow>
+        <FieldRow label="SALES REP" required>
+          {sel("rep", REPS, "— Select Rep —")}
+        </FieldRow>
+        <FieldRow label="BRANCH" required>
+          {sel("branch", BRANCHES, "— Select Branch —")}
+        </FieldRow>
+        <FieldRow label="COMPANY / CUSTOMER NAME" required>
+          <input value={form.customer} onChange={e=>f("customer",e.target.value)} style={inS} placeholder="Customer name"/>
+        </FieldRow>
+        <FieldRow label="CONTACT NAME">
+          <input value={form.contact} onChange={e=>f("contact",e.target.value)} style={inS} placeholder="Contact name"/>
+        </FieldRow>
+        <FieldRow label="DRIVE TIME RT">
+          <input value={form.driveTime} onChange={e=>f("driveTime",e.target.value)} style={inS} placeholder="e.g. 1.5 hrs"/>
+        </FieldRow>
+      </SurveyCard>
+
+      {/* S2 — DELIVERY & RESPONSIBILITY */}
+      <SurveyCard title={SECTION_TITLES[1]} done={sectionDone[1]} open={open.includes(1)} onToggle={()=>toggleSection(1)}>
+        <FieldRow label="HOW WILL EQUIPMENT BE DELIVERED?" required>
+          {sel("delivery", ["Freight Delivery","Technician Delivery","Customer Pickup","Other"])}
+        </FieldRow>
+        <FieldRow label="WHO WILL BE HANDLING THE ELECTRICAL?" required>
+          {sel("electrical", ["Electrical Contractor","Service Technicians","Customer to do themselves"])}
+        </FieldRow>
+        <FieldRow label="WHO WILL BE DOING THE PIPING?" required>
+          {sel("piping", ["Service Technicians","Customer to do themselves","Plumbing Contractor","Other"])}
+        </FieldRow>
+      </SurveyCard>
+
+      {/* S3 — NEW EQUIPMENT */}
+      <SurveyCard title={SECTION_TITLES[2]} done={sectionDone[2]} open={open.includes(2)} onToggle={()=>toggleSection(2)}>
+        <div style={{display:"flex", flexDirection:"column", gap:10}}>
+          <SurveyChk checked={form.eqRotaryScrew} onChange={v=>f("eqRotaryScrew",v)} label="Rotary Screw Compressor"/>
+          <SurveyChk checked={form.eqRecip}       onChange={v=>f("eqRecip",v)}       label="Reciprocating Compressor"/>
+          <SurveyChk checked={form.eqDryer}       onChange={v=>f("eqDryer",v)}       label="Air Dryer"/>
+          <SurveyChk checked={form.eqReceiver}    onChange={v=>f("eqReceiver",v)}    label="Receiver Tank"/>
+          <SurveyChk checked={form.eqFilter}      onChange={v=>f("eqFilter",v)}      label="Filter"/>
+          <SurveyChk checked={form.eqOWSep}       onChange={v=>f("eqOWSep",v)}       label="O/W Separator"/>
+          <SurveyChk checked={form.eqAutoDrains}  onChange={v=>f("eqAutoDrains",v)}  label="Auto Drains"/>
+          <SurveyChk checked={form.eqSafetyValve} onChange={v=>f("eqSafetyValve",v)} label="Safety Valve & Gauge for Tank"/>
+          <SurveyChk checked={form.eqOther}       onChange={v=>f("eqOther",v)}       label="Other New Equipment"/>
+          {form.eqOther && (
+            <input value={form.eqOtherText} onChange={e=>f("eqOtherText",e.target.value)}
+              style={inS} placeholder="Describe other new equipment"/>
+          )}
+        </div>
+      </SurveyCard>
+
+      {/* S4 — EXISTING EQUIPMENT */}
+      <SurveyCard title={SECTION_TITLES[3]} done={sectionDone[3]} open={open.includes(3)} onToggle={()=>toggleSection(3)}>
+        <FieldRow label="DESCRIBE EXISTING EQUIPMENT">
+          <textarea value={form.existingEquip} onChange={e=>f("existingEquip",e.target.value)}
+            rows={4} style={taS} placeholder="List existing compressors, dryers, tanks, etc."/>
+        </FieldRow>
+      </SurveyCard>
+
+      {/* S5 — SITE CONDITIONS */}
+      <SurveyCard title={SECTION_TITLES[4]} done={sectionDone[4]} open={open.includes(4)} onToggle={()=>toggleSection(4)}>
+        <FieldRow label="DESCRIBE EQUIPMENT LOCATION">
+          <textarea value={form.equipLocation} onChange={e=>f("equipLocation",e.target.value)}
+            rows={3} style={taS} placeholder="Where in the facility is the equipment going?"/>
+        </FieldRow>
+        <FieldRow label="DOES CUSTOMER HAVE A LOADING DOCK?">
+          <YNToggle value={form.hasDock} onChange={v=>f("hasDock",v)}/>
+        </FieldRow>
+        <FieldRow label="DOES CUSTOMER HAVE A FORKLIFT?">
+          <YNToggle value={form.hasForklift} onChange={v=>f("hasForklift",v)}/>
+        </FieldRow>
+        <FieldRow label="FORKLIFT DRIVE OUT OR RAMP?">
+          <YNToggle value={form.forkRamp} onChange={v=>f("forkRamp",v)}/>
+        </FieldRow>
+        <FieldRow label="ANY APPARENT ISSUES UNLOADING EQUIPMENT?">
+          <YNToggle value={form.unloadingIssues} onChange={v=>f("unloadingIssues",v)}/>
+          {form.unloadingIssues===true && (
+            <textarea value={form.unloadingNotes} onChange={e=>f("unloadingNotes",e.target.value)}
+              rows={2} style={{...taS, marginTop:8}} placeholder="Describe unloading issues"/>
+          )}
+        </FieldRow>
+        <FieldRow label="CAN FORKLIFT EASILY SET EQUIPMENT IN PLACE?">
+          <YNToggle value={form.forkCanSet} onChange={v=>f("forkCanSet",v)}/>
+        </FieldRow>
+        <FieldRow label="CLEAR PATH BETWEEN UNLOADING & LOCATION?">
+          <YNToggle value={form.clearPath} onChange={v=>f("clearPath",v)}/>
+        </FieldRow>
+        <FieldRow label="ANY DOORS OR HALLS BETWEEN UNLOADING & LOCATION?">
+          <YNToggle value={form.doorsHalls} onChange={v=>f("doorsHalls",v)}/>
+          {form.doorsHalls===true && (
+            <textarea value={form.doorsHallsNotes} onChange={e=>f("doorsHallsNotes",e.target.value)}
+              rows={2} style={{...taS, marginTop:8}} placeholder="Describe doors or halls"/>
+          )}
+        </FieldRow>
+        <FieldRow label="IS THERE ANY GRASS, GRAVEL, OR UNLEVEL PAVEMENT?">
+          <YNToggle value={form.grassGravel} onChange={v=>f("grassGravel",v)}/>
+        </FieldRow>
+        <FieldRow label="WILL INSTALL REQUIRE EQUIPMENT LEVELERS OR PADS?">
+          <YNToggle value={form.needLevelers} onChange={v=>f("needLevelers",v)}/>
+        </FieldRow>
+        <FieldRow label="ANY OTHER EQUIPMENT PLACING CHALLENGES?">
+          <YNToggle value={form.placingChallenges} onChange={v=>f("placingChallenges",v)}/>
+          {form.placingChallenges===true && (
+            <textarea value={form.placingChallengesNotes} onChange={e=>f("placingChallengesNotes",e.target.value)}
+              rows={2} style={{...taS, marginTop:8}} placeholder="Describe placing challenges"/>
+          )}
+        </FieldRow>
+      </SurveyCard>
+
+      {/* S6 — ELECTRICAL */}
+      <SurveyCard title={SECTION_TITLES[5]} done={sectionDone[5]} open={open.includes(5)} onToggle={()=>toggleSection(5)}>
+        <FieldRow label="IS THERE A FUSIBLE DISCONNECT WITHIN 10 FT?">
+          <YNToggle value={form.fusDisconnect} onChange={v=>f("fusDisconnect",v)}/>
+        </FieldRow>
+        <FieldRow label="IS THERE ROOM FOR THE CIRCUIT BREAKER REQUIRED?">
+          <YNToggle value={form.circuitBreaker} onChange={v=>f("circuitBreaker",v)}/>
+        </FieldRow>
+        <FieldRow label="WHAT IS THE CURRENT WIRE SIZE?">
+          <input value={form.wireSize} onChange={e=>f("wireSize",e.target.value)} style={inS} placeholder="e.g. 6 AWG"/>
+        </FieldRow>
+        <FieldRow label="ELECTRICAL NOTES">
+          <textarea value={form.electricalNotes} onChange={e=>f("electricalNotes",e.target.value)}
+            rows={3} style={taS} placeholder="Voltage, phase, panel location, etc."/>
+        </FieldRow>
+      </SurveyCard>
+
+      {/* S7 — PIPING */}
+      <SurveyCard title={SECTION_TITLES[6]} done={sectionDone[6]} open={open.includes(6)} onToggle={()=>toggleSection(6)}>
+        <FieldRow label="DESCRIBE PIPING INSTALLATION">
+          <textarea value={form.pipingDescription} onChange={e=>f("pipingDescription",e.target.value)}
+            rows={3} style={taS} placeholder="Describe the layout and scope"/>
+        </FieldRow>
+        <FieldRow label="MATERIAL TYPE" required>
+          {sel("pipeMaterial", ["Blue Pipe","Black Iron","Copper","Galvanized","Stainless","Hose","Other"])}
+        </FieldRow>
+        <FieldRow label="PIPE SIZE" required>
+          {sel("pipeSize", PIPE_SIZES)}
+        </FieldRow>
+        {LUGGING_SIZES.includes(form.pipeSize) && (
+          <div style={{background:C.orangeSoft, border:`1px solid ${C.orange}`, borderRadius:6,
+            padding:"8px 12px", fontFamily:F.mono, fontSize:11, color:C.orange, letterSpacing:1}}>
+            ⚠ LUGGING TOOL FLAGGED — pipe size {form.pipeSize} requires lugging tool (auto-checked in Section 8)
+          </div>
+        )}
+        <FieldRow label="LINEAR FEET OF PIPE" required>
+          <input type="number" min={0} value={form.linearFeet} onChange={e=>f("linearFeet",e.target.value)}
+            style={inS} placeholder="Linear feet"/>
+        </FieldRow>
+        <FieldRow label="WILL ANY PIPE BE INSTALLED HIGHER THAN 8 FT?">
+          <YNToggle value={form.pipeAbove8ft} onChange={v=>f("pipeAbove8ft",v)}/>
+          {form.pipeAbove8ft===true && (
+            <input value={form.pipeHeightNotes} onChange={e=>f("pipeHeightNotes",e.target.value)}
+              style={{...inS, marginTop:8}} placeholder="Height and notes"/>
+          )}
+        </FieldRow>
+        <div>
+          <div style={{fontFamily:F.mono, fontSize:9, letterSpacing:3, color:C.mid, marginBottom:8}}>FITTINGS & HARDWARE</div>
+          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10}}>
+            {[
+              ["elbows90","90 Elbows"],["tees","Tees"],["couplings","Couplings"],
+              ["ballValves","Ball Valves"],["nptConnectors","NPT Connectors"],["unions","Unions"],
+              ["pipeClips","Pipe Clips"],["unistrut","Unistrut"],["quickBranch","Quick Branch"],
+              ["bypasses","Bypasses"],["numDrops","# of Drops"],["terminationBlocks","Term. Blocks"],
+            ].map(([fld,lbl])=>(
+              <div key={fld}>
+                <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:4}}>
+                  {lbl.toUpperCase()}
+                </div>
+                <input type="number" min={0} value={form[fld]} onChange={e=>f(fld,e.target.value)}
+                  placeholder="0" style={inS}/>
+              </div>
+            ))}
+          </div>
+        </div>
+        <FieldRow label="BUSHINGS OR REDUCERS (from/to size)">
+          <input value={form.bushings} onChange={e=>f("bushings",e.target.value)} style={inS} placeholder='e.g. 2" to 1.5"'/>
+        </FieldRow>
+        <FieldRow label="DROP LENGTH AND SIZE">
+          <input value={form.dropLength} onChange={e=>f("dropLength",e.target.value)} style={inS} placeholder='e.g. 4 ft, 3/4"'/>
+        </FieldRow>
+        <FieldRow label="QUICK CONNECTS (sizes and quantity)">
+          <input value={form.quickConnects} onChange={e=>f("quickConnects",e.target.value)} style={inS} placeholder='e.g. (4) 1/2" industrial'/>
+        </FieldRow>
+        <FieldRow label="ANY EQUIPMENT OR OTHER OBSTRUCTIONS?">
+          <YNToggle value={form.equipObstructions} onChange={v=>f("equipObstructions",v)}/>
+          {form.equipObstructions===true && (
+            <textarea value={form.equipObstructionsNotes} onChange={e=>f("equipObstructionsNotes",e.target.value)}
+              rows={2} style={{...taS, marginTop:8}} placeholder="Describe obstructions"/>
+          )}
+        </FieldRow>
+        <FieldRow label="ANY BEAMS OR OTHER WORKAROUNDS?">
+          <YNToggle value={form.beams} onChange={v=>f("beams",v)}/>
+          {form.beams===true && (
+            <textarea value={form.beamsNotes} onChange={e=>f("beamsNotes",e.target.value)}
+              rows={2} style={{...taS, marginTop:8}} placeholder="Describe beams or workarounds"/>
+          )}
+        </FieldRow>
+        <FieldRow label="PIPING NOTES">
+          <textarea value={form.pipingNotes} onChange={e=>f("pipingNotes",e.target.value)}
+            rows={3} style={taS} placeholder="Any additional piping notes"/>
+        </FieldRow>
+      </SurveyCard>
+
+      {/* S8 — RENTAL EQUIPMENT */}
+      <SurveyCard title={SECTION_TITLES[7]} done={sectionDone[7]} open={open.includes(7)} onToggle={()=>toggleSection(7)}>
+        <div style={{display:"flex", flexDirection:"column", gap:10}}>
+          <SurveyChk checked={form.rentalDiesel}   onChange={v=>f("rentalDiesel",v)}   label="Diesel Compressor Required"/>
+          <SurveyChk checked={form.rentalScissor}  onChange={v=>f("rentalScissor",v)}  label="Scissor Lift Rental Required"/>
+          <SurveyChk checked={form.rentalForklift} onChange={v=>f("rentalForklift",v)} label="Forklift Rental Required"/>
+          <SurveyChk
+            checked={form.rentalLugging}
+            onChange={v=>f("rentalLugging",v)}
+            highlight={LUGGING_SIZES.includes(form.pipeSize)}
+            label={`Lugging Tool Required${LUGGING_SIZES.includes(form.pipeSize) ? ` — AUTO (pipe is ${form.pipeSize})` : ""}`}
+          />
+        </div>
+        <FieldRow label="OTHER RENTAL EQUIPMENT REQUIRED">
+          <input value={form.rentalOther} onChange={e=>f("rentalOther",e.target.value)}
+            style={inS} placeholder="Describe other rental equipment needed"/>
+        </FieldRow>
+      </SurveyCard>
+
+      {/* S9 — DRAWING CHECKLIST */}
+      <SurveyCard title={SECTION_TITLES[8]} done={sectionDone[8]} open={open.includes(8)} onToggle={()=>toggleSection(8)}>
+        <div style={{fontFamily:F.body, fontSize:13, color:C.mid, marginBottom:4}}>
+          Confirm you have captured the following in your site drawing:
+        </div>
+        <div style={{display:"flex", flexDirection:"column", gap:10}}>
+          <SurveyChk checked={form.drawDrops}       onChange={v=>f("drawDrops",v)}       label="Locations of all drops"/>
+          <SurveyChk checked={form.drawElectrical}  onChange={v=>f("drawElectrical",v)}  label="Locations of disconnects and all electrical"/>
+          <SurveyChk checked={form.drawBypasses}    onChange={v=>f("drawBypasses",v)}    label="Locations of bypasses"/>
+          <SurveyChk checked={form.drawEquipment}   onChange={v=>f("drawEquipment",v)}   label="Locations of all new and existing equipment"/>
+          <SurveyChk checked={form.drawBeams}       onChange={v=>f("drawBeams",v)}       label="All beams and other workarounds"/>
+          <SurveyChk checked={form.drawDock}        onChange={v=>f("drawDock",v)}        label="Dock, ramp, and delivery areas"/>
+          <SurveyChk checked={form.drawCustomerEquip} onChange={v=>f("drawCustomerEquip",v)} label="Any customer equipment or shelving in the way"/>
+          <SurveyChk checked={form.drawPiping}      onChange={v=>f("drawPiping",v)}      label="Locations of all piping"/>
+          <SurveyChk checked={form.drawDiagrams}    onChange={v=>f("drawDiagrams",v)}    label="All diagrams, sketches, and drawings"/>
+        </div>
+      </SurveyCard>
+
+      {/* S10 — APPROVAL */}
+      <SurveyCard title={SECTION_TITLES[9]} done={sectionDone[9]} open={open.includes(9)} onToggle={()=>toggleSection(9)}>
+        <FieldRow label="MANAGER APPROVAL / BLESSING RECEIVED?">
+          <YNToggle value={form.managerApproval} onChange={v=>f("managerApproval",v)}/>
+        </FieldRow>
+        <FieldRow label="NOTES">
+          <textarea value={form.approvalNotes} onChange={e=>f("approvalNotes",e.target.value)}
+            rows={3} style={taS} placeholder="Additional approval notes"/>
+        </FieldRow>
+      </SurveyCard>
+
+      {/* Save */}
+      <button onClick={handleSave} disabled={busy} style={{
+        width:"100%", marginTop:8,
+        background: busy ? C.surface2 : `linear-gradient(135deg,${C.copper} 0%,${C.orange} 100%)`,
+        border:"none", borderRadius:8, padding:"16px",
+        fontFamily:F.head, fontSize:20, letterSpacing:5,
+        color: busy ? C.mid : "#fff",
+        cursor: busy ? "default" : "pointer",
+        transition:"all 0.2s",
+        boxShadow: busy ? "none" : "0 0 24px rgba(193,122,53,0.3)",
+      }}>
+        {busy ? "SAVING..." : "SAVE SITE SURVEY"}
+      </button>
+      {saveMsg && (
+        <div style={{textAlign:"center", marginTop:10, fontFamily:F.mono, fontSize:13,
+          letterSpacing:1, color: saveMsg.includes("failed") ? C.red : C.green}}>
+          {saveMsg}
+        </div>
+      )}
+
     </div>
   );
 }
