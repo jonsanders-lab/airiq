@@ -326,6 +326,13 @@ app.post('/api/estimates', (req, res) => {
   res.json(record);
 });
 
+app.delete('/api/estimates/:id', (req, res) => {
+  const list = readEstimates();
+  const filtered = list.filter(e => e.id !== req.params.id);
+  writeEstimates(filtered);
+  res.json({ success: true });
+});
+
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.sendFile(path.join(__dirname, 'index.html'));

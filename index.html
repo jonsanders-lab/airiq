@@ -3844,9 +3844,12 @@ function SiteSurvey() {
   }
 
   const [form, setFormRaw] = React.useState(initForm);
-  const [open, setOpen]   = React.useState([0]);
-  const [busy, setBusy]   = React.useState(false);
-  const [saveMsg, setSaveMsg] = React.useState("");
+  const [open, setOpen]           = React.useState([0]);
+  const [busy, setBusy]           = React.useState(false);
+  const [saveMsg, setSaveMsg]     = React.useState("");
+  const [showPast, setShowPast]   = React.useState(false);
+  const [pastList, setPastList]   = React.useState([]);
+  const [pastLoading, setPastLoading] = React.useState(false);
 
   function setForm(update) {
     setFormRaw(prev => {
@@ -3890,6 +3893,28 @@ function SiteSurvey() {
     </select>
   );
 
+  async function loadPastSurveys() {
+    setPastLoading(true);
+    try {
+      const r = await fetch("/api/estimates");
+      const d = await r.json();
+      setPastList(Array.isArray(d) ? d.filter(e => e.type === "site-survey") : []);
+    } catch { setPastList([]); }
+    setPastLoading(false);
+  }
+
+  React.useEffect(() => { if (showPast) loadPastSurveys(); }, [showPast]);
+
+  async function deleteSurvey(id) {
+    if (!window.confirm("Delete this survey? This cannot be undone.")) return;
+    try {
+      await fetch(`/api/estimates/${id}`, { method:"DELETE" });
+      setPastList(prev => prev.filter(e => e.id !== id));
+    } catch(e) {
+      alert("Delete failed — check connection");
+    }
+  }
+
   async function handleSave() {
     setBusy(true); setSaveMsg("");
     try {
@@ -3914,6 +3939,75 @@ function SiteSurvey() {
 
   return (
     <div style={{padding:"16px 16px 32px", maxWidth:600, margin:"0 auto"}}>
+
+      {/* Past Site Surveys Panel */}
+      <div style={{marginBottom:16}}>
+        <button onClick={()=>setShowPast(p=>!p)} style={{
+          width:"100%", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
+          padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center",
+          cursor:"pointer", fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:2,
+        }}>
+          <span>📋 PAST SITE SURVEYS</span>
+          <span style={{fontSize:14, transform:showPast?"rotate(180deg)":"rotate(0deg)", transition:"transform 0.2s"}}>▾</span>
+        </button>
+
+        {showPast && (
+          <div style={{background:C.surface, border:`1px solid ${C.border}`, borderTopWidth:0,
+            borderRadius:"0 0 10px 10px", padding:"0 12px 12px"}}>
+            {pastLoading && (
+              <div style={{color:C.dim, fontSize:12, fontFamily:F.mono, padding:"12px 0", letterSpacing:1}}>Loading...</div>
+            )}
+            {!pastLoading && pastList.length===0 && (
+              <div style={{color:C.dim, fontSize:12, fontFamily:F.mono, padding:"12px 0", letterSpacing:1}}>No site surveys saved yet.</div>
+            )}
+            {!pastLoading && pastList.map(s => {
+              const d = new Date(s.savedAt || s.timestamp);
+              const dateStr = d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+              return (
+                <div key={s.id} style={{background:C.surface2, border:`1px solid ${C.border}`,
+                  borderRadius:8, padding:"10px 12px", marginTop:8,
+                  display:"flex", flexDirection:"column", gap:6}}>
+                  <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8}}>
+                    <div>
+                      <div style={{fontFamily:F.body, fontSize:14, color:C.text, fontWeight:600, lineHeight:1.2}}>
+                        {s.data?.customer||"(no customer)"}
+                      </div>
+                      <div style={{fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginTop:3}}>
+                        {s.data?.rep} · {s.data?.branch} · {dateStr}
+                      </div>
+                    </div>
+                    <div style={{display:"flex", gap:6, flexShrink:0}}>
+                      <button onClick={()=>{ setForm(()=>s.data); setShowPast(false); setOpen([0]); }} style={{
+                        background:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+                        border:"none", borderRadius:6, padding:"6px 11px",
+                        fontFamily:F.mono, fontSize:9, letterSpacing:1, color:"#fff",
+                        cursor:"pointer", whiteSpace:"nowrap"
+                      }}>LOAD →</button>
+                      <button onClick={()=>deleteSurvey(s.id)} style={{
+                        background:"none", border:`1px solid ${C.red}`, borderRadius:6,
+                        padding:"6px 9px", fontFamily:F.mono, fontSize:9, letterSpacing:1,
+                        color:C.red, cursor:"pointer", whiteSpace:"nowrap"
+                      }}>DEL</button>
+                    </div>
+                  </div>
+                  <div style={{display:"flex", flexWrap:"wrap", gap:6}}>
+                    {[
+                      ["Date",    s.data?.date||"—"],
+                      ["Pipe",    s.data?.pipeSize||"—"],
+                      ["Footage", s.data?.linearFeet ? s.data.linearFeet+" ft" : "—"],
+                    ].map(([lbl,val])=>(
+                      <div key={lbl} style={{background:C.surface3, borderRadius:4, padding:"3px 8px"}}>
+                        <span style={{fontFamily:F.mono, fontSize:8, color:C.dim, letterSpacing:1}}>{lbl}: </span>
+                        <span style={{fontFamily:F.body, fontSize:11, color:C.mid}}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Header + completion bar */}
       <div style={{marginBottom:16}}>
