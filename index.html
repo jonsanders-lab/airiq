@@ -2591,7 +2591,7 @@ Respond ONLY with this exact JSON — no other text, no markdown:
 JOB INFO:
 Customer: ${job.customer||"TBD"} | Site: ${job.address||"TBD"}
 Header Pipe Size: ${job.pipeSize} | Drop/Branch Pipe Size: ${ds} | Color: ${job.pipeColor} | Total Run: ${job.totalRun||0} ft
-AIRpipe stick length: 13.12 ft (4 m)
+AIRpipe stick length: 19 ft
 
 AIRPIPE PART NUMBERS — HEADER (${job.pipeSize} ${job.pipeColor}) (Verified — AIRpipe Quote Tool 2025):
 Pipe: PN ${apipePN(job.pipeSize,job.pipeColor)} | Union: PN ${pp}002 | 90° Elbow: PN ${pp}003 | Equal Tee: PN ${pp}005 | End Cap: PN ${pp}006 | Flex Hose: PN ${pp}055
@@ -2627,7 +2627,7 @@ OUTPUT — return ONLY a JSON object, no markdown, no other text. Exact schema:
 
 IMPORTANT: laborHrs in every row = TOTAL labor hours for that line item = qty × per-unit rate from the LABOR HOURS table. Never put the per-unit rate alone — always pre-multiply by qty.
 equipment rows: each compressor (laborHrs=0), its recommended HAD dryer (laborHrs=0), receiver tank (laborHrs=0). For HTM units note that tank+dryer are integrated — do not add separate rows for those.
-materials rows: First, header pipe — AIRpipe [header size] [color] sticks (qty=ceil(totalRun÷13.12)) with header part numbers and labor hours (laborHrs = qty × 0.15). If drop size differs from header size and drops count is known, add drop pipe and drop fittings as separate line items using drop part numbers. Then other fittings (unions, 90° elbows, equal tees, end caps, flex hose) using the verified part numbers; laborHrs for each = qty × per-unit rate. Then any additional dryers, filters, tanks, reels from the job.
+materials rows: First, header pipe — AIRpipe [header size] [color] sticks (qty=ceil(totalRun÷19)) with header part numbers and labor hours (laborHrs = qty × 0.15). If drop size differs from header size and drops count is known, add drop pipe and drop fittings as separate line items using drop part numbers. Then other fittings (unions, 90° elbows, equal tees, end caps, flex hose) using the verified part numbers; laborHrs for each = qty × per-unit rate. Then any additional dryers, filters, tanks, reels from the job.
 notes: brief sizing flags, HTM reminders, field-verification notes. One paragraph.
 warnings: critical issues only (missing info, sizing concern). Empty string if none.
 No fabricated prices.`;
