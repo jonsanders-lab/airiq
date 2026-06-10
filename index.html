@@ -4454,19 +4454,74 @@ function SiteSurvey() {
 
 // ─── MARKET INTEL COMPONENT ──────────────────────────────────────────────────
 function MarketIntel() {
-  const BRANCHES   = ["Atlanta","Charlotte","Tampa","Greenville","Nashville","Dallas","Detroit","Cleveland","Chicago"];
+  const BRANCHES    = ["Atlanta","Charlotte","Tampa","Greenville","Nashville","Dallas","Detroit","Cleveland","Chicago"];
   const COMPETITORS = ["Diversified Air Systems","Kaeser","Atlas Copco","Compressed Air Systems","Other"];
   const CATEGORIES  = ["Parts","Labor","Other"];
   const today = new Date().toISOString().slice(0,10);
 
-  const [header, setHeader] = React.useState({ branch:"", repName:"", competitor:"", customer:"", equipmentModel:"", quoteDate:today });
-  const [item, setItem]     = React.useState({ description:"", category:"Parts", hodgePrice:"", competitorPrice:"" });
+  const fileRef = React.useRef(null);
+  const [header, setHeader]       = React.useState({ branch:"", repName:"", competitor:"", customer:"", equipmentModel:"", quoteDate:today });
+  const [item, setItem]           = React.useState({ description:"", category:"Parts", hodgePrice:"", competitorPrice:"" });
   const [lineItems, setLineItems] = React.useState([]);
-  const [busy, setBusy]     = React.useState(false);
-  const [saveMsg, setSaveMsg] = React.useState("");
+  const [busy, setBusy]           = React.useState(false);
+  const [saveMsg, setSaveMsg]     = React.useState("");
+  const [extracting, setExtracting] = React.useState(false);
+  const [extractMsg, setExtractMsg] = React.useState("");
 
   function hf(k,v) { setHeader(p => ({...p, [k]:v})); }
   function itf(k,v) { setItem(p => ({...p, [k]:v})); }
+
+  async function handleExtract(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    setExtracting(true); setExtractMsg("");
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/market-intel/extract", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ base64, mimeType: file.type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Extraction failed");
+      const ext = data.extracted;
+      const compMatch = (() => {
+        if (!ext.competitor) return "";
+        const lower = ext.competitor.toLowerCase();
+        return COMPETITORS.find(c => lower.includes(c.toLowerCase()) || c.toLowerCase().includes(lower)) || "Other";
+      })();
+      setHeader(p => ({
+        ...p,
+        competitor:     compMatch       || p.competitor,
+        customer:       ext.customer    || p.customer,
+        equipmentModel: ext.equipmentModel || p.equipmentModel,
+      }));
+      if (ext.lineItems && ext.lineItems.length) {
+        const newItems = ext.lineItems.map(l => {
+          const c = parseFloat(l.competitorPrice) || 0;
+          return {
+            description:    l.description || "",
+            category:       CATEGORIES.includes(l.category) ? l.category : "Other",
+            hodgePrice:     0,
+            competitorPrice: c,
+            delta: -c,
+            pct:  c !== 0 ? -100 : null,
+          };
+        });
+        setLineItems(newItems);
+        setExtractMsg("✓ Extracted " + newItems.length + " line item" + (newItems.length!==1?"s":"") + " — please review and add Hodge prices before saving.");
+      } else {
+        setExtractMsg("⚠ No line items found — enter manually below.");
+      }
+    } catch(e) {
+      setExtractMsg("Error: " + e.message);
+    } finally { setExtracting(false); }
+  }
 
   function addItem() {
     if (!item.description.trim()) return;
@@ -4485,6 +4540,15 @@ function MarketIntel() {
 
   function removeItem(i) { setLineItems(p => p.filter((_,idx) => idx !== i)); }
 
+  function updateHodgePrice(i, val) {
+    setLineItems(p => p.map((row, idx) => {
+      if (idx !== i) return row;
+      const h = parseFloat(val) || 0;
+      const c = row.competitorPrice;
+      return {...row, hodgePrice:h, delta:h-c, pct:c!==0?(h-c)/c*100:null};
+    }));
+  }
+
   function catTotals(cat) {
     const rows = lineItems.filter(r => r.category === cat);
     if (!rows.length) return null;
@@ -4493,8 +4557,8 @@ function MarketIntel() {
     return { hodge:h, comp:c, delta:h-c, pct: c!==0 ? (h-c)/c*100 : null };
   }
 
-  const grandH = lineItems.reduce((s,r) => s + r.hodgePrice, 0);
-  const grandC = lineItems.reduce((s,r) => s + r.competitorPrice, 0);
+  const grandH     = lineItems.reduce((s,r) => s + r.hodgePrice, 0);
+  const grandC     = lineItems.reduce((s,r) => s + r.competitorPrice, 0);
   const grandDelta = grandH - grandC;
   const grandPct   = grandC !== 0 ? grandDelta / grandC * 100 : null;
 
@@ -4518,6 +4582,7 @@ function MarketIntel() {
       if (!res.ok) throw new Error(data.error || "Save failed");
       setSaveMsg("✓ " + data.rowsAdded + " row" + (data.rowsAdded!==1?"s":"") + " logged to Google Sheets");
       setLineItems([]);
+      setExtractMsg("");
       setTimeout(() => setSaveMsg(""), 6000);
     } catch(e) {
       setSaveMsg("Error: " + e.message);
@@ -4537,6 +4602,49 @@ function MarketIntel() {
   return (
     <div style={{padding:"16px 16px 40px", maxWidth:600, margin:"0 auto"}}>
       <SectionHeader label="MARKET INTEL" sub="Competitive quote comparison & price analysis"/>
+
+      {/* Upload section — optional */}
+      <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginBottom:4}}>
+        <div style={{fontFamily:F.mono, fontSize:10, letterSpacing:2, color:C.mid, marginBottom:4}}>
+          UPLOAD COMPETITOR QUOTE <span style={{color:C.dim, fontWeight:400, letterSpacing:1}}>— OPTIONAL</span>
+        </div>
+        <div style={{fontSize:12, color:C.dim, marginBottom:10, lineHeight:1.5}}>
+          Upload a competitor quote to auto-fill line items, or enter manually below.
+        </div>
+        <input ref={fileRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
+          style={{display:"none"}} onChange={handleExtract}/>
+        <button onClick={()=>fileRef.current && fileRef.current.click()} disabled={extracting} style={{
+          background: extracting ? C.surface2 : C.surface3,
+          border:`1.5px dashed ${extracting ? C.border : C.borderHov}`,
+          borderRadius:8, padding:"13px 16px", width:"100%",
+          fontFamily:F.mono, fontSize:11, letterSpacing:2,
+          color: extracting ? C.dim : C.mid,
+          cursor: extracting ? "not-allowed" : "pointer",
+          display:"flex", alignItems:"center", justifyContent:"center", gap:10,
+          transition:"all 0.15s",
+        }}>
+          {extracting
+            ? <><span className="pulse" style={{fontSize:16}}>⏳</span><span>EXTRACTING...</span></>
+            : <><span style={{fontSize:16}}>📎</span><span>CHOOSE FILE — PDF OR IMAGE</span></>
+          }
+        </button>
+        {extractMsg && (
+          <div style={{
+            marginTop:10, padding:"10px 12px", borderRadius:7,
+            background: extractMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
+            border:`1px solid ${extractMsg.startsWith("✓") ? C.green : C.red}`,
+            fontFamily:F.mono, fontSize:11, letterSpacing:1,
+            color: extractMsg.startsWith("✓") ? C.green : C.red,
+          }}>{extractMsg}</div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div style={{display:"flex", alignItems:"center", gap:10, margin:"14px 0 16px"}}>
+        <div style={{flex:1, height:1, background:C.border}}/>
+        <span style={{fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.dim, whiteSpace:"nowrap"}}>OR ENTER MANUALLY</span>
+        <div style={{flex:1, height:1, background:C.border}}/>
+      </div>
 
       {/* Header fields */}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16}}>
@@ -4616,7 +4724,15 @@ function MarketIntel() {
                 <tr key={i} style={{background:rowBg(row)}}>
                   <td style={tdS}>{row.description}</td>
                   <td style={{...tdS, color:C.mid, fontSize:11, fontFamily:F.mono}}>{row.category}</td>
-                  <td style={{...tdS, fontFamily:F.mono, fontSize:12}}>{fmtPrice(row.hodgePrice)}</td>
+                  <td style={{...tdS, padding:"4px 6px"}}>
+                    <input type="number" min="0" step="0.01"
+                      value={row.hodgePrice || ""}
+                      onChange={e=>updateHodgePrice(i, e.target.value)}
+                      placeholder="—"
+                      style={{width:72, background:"transparent", border:`1px solid ${C.border}`,
+                        borderRadius:4, padding:"4px 6px", color:C.text, fontSize:12,
+                        fontFamily:F.mono, outline:"none"}}/>
+                  </td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12}}>{fmtPrice(row.competitorPrice)}</td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12, color:dColor(row.delta)}}>{fmtDelta(row.delta)}</td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12, color:dColor(row.pct===null?0:row.pct)}}>{fmtPct(row.pct)}</td>

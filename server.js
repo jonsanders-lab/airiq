@@ -335,6 +335,43 @@ app.delete('/api/estimates/:id', (req, res) => {
 });
 
 // ─── MARKET INTEL ─────────────────────────────────────────────────────────────
+app.post('/api/market-intel/extract', async (req, res) => {
+  try {
+    const { base64, mimeType } = req.body;
+    if (!base64 || !mimeType) {
+      return res.status(400).json({ error: 'Missing base64 or mimeType' });
+    }
+    const isImage = mimeType.startsWith('image/');
+    const contentBlock = isImage
+      ? { type: 'image',    source: { type: 'base64', media_type: mimeType,            data: base64 } }
+      : { type: 'document', source: { type: 'base64', media_type: 'application/pdf',   data: base64 } };
+    const prompt = `You are extracting structured data from a competitor service quote for an industrial air compressor company. Extract the following and return ONLY valid JSON, no other text: { "competitor": "string (company name from letterhead)", "customer": "string", "equipmentModel": "string (model number)", "lineItems": [ { "description": "string", "category": "Parts|Labor|Other", "competitorPrice": 0 } ] }. If a field cannot be determined, use an empty string or 0. Classify line items as: Parts = filters/oil/separators/lubricant/consumables, Labor = labor hours/service calls/mileage/travel, Other = surcharges/fees/misc.`;
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }],
+      }),
+    });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message || 'Claude API error');
+    const text = data.content[0].text.trim();
+    const jsonStr = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
+    const extracted = JSON.parse(jsonStr);
+    res.json({ success: true, extracted });
+  } catch (e) {
+    console.error('market-intel/extract error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/market-intel/log', async (req, res) => {
   try {
     const { branch, repName, customer, competitor, equipmentModel, quoteDate, lineItems } = req.body;
