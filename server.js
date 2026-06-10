@@ -336,6 +336,7 @@ app.delete('/api/estimates/:id', (req, res) => {
 
 // ─── MARKET INTEL ─────────────────────────────────────────────────────────────
 app.post('/api/market-intel/compare', async (req, res) => {
+  console.log('Compare request received');
   try {
     const { hodgeBase64, hodgeMimeType, compBase64, compMimeType } = req.body;
     if (!hodgeBase64 || !hodgeMimeType || !compBase64 || !compMimeType) {
@@ -374,8 +375,16 @@ app.post('/api/market-intel/compare', async (req, res) => {
     const data = await response.json();
     if (data.error) throw new Error(data.error.message || 'Claude API error');
     const text = data.content[0].text.trim();
+    console.log('Claude raw response text:', text);
     const jsonStr = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
-    const result = JSON.parse(jsonStr);
+    let result;
+    try {
+      result = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      console.error('JSON parse error:', parseErr.message, '\nRaw string was:', jsonStr);
+      throw parseErr;
+    }
+    console.log('Parsed result:', JSON.stringify(result, null, 2));
     res.json({ success: true, result });
   } catch (e) {
     console.error('market-intel/compare error:', e.message);
