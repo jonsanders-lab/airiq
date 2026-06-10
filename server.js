@@ -4,6 +4,7 @@ const path = require('path');
 const XLSX = require('xlsx');
 const mammoth = require('mammoth');
 const fs = require('fs');
+const { google } = require('googleapis');
 const app = require('express')();
 
 // ─── ESTIMATES PERSISTENCE ────────────────────────────────────────────────────
@@ -331,6 +332,54 @@ app.delete('/api/estimates/:id', (req, res) => {
   const filtered = list.filter(e => e.id !== req.params.id);
   writeEstimates(filtered);
   res.json({ success: true });
+});
+
+// ─── MARKET INTEL ─────────────────────────────────────────────────────────────
+app.post('/api/market-intel/log', async (req, res) => {
+  try {
+    const { branch, repName, customer, competitor, equipmentModel, quoteDate, lineItems } = req.body;
+    if (!lineItems || lineItems.length === 0) {
+      return res.status(400).json({ error: 'No line items provided' });
+    }
+    const keyJson = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+    const auth = new google.auth.GoogleAuth({
+      credentials: keyJson,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const timestamp = new Date().toISOString();
+    const rows = lineItems.map(item => {
+      const hodge = parseFloat(item.hodgePrice) || 0;
+      const comp  = parseFloat(item.competitorPrice) || 0;
+      const delta = hodge - comp;
+      const pctDelta = comp !== 0 ? ((delta / comp) * 100).toFixed(2) + '%' : 'N/A';
+      return [
+        timestamp,
+        branch || '',
+        repName || '',
+        customer || '',
+        competitor || '',
+        equipmentModel || '',
+        item.description || '',
+        item.category || '',
+        hodge.toFixed(2),
+        comp.toFixed(2),
+        delta.toFixed(2),
+        pctDelta,
+        quoteDate || '',
+      ];
+    });
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: '1avLUXAsxnDWu8h5qY1_BAMlmJqS8q183qeszw0Wynxk',
+      range: 'Sheet1!A:M',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: rows },
+    });
+    res.json({ success: true, rowsAdded: rows.length });
+  } catch (e) {
+    console.error('market-intel/log error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/', (req, res) => {

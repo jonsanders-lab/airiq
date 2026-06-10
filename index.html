@@ -706,6 +706,10 @@ function App() {
           height:"100%", overflowY:"auto" }}>
           <SiteSurvey/>
         </div>
+        <div style={{ display: tab==="market-intel" ? "block" : "none",
+          height:"100%", overflowY:"auto" }}>
+          <MarketIntel/>
+        </div>
       </div>
 
       {/* Bottom Tab Bar */}
@@ -719,6 +723,7 @@ function App() {
           { id:"wingman",     icon:"🎯", label:"Wingman"     },
           { id:"estimator",   icon:null,  label:"System Eng" },
           { id:"site-design", icon:"📋", label:"Site Design" },
+          { id:"market-intel", icon:"📊", label:"Mkt Intel"  },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex:1,
@@ -4443,6 +4448,240 @@ function SiteSurvey() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// ─── MARKET INTEL COMPONENT ──────────────────────────────────────────────────
+function MarketIntel() {
+  const BRANCHES   = ["Atlanta","Charlotte","Tampa","Greenville","Nashville","Dallas","Detroit","Cleveland","Chicago"];
+  const COMPETITORS = ["Diversified Air Systems","Kaeser","Atlas Copco","Compressed Air Systems","Other"];
+  const CATEGORIES  = ["Parts","Labor","Other"];
+  const today = new Date().toISOString().slice(0,10);
+
+  const [header, setHeader] = React.useState({ branch:"", repName:"", competitor:"", customer:"", equipmentModel:"", quoteDate:today });
+  const [item, setItem]     = React.useState({ description:"", category:"Parts", hodgePrice:"", competitorPrice:"" });
+  const [lineItems, setLineItems] = React.useState([]);
+  const [busy, setBusy]     = React.useState(false);
+  const [saveMsg, setSaveMsg] = React.useState("");
+
+  function hf(k,v) { setHeader(p => ({...p, [k]:v})); }
+  function itf(k,v) { setItem(p => ({...p, [k]:v})); }
+
+  function addItem() {
+    if (!item.description.trim()) return;
+    const h = parseFloat(item.hodgePrice) || 0;
+    const c = parseFloat(item.competitorPrice) || 0;
+    setLineItems(p => [...p, {
+      description: item.description.trim(),
+      category: item.category,
+      hodgePrice: h,
+      competitorPrice: c,
+      delta: h - c,
+      pct: c !== 0 ? (h - c) / c * 100 : null,
+    }]);
+    setItem({ description:"", category: item.category, hodgePrice:"", competitorPrice:"" });
+  }
+
+  function removeItem(i) { setLineItems(p => p.filter((_,idx) => idx !== i)); }
+
+  function catTotals(cat) {
+    const rows = lineItems.filter(r => r.category === cat);
+    if (!rows.length) return null;
+    const h = rows.reduce((s,r) => s + r.hodgePrice, 0);
+    const c = rows.reduce((s,r) => s + r.competitorPrice, 0);
+    return { hodge:h, comp:c, delta:h-c, pct: c!==0 ? (h-c)/c*100 : null };
+  }
+
+  const grandH = lineItems.reduce((s,r) => s + r.hodgePrice, 0);
+  const grandC = lineItems.reduce((s,r) => s + r.competitorPrice, 0);
+  const grandDelta = grandH - grandC;
+  const grandPct   = grandC !== 0 ? grandDelta / grandC * 100 : null;
+
+  async function handleSave() {
+    if (!lineItems.length) { setSaveMsg("Add at least one line item before saving."); return; }
+    setBusy(true); setSaveMsg("");
+    try {
+      const res = await fetch("/api/market-intel/log", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          branch: header.branch, repName: header.repName,
+          customer: header.customer, competitor: header.competitor,
+          equipmentModel: header.equipmentModel, quoteDate: header.quoteDate,
+          lineItems: lineItems.map(l => ({
+            description: l.description, category: l.category,
+            hodgePrice: l.hodgePrice, competitorPrice: l.competitorPrice,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      setSaveMsg("✓ " + data.rowsAdded + " row" + (data.rowsAdded!==1?"s":"") + " logged to Google Sheets");
+      setLineItems([]);
+      setTimeout(() => setSaveMsg(""), 6000);
+    } catch(e) {
+      setSaveMsg("Error: " + e.message);
+    } finally { setBusy(false); }
+  }
+
+  const fmtPrice = n => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const fmtDelta = n => n===0 ? "$0.00" : (n>0?"+":"-") + "$" + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const fmtPct   = n => n===null ? "N/A" : (n>0?"+":"") + n.toFixed(1) + "%";
+  const dColor   = n => n>0 ? C.red : n<0 ? C.green : C.text;
+  const rowBg    = r => r.delta>0 ? "rgba(220,38,38,0.08)" : r.delta<0 ? "rgba(34,197,94,0.08)" : "transparent";
+
+  const tdS  = { padding:"8px 10px", fontSize:13, color:C.text, borderBottom:`1px solid ${C.border}` };
+  const lblS = { display:"block", fontFamily:F.mono, fontSize:9, letterSpacing:3, color:C.mid, marginBottom:6 };
+  const sectTotals = CATEGORIES.map(cat => ({ cat, totals:catTotals(cat) })).filter(x => x.totals);
+
+  return (
+    <div style={{padding:"16px 16px 40px", maxWidth:600, margin:"0 auto"}}>
+      <SectionHeader label="MARKET INTEL" sub="Competitive quote comparison & price analysis"/>
+
+      {/* Header fields */}
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16}}>
+        <div>
+          <label style={lblS}>Branch</label>
+          <select value={header.branch} onChange={e=>hf("branch",e.target.value)} style={inS}>
+            <option value="">— Select —</option>
+            {BRANCHES.map(b=><option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lblS}>Competitor</label>
+          <select value={header.competitor} onChange={e=>hf("competitor",e.target.value)} style={inS}>
+            <option value="">— Select —</option>
+            {COMPETITORS.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lblS}>Customer Name</label>
+          <input type="text" value={header.customer} onChange={e=>hf("customer",e.target.value)}
+            placeholder="Customer name" style={inS}/>
+        </div>
+        <div>
+          <label style={lblS}>Equipment Model</label>
+          <input type="text" value={header.equipmentModel} onChange={e=>hf("equipmentModel",e.target.value)}
+            placeholder="e.g. Kaeser SM 15" style={inS}/>
+        </div>
+        <div>
+          <label style={lblS}>Rep Name</label>
+          <input type="text" value={header.repName} onChange={e=>hf("repName",e.target.value)}
+            placeholder="Your name" style={inS}/>
+        </div>
+        <div>
+          <label style={lblS}>Quote Date</label>
+          <input type="date" value={header.quoteDate} onChange={e=>hf("quoteDate",e.target.value)} style={inS}/>
+        </div>
+      </div>
+
+      {/* Line item entry form */}
+      <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginBottom:14}}>
+        <div style={{fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:10}}>ADD LINE ITEM</div>
+        <div style={{display:"grid", gap:8}}>
+          <input type="text" value={item.description} onChange={e=>itf("description",e.target.value)}
+            placeholder="Description" style={inS}
+            onKeyDown={e=>{ if(e.key==="Enter") addItem(); }}/>
+          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8}}>
+            <select value={item.category} onChange={e=>itf("category",e.target.value)} style={inS}>
+              {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+            <input type="number" min="0" step="0.01" value={item.hodgePrice}
+              onChange={e=>itf("hodgePrice",e.target.value)} placeholder="Hodge $" style={inS}/>
+            <input type="number" min="0" step="0.01" value={item.competitorPrice}
+              onChange={e=>itf("competitorPrice",e.target.value)} placeholder="Comp $" style={inS}/>
+          </div>
+          <button onClick={addItem} style={{
+            background:C.orange, border:"none", borderRadius:7, padding:"10px 16px",
+            fontFamily:F.mono, fontSize:12, letterSpacing:2, color:"#fff", cursor:"pointer",
+          }}>+ ADD</button>
+        </div>
+      </div>
+
+      {/* Line items table */}
+      {lineItems.length > 0 && (
+        <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, marginBottom:14, overflowX:"auto"}}>
+          <table style={{width:"100%", borderCollapse:"collapse", minWidth:500}}>
+            <thead>
+              <tr style={{borderBottom:`1px solid ${C.border}`}}>
+                {["Description","Category","Hodge","Comp","$ Δ","% Δ",""].map(h=>(
+                  <th key={h} style={{padding:"9px 10px", textAlign:"left",
+                    fontFamily:F.mono, fontSize:10, letterSpacing:1.5,
+                    color:C.mid, fontWeight:500, whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {lineItems.map((row,i) => (
+                <tr key={i} style={{background:rowBg(row)}}>
+                  <td style={tdS}>{row.description}</td>
+                  <td style={{...tdS, color:C.mid, fontSize:11, fontFamily:F.mono}}>{row.category}</td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12}}>{fmtPrice(row.hodgePrice)}</td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12}}>{fmtPrice(row.competitorPrice)}</td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12, color:dColor(row.delta)}}>{fmtDelta(row.delta)}</td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12, color:dColor(row.pct===null?0:row.pct)}}>{fmtPct(row.pct)}</td>
+                  <td style={{...tdS, padding:"8px 6px"}}>
+                    <button onClick={()=>removeItem(i)} style={{
+                      background:"none", border:"none", color:C.dim,
+                      cursor:"pointer", fontSize:16, padding:"0 4px", lineHeight:1,
+                    }}>×</button>
+                  </td>
+                </tr>
+              ))}
+              {/* Category subtotals */}
+              {sectTotals.map(({cat, totals}) => (
+                <tr key={cat} style={{background:C.surface2, borderTop:`1px solid ${C.border}`}}>
+                  <td colSpan={2} style={{...tdS, fontFamily:F.mono, fontSize:10, letterSpacing:1, color:C.mid}}>
+                    {cat.toUpperCase()} TOTAL
+                  </td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12, fontWeight:600}}>{fmtPrice(totals.hodge)}</td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12, fontWeight:600}}>{fmtPrice(totals.comp)}</td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12, fontWeight:600, color:dColor(totals.delta)}}>{fmtDelta(totals.delta)}</td>
+                  <td style={{...tdS, fontFamily:F.mono, fontSize:12, fontWeight:600, color:dColor(totals.pct===null?0:totals.pct)}}>{fmtPct(totals.pct)}</td>
+                  <td style={tdS}/>
+                </tr>
+              ))}
+              {/* Grand total */}
+              <tr style={{background:C.surface2, borderTop:`2px solid ${C.border}`}}>
+                <td colSpan={2} style={{...tdS, fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.text, fontWeight:700}}>
+                  GRAND TOTAL
+                </td>
+                <td style={{...tdS, fontFamily:F.mono, fontSize:13, fontWeight:700}}>{fmtPrice(grandH)}</td>
+                <td style={{...tdS, fontFamily:F.mono, fontSize:13, fontWeight:700}}>{fmtPrice(grandC)}</td>
+                <td style={{...tdS, fontFamily:F.mono, fontSize:13, fontWeight:700, color:dColor(grandDelta)}}>{fmtDelta(grandDelta)}</td>
+                <td style={{...tdS, fontFamily:F.mono, fontSize:13, fontWeight:700, color:dColor(grandPct===null?0:grandPct)}}>{fmtPct(grandPct)}</td>
+                <td style={tdS}/>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Save & Log */}
+      <button onClick={handleSave} disabled={busy || lineItems.length===0} style={{
+        width:"100%",
+        background: busy||lineItems.length===0 ? C.surface2 : `linear-gradient(135deg,${C.orange} 0%,#EA580C 100%)`,
+        border:`1.5px solid ${busy||lineItems.length===0 ? C.border : C.orange}`,
+        borderRadius:10, padding:"14px 16px",
+        fontFamily:F.mono, fontSize:13, letterSpacing:2,
+        color: busy||lineItems.length===0 ? C.dim : "#fff",
+        cursor: busy||lineItems.length===0 ? "not-allowed" : "pointer",
+        transition:"all 0.15s",
+      }}>
+        {busy ? "LOGGING..." : "SAVE & LOG TO SHEETS"}
+      </button>
+
+      {saveMsg && (
+        <div style={{
+          marginTop:12, padding:"12px 14px", borderRadius:8,
+          background: saveMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
+          border:`1px solid ${saveMsg.startsWith("✓") ? C.green : C.red}`,
+          fontFamily:F.mono, fontSize:12, letterSpacing:1,
+          color: saveMsg.startsWith("✓") ? C.green : C.red,
+        }}>
+          {saveMsg}
+        </div>
+      )}
     </div>
   );
 }
