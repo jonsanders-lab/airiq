@@ -4457,39 +4457,104 @@ function MarketIntel() {
   const BRANCHES    = ["Atlanta","Charlotte","Tampa","Greenville","Nashville","Dallas","Detroit","Cleveland","Chicago"];
   const COMPETITORS = ["Diversified Air Systems","Kaeser","Atlas Copco","Compressed Air Systems","Other"];
   const CATEGORIES  = ["Parts","Labor","Other"];
+  const KEY_TERMS   = ["filter","separator","oil","labor","mileage","sample","lubricant","service","travel","freight","disposal","coolant","element"];
   const today = new Date().toISOString().slice(0,10);
 
-  const fileRef = React.useRef(null);
-  const [header, setHeader]       = React.useState({ branch:"", repName:"", competitor:"", customer:"", equipmentModel:"", quoteDate:today });
-  const [item, setItem]           = React.useState({ description:"", category:"Parts", hodgePrice:"", competitorPrice:"" });
-  const [lineItems, setLineItems] = React.useState([]);
-  const [busy, setBusy]           = React.useState(false);
-  const [saveMsg, setSaveMsg]     = React.useState("");
-  const [extracting, setExtracting] = React.useState(false);
-  const [extractMsg, setExtractMsg] = React.useState("");
+  const hodgeFileRef = React.useRef(null);
+  const compFileRef  = React.useRef(null);
+  const [header, setHeader]         = React.useState({ branch:"", repName:"", competitor:"", customer:"", equipmentModel:"", quoteDate:today });
+  const [item, setItem]             = React.useState({ description:"", category:"Parts", hodgePrice:"", competitorPrice:"" });
+  const [lineItems, setLineItems]   = React.useState([]);
+  const [busy, setBusy]             = React.useState(false);
+  const [saveMsg, setSaveMsg]       = React.useState("");
+  const [hodgeExtracting, setHodgeExtracting] = React.useState(false);
+  const [hodgeMsg, setHodgeMsg]               = React.useState("");
+  const [compExtracting, setCompExtracting]   = React.useState(false);
+  const [compMsg, setCompMsg]                 = React.useState("");
 
-  function hf(k,v) { setHeader(p => ({...p, [k]:v})); }
-  function itf(k,v) { setItem(p => ({...p, [k]:v})); }
+  // ── Matching helpers ────────────────────────────────────────────────────────
+  function normalize(s) {
+    return (s||"").toLowerCase().replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();
+  }
+  function keyTokens(desc) {
+    const n = normalize(desc);
+    return KEY_TERMS.filter(t => n.includes(t));
+  }
+  function findMatchIdx(desc, rows, used) {
+    const tokens = keyTokens(desc);
+    if (!tokens.length) return -1;
+    for (let i = 0; i < rows.length; i++) {
+      if (used.has(i)) continue;
+      if (tokens.some(t => keyTokens(rows[i].description).includes(t))) return i;
+    }
+    return -1;
+  }
+  function recalc(row) {
+    const h = row.hodgePrice, c = row.competitorPrice;
+    return {...row, delta: h-c, pct: c!==0 ? (h-c)/c*100 : null};
+  }
+  function mergeExtracted(existing, items, side) {
+    const result = existing.map(r => ({...r}));
+    const used = new Set();
+    items.forEach(ni => {
+      const idx = findMatchIdx(ni.description, result, used);
+      if (idx >= 0) {
+        used.add(idx);
+        result[idx] = recalc({...result[idx], [side==='hodge'?'hodgePrice':'competitorPrice']: ni.price});
+      } else {
+        result.push(recalc({
+          description:     ni.description,
+          category:        ni.category,
+          hodgePrice:      side==='hodge' ? ni.price : 0,
+          competitorPrice: side==='comp'  ? ni.price : 0,
+        }));
+      }
+    });
+    return result;
+  }
 
-  async function handleExtract(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = "";
-    setExtracting(true); setExtractMsg("");
+  // ── Upload / extract ────────────────────────────────────────────────────────
+  async function uploadAndExtract(file) {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await fetch("/api/market-intel/extract", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ base64, mimeType: file.type }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Extraction failed");
+    return data.extracted;
+  }
+
+  async function handleHodgeExtract(e) {
+    const file = e.target.files[0]; if (!file) return; e.target.value = "";
+    setHodgeExtracting(true); setHodgeMsg("");
     try {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch("/api/market-intel/extract", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ base64, mimeType: file.type }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Extraction failed");
-      const ext = data.extracted;
+      const ext = await uploadAndExtract(file);
+      if (ext.lineItems && ext.lineItems.length) {
+        const items = ext.lineItems.map(l => ({
+          description: l.description || "",
+          category:    CATEGORIES.includes(l.category) ? l.category : "Other",
+          price:       parseFloat(l.competitorPrice) || 0,
+        }));
+        setLineItems(prev => mergeExtracted(prev, items, 'hodge'));
+        setHodgeMsg("✓ Extracted " + items.length + " line item" + (items.length!==1?"s":"") + " from Hodge quote — review and fill any blank prices before saving.");
+      } else {
+        setHodgeMsg("⚠ No line items found in Hodge quote.");
+      }
+    } catch(err) { setHodgeMsg("Error: " + err.message); }
+    finally { setHodgeExtracting(false); }
+  }
+
+  async function handleCompExtract(e) {
+    const file = e.target.files[0]; if (!file) return; e.target.value = "";
+    setCompExtracting(true); setCompMsg("");
+    try {
+      const ext = await uploadAndExtract(file);
       const compMatch = (() => {
         if (!ext.competitor) return "";
         const lower = ext.competitor.toLowerCase();
@@ -4497,71 +4562,58 @@ function MarketIntel() {
       })();
       setHeader(p => ({
         ...p,
-        competitor:     compMatch       || p.competitor,
-        customer:       ext.customer    || p.customer,
+        competitor:     compMatch          || p.competitor,
+        customer:       ext.customer       || p.customer,
         equipmentModel: ext.equipmentModel || p.equipmentModel,
       }));
       if (ext.lineItems && ext.lineItems.length) {
-        const newItems = ext.lineItems.map(l => {
-          const c = parseFloat(l.competitorPrice) || 0;
-          return {
-            description:    l.description || "",
-            category:       CATEGORIES.includes(l.category) ? l.category : "Other",
-            hodgePrice:     0,
-            competitorPrice: c,
-            delta: -c,
-            pct:  c !== 0 ? -100 : null,
-          };
-        });
-        setLineItems(newItems);
-        setExtractMsg("✓ Extracted " + newItems.length + " line item" + (newItems.length!==1?"s":"") + " — please review and add Hodge prices before saving.");
+        const items = ext.lineItems.map(l => ({
+          description: l.description || "",
+          category:    CATEGORIES.includes(l.category) ? l.category : "Other",
+          price:       parseFloat(l.competitorPrice) || 0,
+        }));
+        setLineItems(prev => mergeExtracted(prev, items, 'comp'));
+        setCompMsg("✓ Extracted " + items.length + " line item" + (items.length!==1?"s":"") + " from Competitor quote — review and fill any blank prices before saving.");
       } else {
-        setExtractMsg("⚠ No line items found — enter manually below.");
+        setCompMsg("⚠ No line items found in Competitor quote.");
       }
-    } catch(e) {
-      setExtractMsg("Error: " + e.message);
-    } finally { setExtracting(false); }
+    } catch(err) { setCompMsg("Error: " + err.message); }
+    finally { setCompExtracting(false); }
   }
+
+  // ── Manual entry ────────────────────────────────────────────────────────────
+  function hf(k,v) { setHeader(p => ({...p, [k]:v})); }
+  function itf(k,v) { setItem(p => ({...p, [k]:v})); }
 
   function addItem() {
     if (!item.description.trim()) return;
     const h = parseFloat(item.hodgePrice) || 0;
     const c = parseFloat(item.competitorPrice) || 0;
-    setLineItems(p => [...p, {
-      description: item.description.trim(),
-      category: item.category,
-      hodgePrice: h,
-      competitorPrice: c,
-      delta: h - c,
-      pct: c !== 0 ? (h - c) / c * 100 : null,
-    }]);
-    setItem({ description:"", category: item.category, hodgePrice:"", competitorPrice:"" });
+    setLineItems(p => [...p, recalc({ description:item.description.trim(), category:item.category, hodgePrice:h, competitorPrice:c })]);
+    setItem({ description:"", category:item.category, hodgePrice:"", competitorPrice:"" });
   }
-
   function removeItem(i) { setLineItems(p => p.filter((_,idx) => idx !== i)); }
-
   function updateHodgePrice(i, val) {
-    setLineItems(p => p.map((row, idx) => {
-      if (idx !== i) return row;
-      const h = parseFloat(val) || 0;
-      const c = row.competitorPrice;
-      return {...row, hodgePrice:h, delta:h-c, pct:c!==0?(h-c)/c*100:null};
-    }));
+    setLineItems(p => p.map((row,idx) => idx!==i ? row : recalc({...row, hodgePrice: parseFloat(val)||0})));
+  }
+  function updateCompPrice(i, val) {
+    setLineItems(p => p.map((row,idx) => idx!==i ? row : recalc({...row, competitorPrice: parseFloat(val)||0})));
   }
 
+  // ── Totals ──────────────────────────────────────────────────────────────────
   function catTotals(cat) {
-    const rows = lineItems.filter(r => r.category === cat);
+    const rows = lineItems.filter(r => r.category===cat);
     if (!rows.length) return null;
-    const h = rows.reduce((s,r) => s + r.hodgePrice, 0);
-    const c = rows.reduce((s,r) => s + r.competitorPrice, 0);
-    return { hodge:h, comp:c, delta:h-c, pct: c!==0 ? (h-c)/c*100 : null };
+    const h = rows.reduce((s,r)=>s+r.hodgePrice,0);
+    const c = rows.reduce((s,r)=>s+r.competitorPrice,0);
+    return { hodge:h, comp:c, delta:h-c, pct:c!==0?(h-c)/c*100:null };
   }
+  const grandH=lineItems.reduce((s,r)=>s+r.hodgePrice,0);
+  const grandC=lineItems.reduce((s,r)=>s+r.competitorPrice,0);
+  const grandDelta=grandH-grandC;
+  const grandPct=grandC!==0?grandDelta/grandC*100:null;
 
-  const grandH     = lineItems.reduce((s,r) => s + r.hodgePrice, 0);
-  const grandC     = lineItems.reduce((s,r) => s + r.competitorPrice, 0);
-  const grandDelta = grandH - grandC;
-  const grandPct   = grandC !== 0 ? grandDelta / grandC * 100 : null;
-
+  // ── Save ────────────────────────────────────────────────────────────────────
   async function handleSave() {
     if (!lineItems.length) { setSaveMsg("Add at least one line item before saving."); return; }
     setBusy(true); setSaveMsg("");
@@ -4569,74 +4621,109 @@ function MarketIntel() {
       const res = await fetch("/api/market-intel/log", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
-          branch: header.branch, repName: header.repName,
-          customer: header.customer, competitor: header.competitor,
-          equipmentModel: header.equipmentModel, quoteDate: header.quoteDate,
-          lineItems: lineItems.map(l => ({
-            description: l.description, category: l.category,
-            hodgePrice: l.hodgePrice, competitorPrice: l.competitorPrice,
-          })),
+          branch:header.branch, repName:header.repName,
+          customer:header.customer, competitor:header.competitor,
+          equipmentModel:header.equipmentModel, quoteDate:header.quoteDate,
+          lineItems:lineItems.map(l=>({ description:l.description, category:l.category, hodgePrice:l.hodgePrice, competitorPrice:l.competitorPrice })),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       setSaveMsg("✓ " + data.rowsAdded + " row" + (data.rowsAdded!==1?"s":"") + " logged to Google Sheets");
-      setLineItems([]);
-      setExtractMsg("");
+      setLineItems([]); setHodgeMsg(""); setCompMsg("");
       setTimeout(() => setSaveMsg(""), 6000);
-    } catch(e) {
-      setSaveMsg("Error: " + e.message);
-    } finally { setBusy(false); }
+    } catch(err) { setSaveMsg("Error: " + err.message); }
+    finally { setBusy(false); }
   }
 
-  const fmtPrice = n => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  const fmtDelta = n => n===0 ? "$0.00" : (n>0?"+":"-") + "$" + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  // ── Formatters / styles ─────────────────────────────────────────────────────
+  const fmtPrice = n => "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,",");
+  const fmtDelta = n => n===0 ? "$0.00" : (n>0?"+":"-")+"$"+Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,",");
   const fmtPct   = n => n===null ? "N/A" : (n>0?"+":"") + n.toFixed(1) + "%";
   const dColor   = n => n>0 ? C.red : n<0 ? C.green : C.text;
   const rowBg    = r => r.delta>0 ? "rgba(220,38,38,0.08)" : r.delta<0 ? "rgba(34,197,94,0.08)" : "transparent";
-
   const tdS  = { padding:"8px 10px", fontSize:13, color:C.text, borderBottom:`1px solid ${C.border}` };
   const lblS = { display:"block", fontFamily:F.mono, fontSize:9, letterSpacing:3, color:C.mid, marginBottom:6 };
-  const sectTotals = CATEGORIES.map(cat => ({ cat, totals:catTotals(cat) })).filter(x => x.totals);
+  const inpS = { background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, padding:"4px 6px", color:C.text, fontSize:12, fontFamily:F.mono, outline:"none", width:72 };
+  const sectTotals = CATEGORIES.map(cat=>({ cat, totals:catTotals(cat) })).filter(x=>x.totals);
 
   return (
     <div style={{padding:"16px 16px 40px", maxWidth:600, margin:"0 auto"}}>
       <SectionHeader label="MARKET INTEL" sub="Competitive quote comparison & price analysis"/>
 
-      {/* Upload section — optional */}
-      <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginBottom:4}}>
+      {/* Dual upload zones — optional */}
+      <div style={{marginBottom:4}}>
         <div style={{fontFamily:F.mono, fontSize:10, letterSpacing:2, color:C.mid, marginBottom:4}}>
-          UPLOAD COMPETITOR QUOTE <span style={{color:C.dim, fontWeight:400, letterSpacing:1}}>— OPTIONAL</span>
+          UPLOAD QUOTES <span style={{color:C.dim, fontWeight:400, letterSpacing:1}}>— OPTIONAL</span>
         </div>
         <div style={{fontSize:12, color:C.dim, marginBottom:10, lineHeight:1.5}}>
-          Upload a competitor quote to auto-fill line items, or enter manually below.
+          Upload quotes to auto-fill line items, or enter manually below.
         </div>
-        <input ref={fileRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
-          style={{display:"none"}} onChange={handleExtract}/>
-        <button onClick={()=>fileRef.current && fileRef.current.click()} disabled={extracting} style={{
-          background: extracting ? C.surface2 : C.surface3,
-          border:`1.5px dashed ${extracting ? C.border : C.borderHov}`,
-          borderRadius:8, padding:"13px 16px", width:"100%",
-          fontFamily:F.mono, fontSize:11, letterSpacing:2,
-          color: extracting ? C.dim : C.mid,
-          cursor: extracting ? "not-allowed" : "pointer",
-          display:"flex", alignItems:"center", justifyContent:"center", gap:10,
-          transition:"all 0.15s",
-        }}>
-          {extracting
-            ? <><span className="pulse" style={{fontSize:16}}>⏳</span><span>EXTRACTING...</span></>
-            : <><span style={{fontSize:16}}>📎</span><span>CHOOSE FILE — PDF OR IMAGE</span></>
-          }
-        </button>
-        {extractMsg && (
-          <div style={{
-            marginTop:10, padding:"10px 12px", borderRadius:7,
-            background: extractMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
-            border:`1px solid ${extractMsg.startsWith("✓") ? C.green : C.red}`,
-            fontFamily:F.mono, fontSize:11, letterSpacing:1,
-            color: extractMsg.startsWith("✓") ? C.green : C.red,
-          }}>{extractMsg}</div>
-        )}
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10}}>
+
+          {/* Hodge Quote zone */}
+          <div style={{background:C.surface, border:`1px solid rgba(59,111,212,0.45)`, borderRadius:10, padding:12}}>
+            <div style={{fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.blueLight, marginBottom:8}}>HODGE QUOTE</div>
+            <input ref={hodgeFileRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
+              style={{display:"none"}} onChange={handleHodgeExtract}/>
+            <button onClick={()=>hodgeFileRef.current && hodgeFileRef.current.click()} disabled={hodgeExtracting} style={{
+              background: hodgeExtracting ? C.surface2 : C.surface3,
+              border:`1.5px dashed ${hodgeExtracting ? C.border : C.blueLight}`,
+              borderRadius:7, padding:"11px 8px", width:"100%",
+              fontFamily:F.mono, fontSize:10, letterSpacing:1,
+              color: hodgeExtracting ? C.dim : C.blueLight,
+              cursor: hodgeExtracting ? "not-allowed" : "pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+              transition:"all 0.15s",
+            }}>
+              {hodgeExtracting
+                ? <><span className="pulse" style={{fontSize:14}}>⏳</span><span>EXTRACTING...</span></>
+                : <><span style={{fontSize:14}}>📎</span><span>UPLOAD</span></>
+              }
+            </button>
+            {hodgeMsg && (
+              <div style={{
+                marginTop:8, padding:"8px 10px", borderRadius:6, lineHeight:1.4,
+                background: hodgeMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
+                border:`1px solid ${hodgeMsg.startsWith("✓") ? C.green : C.red}`,
+                fontFamily:F.mono, fontSize:10, letterSpacing:1,
+                color: hodgeMsg.startsWith("✓") ? C.green : C.red,
+              }}>{hodgeMsg}</div>
+            )}
+          </div>
+
+          {/* Competitor Quote zone */}
+          <div style={{background:C.surface, border:`1px solid rgba(220,38,38,0.45)`, borderRadius:10, padding:12}}>
+            <div style={{fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.red, marginBottom:8}}>COMPETITOR QUOTE</div>
+            <input ref={compFileRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
+              style={{display:"none"}} onChange={handleCompExtract}/>
+            <button onClick={()=>compFileRef.current && compFileRef.current.click()} disabled={compExtracting} style={{
+              background: compExtracting ? C.surface2 : C.surface3,
+              border:`1.5px dashed ${compExtracting ? C.border : C.red}`,
+              borderRadius:7, padding:"11px 8px", width:"100%",
+              fontFamily:F.mono, fontSize:10, letterSpacing:1,
+              color: compExtracting ? C.dim : C.red,
+              cursor: compExtracting ? "not-allowed" : "pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+              transition:"all 0.15s",
+            }}>
+              {compExtracting
+                ? <><span className="pulse" style={{fontSize:14}}>⏳</span><span>EXTRACTING...</span></>
+                : <><span style={{fontSize:14}}>📎</span><span>UPLOAD</span></>
+              }
+            </button>
+            {compMsg && (
+              <div style={{
+                marginTop:8, padding:"8px 10px", borderRadius:6, lineHeight:1.4,
+                background: compMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
+                border:`1px solid ${compMsg.startsWith("✓") ? C.green : C.red}`,
+                fontFamily:F.mono, fontSize:10, letterSpacing:1,
+                color: compMsg.startsWith("✓") ? C.green : C.red,
+              }}>{compMsg}</div>
+            )}
+          </div>
+
+        </div>
       </div>
 
       {/* Divider */}
@@ -4725,15 +4812,13 @@ function MarketIntel() {
                   <td style={tdS}>{row.description}</td>
                   <td style={{...tdS, color:C.mid, fontSize:11, fontFamily:F.mono}}>{row.category}</td>
                   <td style={{...tdS, padding:"4px 6px"}}>
-                    <input type="number" min="0" step="0.01"
-                      value={row.hodgePrice || ""}
-                      onChange={e=>updateHodgePrice(i, e.target.value)}
-                      placeholder="—"
-                      style={{width:72, background:"transparent", border:`1px solid ${C.border}`,
-                        borderRadius:4, padding:"4px 6px", color:C.text, fontSize:12,
-                        fontFamily:F.mono, outline:"none"}}/>
+                    <input type="number" min="0" step="0.01" value={row.hodgePrice||""} placeholder="—"
+                      onChange={e=>updateHodgePrice(i,e.target.value)} style={inpS}/>
                   </td>
-                  <td style={{...tdS, fontFamily:F.mono, fontSize:12}}>{fmtPrice(row.competitorPrice)}</td>
+                  <td style={{...tdS, padding:"4px 6px"}}>
+                    <input type="number" min="0" step="0.01" value={row.competitorPrice||""} placeholder="—"
+                      onChange={e=>updateCompPrice(i,e.target.value)} style={inpS}/>
+                  </td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12, color:dColor(row.delta)}}>{fmtDelta(row.delta)}</td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12, color:dColor(row.pct===null?0:row.pct)}}>{fmtPct(row.pct)}</td>
                   <td style={{...tdS, padding:"8px 6px"}}>
@@ -4744,12 +4829,9 @@ function MarketIntel() {
                   </td>
                 </tr>
               ))}
-              {/* Category subtotals */}
-              {sectTotals.map(({cat, totals}) => (
+              {sectTotals.map(({cat,totals}) => (
                 <tr key={cat} style={{background:C.surface2, borderTop:`1px solid ${C.border}`}}>
-                  <td colSpan={2} style={{...tdS, fontFamily:F.mono, fontSize:10, letterSpacing:1, color:C.mid}}>
-                    {cat.toUpperCase()} TOTAL
-                  </td>
+                  <td colSpan={2} style={{...tdS, fontFamily:F.mono, fontSize:10, letterSpacing:1, color:C.mid}}>{cat.toUpperCase()} TOTAL</td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12, fontWeight:600}}>{fmtPrice(totals.hodge)}</td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12, fontWeight:600}}>{fmtPrice(totals.comp)}</td>
                   <td style={{...tdS, fontFamily:F.mono, fontSize:12, fontWeight:600, color:dColor(totals.delta)}}>{fmtDelta(totals.delta)}</td>
@@ -4757,11 +4839,8 @@ function MarketIntel() {
                   <td style={tdS}/>
                 </tr>
               ))}
-              {/* Grand total */}
               <tr style={{background:C.surface2, borderTop:`2px solid ${C.border}`}}>
-                <td colSpan={2} style={{...tdS, fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.text, fontWeight:700}}>
-                  GRAND TOTAL
-                </td>
+                <td colSpan={2} style={{...tdS, fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.text, fontWeight:700}}>GRAND TOTAL</td>
                 <td style={{...tdS, fontFamily:F.mono, fontSize:13, fontWeight:700}}>{fmtPrice(grandH)}</td>
                 <td style={{...tdS, fontFamily:F.mono, fontSize:13, fontWeight:700}}>{fmtPrice(grandC)}</td>
                 <td style={{...tdS, fontFamily:F.mono, fontSize:13, fontWeight:700, color:dColor(grandDelta)}}>{fmtDelta(grandDelta)}</td>
@@ -4774,7 +4853,7 @@ function MarketIntel() {
       )}
 
       {/* Save & Log */}
-      <button onClick={handleSave} disabled={busy || lineItems.length===0} style={{
+      <button onClick={handleSave} disabled={busy||lineItems.length===0} style={{
         width:"100%",
         background: busy||lineItems.length===0 ? C.surface2 : `linear-gradient(135deg,${C.orange} 0%,#EA580C 100%)`,
         border:`1.5px solid ${busy||lineItems.length===0 ? C.border : C.orange}`,
