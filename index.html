@@ -4761,8 +4761,10 @@ function MarketIntel() {
         </div>
         <div>
           <label style={lblS}>Rep Name</label>
-          <input type="text" value={header.repName} onChange={e=>hf("repName",e.target.value)}
-            placeholder="Your name" style={inS}/>
+          <select value={header.repName} onChange={e=>hf("repName",e.target.value)} style={inS}>
+            <option value="">— Select —</option>
+            {REPS.map(r=><option key={r} value={r}>{r}</option>)}
+          </select>
         </div>
         <div>
           <label style={lblS}>Quote Date</label>
