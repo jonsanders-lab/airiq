@@ -4457,139 +4457,34 @@ function MarketIntel() {
   const BRANCHES    = ["Atlanta","Charlotte","Tampa","Greenville","Nashville","Dallas","Detroit","Cleveland","Chicago"];
   const COMPETITORS = ["Diversified Air Systems","Kaeser","Atlas Copco","Compressed Air Systems","Other"];
   const CATEGORIES  = ["Parts","Labor","Other"];
-  const KEY_TERMS   = ["filter","separator","oil","labor","mileage","sample","lubricant","service","travel","freight","disposal","coolant","element"];
   const today = new Date().toISOString().slice(0,10);
 
-  const hodgeFileRef = React.useRef(null);
-  const compFileRef  = React.useRef(null);
+  const hodgeInputRef = React.useRef(null);
+  const compInputRef  = React.useRef(null);
   const [header, setHeader]         = React.useState({ branch:"", repName:"", competitor:"", customer:"", equipmentModel:"", quoteDate:today });
   const [item, setItem]             = React.useState({ description:"", category:"Parts", hodgePrice:"", competitorPrice:"" });
   const [lineItems, setLineItems]   = React.useState([]);
   const [busy, setBusy]             = React.useState(false);
   const [saveMsg, setSaveMsg]       = React.useState("");
-  const [hodgeExtracting, setHodgeExtracting] = React.useState(false);
-  const [hodgeMsg, setHodgeMsg]               = React.useState("");
-  const [compExtracting, setCompExtracting]   = React.useState(false);
-  const [compMsg, setCompMsg]                 = React.useState("");
-
-  // ── Matching helpers ────────────────────────────────────────────────────────
-  function normalize(s) {
-    return (s||"").toLowerCase().replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();
-  }
-  function keyTokens(desc) {
-    const n = normalize(desc);
-    return KEY_TERMS.filter(t => n.includes(t));
-  }
-  function findMatchIdx(desc, rows, used) {
-    const tokens = keyTokens(desc);
-    if (!tokens.length) return -1;
-    for (let i = 0; i < rows.length; i++) {
-      if (used.has(i)) continue;
-      if (tokens.some(t => keyTokens(rows[i].description).includes(t))) return i;
-    }
-    return -1;
-  }
-  function recalc(row) {
-    const h = row.hodgePrice, c = row.competitorPrice;
-    return {...row, delta: h-c, pct: c!==0 ? (h-c)/c*100 : null};
-  }
-  function mergeExtracted(existing, items, side) {
-    const result = existing.map(r => ({...r}));
-    const used = new Set();
-    items.forEach(ni => {
-      const idx = findMatchIdx(ni.description, result, used);
-      if (idx >= 0) {
-        used.add(idx);
-        result[idx] = recalc({...result[idx], [side==='hodge'?'hodgePrice':'competitorPrice']: ni.price});
-      } else {
-        result.push(recalc({
-          description:     ni.description,
-          category:        ni.category,
-          hodgePrice:      side==='hodge' ? ni.price : 0,
-          competitorPrice: side==='comp'  ? ni.price : 0,
-        }));
-      }
-    });
-    return result;
-  }
-
-  // ── Upload / extract ────────────────────────────────────────────────────────
-  async function uploadAndExtract(file) {
-    const base64 = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    const res = await fetch("/api/market-intel/extract", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ base64, mimeType: file.type }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Extraction failed");
-    return data.extracted;
-  }
-
-  async function handleHodgeExtract(e) {
-    const file = e.target.files[0]; if (!file) return; e.target.value = "";
-    setHodgeExtracting(true); setHodgeMsg("");
-    try {
-      const ext = await uploadAndExtract(file);
-      if (ext.lineItems && ext.lineItems.length) {
-        const items = ext.lineItems.map(l => ({
-          description: l.description || "",
-          category:    CATEGORIES.includes(l.category) ? l.category : "Other",
-          price:       parseFloat(l.competitorPrice) || 0,
-        }));
-        setLineItems(prev => mergeExtracted(prev, items, 'hodge'));
-        setHodgeMsg("✓ Extracted " + items.length + " line item" + (items.length!==1?"s":"") + " from Hodge quote — review and fill any blank prices before saving.");
-      } else {
-        setHodgeMsg("⚠ No line items found in Hodge quote.");
-      }
-    } catch(err) { setHodgeMsg("Error: " + err.message); }
-    finally { setHodgeExtracting(false); }
-  }
-
-  async function handleCompExtract(e) {
-    const file = e.target.files[0]; if (!file) return; e.target.value = "";
-    setCompExtracting(true); setCompMsg("");
-    try {
-      const ext = await uploadAndExtract(file);
-      const compMatch = (() => {
-        if (!ext.competitor) return "";
-        const lower = ext.competitor.toLowerCase();
-        return COMPETITORS.find(c => lower.includes(c.toLowerCase()) || c.toLowerCase().includes(lower)) || "Other";
-      })();
-      setHeader(p => ({
-        ...p,
-        competitor:     compMatch          || p.competitor,
-        customer:       ext.customer       || p.customer,
-        equipmentModel: ext.equipmentModel || p.equipmentModel,
-      }));
-      if (ext.lineItems && ext.lineItems.length) {
-        const items = ext.lineItems.map(l => ({
-          description: l.description || "",
-          category:    CATEGORIES.includes(l.category) ? l.category : "Other",
-          price:       parseFloat(l.competitorPrice) || 0,
-        }));
-        setLineItems(prev => mergeExtracted(prev, items, 'comp'));
-        setCompMsg("✓ Extracted " + items.length + " line item" + (items.length!==1?"s":"") + " from Competitor quote — review and fill any blank prices before saving.");
-      } else {
-        setCompMsg("⚠ No line items found in Competitor quote.");
-      }
-    } catch(err) { setCompMsg("Error: " + err.message); }
-    finally { setCompExtracting(false); }
-  }
+  const [hodgeFile, setHodgeFile]   = React.useState(null);
+  const [compFile, setCompFile]     = React.useState(null);
+  const [comparing, setComparing]   = React.useState(false);
+  const [compareMsg, setCompareMsg] = React.useState("");
 
   // ── Manual entry ────────────────────────────────────────────────────────────
   function hf(k,v) { setHeader(p => ({...p, [k]:v})); }
   function itf(k,v) { setItem(p => ({...p, [k]:v})); }
 
+  function recalc(row) {
+    const h = row.hodgePrice, c = row.competitorPrice;
+    return {...row, delta: h-c, pct: c!==0 ? (h-c)/c*100 : null};
+  }
+
   function addItem() {
     if (!item.description.trim()) return;
     const h = parseFloat(item.hodgePrice) || 0;
     const c = parseFloat(item.competitorPrice) || 0;
-    setLineItems(p => [...p, recalc({ description:item.description.trim(), category:item.category, hodgePrice:h, competitorPrice:c })]);
+    setLineItems(p => [...p, recalc({ description:item.description.trim(), category:item.category, hodgePrice:h, competitorPrice:c, equipmentModel:"" })]);
     setItem({ description:"", category:item.category, hodgePrice:"", competitorPrice:"" });
   }
   function removeItem(i) { setLineItems(p => p.filter((_,idx) => idx !== i)); }
@@ -4598,6 +4493,73 @@ function MarketIntel() {
   }
   function updateCompPrice(i, val) {
     setLineItems(p => p.map((row,idx) => idx!==i ? row : recalc({...row, competitorPrice: parseFloat(val)||0})));
+  }
+
+  // ── File selection ──────────────────────────────────────────────────────────
+  function handleHodgeFile(e) {
+    const file = e.target.files[0]; if (!file) return; e.target.value = "";
+    setHodgeFile(file); setCompareMsg("");
+  }
+  function handleCompFile(e) {
+    const file = e.target.files[0]; if (!file) return; e.target.value = "";
+    setCompFile(file); setCompareMsg("");
+  }
+
+  // ── Compare ─────────────────────────────────────────────────────────────────
+  async function handleCompare() {
+    setComparing(true); setCompareMsg("");
+    try {
+      function toBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+      const [hodgeBase64, compBase64] = await Promise.all([toBase64(hodgeFile), toBase64(compFile)]);
+      const res = await fetch("/api/market-intel/compare", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          hodgeBase64, hodgeMimeType: hodgeFile.type,
+          compBase64,  compMimeType:  compFile.type,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Comparison failed");
+      const r = data.result;
+      const compMatch = (() => {
+        if (!r.competitor) return "";
+        const lower = r.competitor.toLowerCase();
+        return COMPETITORS.find(c => lower.includes(c.toLowerCase()) || c.toLowerCase().includes(lower)) || "Other";
+      })();
+      const models = (r.groups||[]).map(g=>g.equipmentModel).filter(Boolean);
+      setHeader(p => ({
+        ...p,
+        competitor:     compMatch         || p.competitor,
+        customer:       r.customer        || p.customer,
+        equipmentModel: models.join(", ") || p.equipmentModel,
+      }));
+      const flat = [];
+      (r.groups||[]).forEach(g => {
+        (g.lineItems||[]).forEach(l => {
+          flat.push(recalc({
+            description:     l.description || "",
+            category:        CATEGORIES.includes(l.category) ? l.category : "Other",
+            hodgePrice:      parseFloat(l.hodgePrice) || 0,
+            competitorPrice: parseFloat(l.competitorPrice) || 0,
+            equipmentModel:  g.equipmentModel || "",
+          }));
+        });
+      });
+      setLineItems(flat);
+      const n = flat.length, u = (r.groups||[]).length;
+      setCompareMsg("✓ " + n + " line item" + (n!==1?"s":"") + " compared across " + u + " unit" + (u!==1?"s":"") + " — review prices then Save & Log.");
+    } catch(err) {
+      setCompareMsg("Error: " + err.message);
+    } finally {
+      setComparing(false);
+    }
   }
 
   // ── Totals ──────────────────────────────────────────────────────────────────
@@ -4624,13 +4586,17 @@ function MarketIntel() {
           branch:header.branch, repName:header.repName,
           customer:header.customer, competitor:header.competitor,
           equipmentModel:header.equipmentModel, quoteDate:header.quoteDate,
-          lineItems:lineItems.map(l=>({ description:l.description, category:l.category, hodgePrice:l.hodgePrice, competitorPrice:l.competitorPrice })),
+          lineItems:lineItems.map(l=>({
+            description:l.description, category:l.category,
+            hodgePrice:l.hodgePrice, competitorPrice:l.competitorPrice,
+            equipmentModel:l.equipmentModel||"",
+          })),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       setSaveMsg("✓ " + data.rowsAdded + " row" + (data.rowsAdded!==1?"s":"") + " logged to Google Sheets");
-      setLineItems([]); setHodgeMsg(""); setCompMsg("");
+      setLineItems([]); setCompareMsg("");
       setTimeout(() => setSaveMsg(""), 6000);
     } catch(err) { setSaveMsg("Error: " + err.message); }
     finally { setBusy(false); }
@@ -4647,83 +4613,107 @@ function MarketIntel() {
   const inpS = { background:"transparent", border:`1px solid ${C.border}`, borderRadius:4, padding:"4px 6px", color:C.text, fontSize:12, fontFamily:F.mono, outline:"none", width:72 };
   const sectTotals = CATEGORIES.map(cat=>({ cat, totals:catTotals(cat) })).filter(x=>x.totals);
 
+  function fileChip(file, color, onClear) {
+    const name = file.name.length > 22 ? file.name.slice(0,20)+"…" : file.name;
+    return (
+      <div style={{
+        marginTop:0, display:"flex", alignItems:"center", justifyContent:"space-between",
+        background:`${color}1A`, border:`1px solid ${color}`,
+        borderRadius:6, padding:"7px 10px",
+      }}>
+        <span style={{fontFamily:F.mono, fontSize:10, color, letterSpacing:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>✓ {name}</span>
+        <button onClick={onClear} disabled={comparing} style={{background:"none", border:"none", color:C.dim, cursor:"pointer", fontSize:16, padding:"0 0 0 8px", lineHeight:1}}>×</button>
+      </div>
+    );
+  }
+
   return (
     <div style={{padding:"16px 16px 40px", maxWidth:600, margin:"0 auto"}}>
       <SectionHeader label="MARKET INTEL" sub="Competitive quote comparison & price analysis"/>
 
-      {/* Dual upload zones — optional */}
+      {/* Dual upload zones */}
       <div style={{marginBottom:4}}>
         <div style={{fontFamily:F.mono, fontSize:10, letterSpacing:2, color:C.mid, marginBottom:4}}>
           UPLOAD QUOTES <span style={{color:C.dim, fontWeight:400, letterSpacing:1}}>— OPTIONAL</span>
         </div>
         <div style={{fontSize:12, color:C.dim, marginBottom:10, lineHeight:1.5}}>
-          Upload quotes to auto-fill line items, or enter manually below.
+          Upload both quotes for an AI-powered apples-to-apples comparison, or enter manually below.
         </div>
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10}}>
 
           {/* Hodge Quote zone */}
           <div style={{background:C.surface, border:`1px solid rgba(59,111,212,0.45)`, borderRadius:10, padding:12}}>
             <div style={{fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.blueLight, marginBottom:8}}>HODGE QUOTE</div>
-            <input ref={hodgeFileRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
-              style={{display:"none"}} onChange={handleHodgeExtract}/>
-            <button onClick={()=>hodgeFileRef.current && hodgeFileRef.current.click()} disabled={hodgeExtracting} style={{
-              background: hodgeExtracting ? C.surface2 : C.surface3,
-              border:`1.5px dashed ${hodgeExtracting ? C.border : C.blueLight}`,
-              borderRadius:7, padding:"11px 8px", width:"100%",
-              fontFamily:F.mono, fontSize:10, letterSpacing:1,
-              color: hodgeExtracting ? C.dim : C.blueLight,
-              cursor: hodgeExtracting ? "not-allowed" : "pointer",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-              transition:"all 0.15s",
-            }}>
-              {hodgeExtracting
-                ? <><span className="pulse" style={{fontSize:14}}>⏳</span><span>EXTRACTING...</span></>
-                : <><span style={{fontSize:14}}>📎</span><span>UPLOAD</span></>
-              }
-            </button>
-            {hodgeMsg && (
-              <div style={{
-                marginTop:8, padding:"8px 10px", borderRadius:6, lineHeight:1.4,
-                background: hodgeMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
-                border:`1px solid ${hodgeMsg.startsWith("✓") ? C.green : C.red}`,
+            <input ref={hodgeInputRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
+              style={{display:"none"}} onChange={handleHodgeFile}/>
+            {!hodgeFile ? (
+              <button onClick={()=>hodgeInputRef.current && hodgeInputRef.current.click()} disabled={comparing} style={{
+                background:C.surface3,
+                border:`1.5px dashed ${comparing ? C.border : C.blueLight}`,
+                borderRadius:7, padding:"11px 8px", width:"100%",
                 fontFamily:F.mono, fontSize:10, letterSpacing:1,
-                color: hodgeMsg.startsWith("✓") ? C.green : C.red,
-              }}>{hodgeMsg}</div>
-            )}
+                color: comparing ? C.dim : C.blueLight,
+                cursor: comparing ? "not-allowed" : "pointer",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                transition:"all 0.15s",
+              }}>
+                <span style={{fontSize:14}}>📎</span><span>UPLOAD</span>
+              </button>
+            ) : fileChip(hodgeFile, C.blueLight, ()=>{ setHodgeFile(null); setCompareMsg(""); })}
           </div>
 
           {/* Competitor Quote zone */}
           <div style={{background:C.surface, border:`1px solid rgba(220,38,38,0.45)`, borderRadius:10, padding:12}}>
             <div style={{fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.red, marginBottom:8}}>COMPETITOR QUOTE</div>
-            <input ref={compFileRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
-              style={{display:"none"}} onChange={handleCompExtract}/>
-            <button onClick={()=>compFileRef.current && compFileRef.current.click()} disabled={compExtracting} style={{
-              background: compExtracting ? C.surface2 : C.surface3,
-              border:`1.5px dashed ${compExtracting ? C.border : C.red}`,
-              borderRadius:7, padding:"11px 8px", width:"100%",
-              fontFamily:F.mono, fontSize:10, letterSpacing:1,
-              color: compExtracting ? C.dim : C.red,
-              cursor: compExtracting ? "not-allowed" : "pointer",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-              transition:"all 0.15s",
-            }}>
-              {compExtracting
-                ? <><span className="pulse" style={{fontSize:14}}>⏳</span><span>EXTRACTING...</span></>
-                : <><span style={{fontSize:14}}>📎</span><span>UPLOAD</span></>
-              }
-            </button>
-            {compMsg && (
-              <div style={{
-                marginTop:8, padding:"8px 10px", borderRadius:6, lineHeight:1.4,
-                background: compMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
-                border:`1px solid ${compMsg.startsWith("✓") ? C.green : C.red}`,
+            <input ref={compInputRef} type="file" accept=".pdf,image/jpeg,image/png,image/jpg"
+              style={{display:"none"}} onChange={handleCompFile}/>
+            {!compFile ? (
+              <button onClick={()=>compInputRef.current && compInputRef.current.click()} disabled={comparing} style={{
+                background:C.surface3,
+                border:`1.5px dashed ${comparing ? C.border : C.red}`,
+                borderRadius:7, padding:"11px 8px", width:"100%",
                 fontFamily:F.mono, fontSize:10, letterSpacing:1,
-                color: compMsg.startsWith("✓") ? C.green : C.red,
-              }}>{compMsg}</div>
-            )}
+                color: comparing ? C.dim : C.red,
+                cursor: comparing ? "not-allowed" : "pointer",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                transition:"all 0.15s",
+              }}>
+                <span style={{fontSize:14}}>📎</span><span>UPLOAD</span>
+              </button>
+            ) : fileChip(compFile, C.red, ()=>{ setCompFile(null); setCompareMsg(""); })}
           </div>
 
         </div>
+
+        {/* Compare button — only when both files loaded */}
+        {(hodgeFile && compFile) && (
+          <button onClick={handleCompare} disabled={comparing} style={{
+            width:"100%", marginTop:10,
+            background: comparing ? C.surface2 : `linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+            border:`1.5px solid ${comparing ? C.border : C.copper}`,
+            borderRadius:8, padding:"12px 16px",
+            fontFamily:F.mono, fontSize:12, letterSpacing:2,
+            color: comparing ? C.dim : "#fff",
+            cursor: comparing ? "not-allowed" : "pointer",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+            transition:"all 0.15s",
+          }}>
+            {comparing
+              ? <><span className="pulse" style={{fontSize:14}}>⏳</span><span>COMPARING QUOTES...</span></>
+              : <><span style={{fontSize:14}}>⚡</span><span>COMPARE QUOTES</span></>
+            }
+          </button>
+        )}
+
+        {compareMsg && (
+          <div style={{
+            marginTop:10, padding:"10px 12px", borderRadius:7, lineHeight:1.5,
+            background: compareMsg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
+            border:`1px solid ${compareMsg.startsWith("✓") ? C.green : C.red}`,
+            fontFamily:F.mono, fontSize:11, letterSpacing:1,
+            color: compareMsg.startsWith("✓") ? C.green : C.red,
+          }}>{compareMsg}</div>
+        )}
       </div>
 
       {/* Divider */}
@@ -4811,7 +4801,10 @@ function MarketIntel() {
             <tbody>
               {lineItems.map((row,i) => (
                 <tr key={i} style={{background:rowBg(row)}}>
-                  <td style={tdS}>{row.description}</td>
+                  <td style={tdS}>
+                    <div>{row.description}</div>
+                    {row.equipmentModel && <div style={{fontFamily:F.mono, fontSize:9, color:C.dim, letterSpacing:1, marginTop:2}}>{row.equipmentModel}</div>}
+                  </td>
                   <td style={{...tdS, color:C.mid, fontSize:11, fontFamily:F.mono}}>{row.category}</td>
                   <td style={{...tdS, padding:"4px 6px"}}>
                     <input type="number" min="0" step="0.01" value={row.hodgePrice||""} placeholder="—"

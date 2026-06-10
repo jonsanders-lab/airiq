@@ -335,17 +335,18 @@ app.delete('/api/estimates/:id', (req, res) => {
 });
 
 // ─── MARKET INTEL ─────────────────────────────────────────────────────────────
-app.post('/api/market-intel/extract', async (req, res) => {
+app.post('/api/market-intel/compare', async (req, res) => {
   try {
-    const { base64, mimeType } = req.body;
-    if (!base64 || !mimeType) {
-      return res.status(400).json({ error: 'Missing base64 or mimeType' });
+    const { hodgeBase64, hodgeMimeType, compBase64, compMimeType } = req.body;
+    if (!hodgeBase64 || !hodgeMimeType || !compBase64 || !compMimeType) {
+      return res.status(400).json({ error: 'Missing file data' });
     }
-    const isImage = mimeType.startsWith('image/');
-    const contentBlock = isImage
-      ? { type: 'image',    source: { type: 'base64', media_type: mimeType,            data: base64 } }
-      : { type: 'document', source: { type: 'base64', media_type: 'application/pdf',   data: base64 } };
-    const prompt = `You are extracting structured data from a competitor service quote for an industrial air compressor company. Extract the following and return ONLY valid JSON, no other text: { "competitor": "string (company name from letterhead)", "customer": "string", "equipmentModel": "string (model number)", "lineItems": [ { "description": "string", "category": "Parts|Labor|Other", "competitorPrice": 0 } ] }. If a field cannot be determined, use an empty string or 0. Classify line items as: Parts = filters/oil/separators/lubricant/consumables, Labor = labor hours/service calls/mileage/travel, Other = surcharges/fees/misc.`;
+    function makeBlock(base64, mimeType) {
+      return mimeType.startsWith('image/')
+        ? { type: 'image',    source: { type: 'base64', media_type: mimeType,          data: base64 } }
+        : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } };
+    }
+    const systemPrompt = `You are a precise market price analyst for an industrial compressed air company. You will receive two service quotes — a Hodge (our company) quote and a competitor quote. Your job is to produce a structured apples-to-apples comparison. Rules: 1) Match line items across quotes by what they ARE, not by part number or exact description. Air filter = air filter regardless of part number. 2) Group by equipment unit — each unit gets its own group. 3) If the same equipment model appears in both quotes, match their line items. 4) If a unit only appears in one quote, list it with that side's prices and 0 for the other side. 5) For each line item, assign the correct equipment model — not all models lumped together. 6) Classify as Parts (filters/oil/separators/lubricant/consumables), Labor (labor hours/rates), or Other (surcharges/fees/mileage/misc). 7) Return ONLY valid JSON, no other text, no markdown fences.`;
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -356,18 +357,28 @@ app.post('/api/market-intel/extract', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }],
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'This is the HODGE quote:' },
+            makeBlock(hodgeBase64, hodgeMimeType),
+            { type: 'text', text: 'This is the COMPETITOR quote:' },
+            makeBlock(compBase64, compMimeType),
+            { type: 'text', text: 'Produce the comparison JSON now.' },
+          ],
+        }],
       }),
     });
     const data = await response.json();
     if (data.error) throw new Error(data.error.message || 'Claude API error');
     const text = data.content[0].text.trim();
     const jsonStr = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
-    const extracted = JSON.parse(jsonStr);
-    res.json({ success: true, extracted });
+    const result = JSON.parse(jsonStr);
+    res.json({ success: true, result });
   } catch (e) {
-    console.error('market-intel/extract error:', e.message);
+    console.error('market-intel/compare error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -389,14 +400,14 @@ app.post('/api/market-intel/log', async (req, res) => {
       const hodge = parseFloat(item.hodgePrice) || 0;
       const comp  = parseFloat(item.competitorPrice) || 0;
       const delta = hodge - comp;
-      const pctDelta = comp !== 0 ? ((delta / comp) * 100).toFixed(2) + '%' : 'N/A';
+      const pctDelta = comp !== 0 ? parseFloat(((delta / comp) * 100).toFixed(2)) : 'N/A';
       return [
         timestamp,
         branch || '',
         repName || '',
         customer || '',
         competitor || '',
-        equipmentModel || '',
+        item.equipmentModel || equipmentModel || '',
         item.description || '',
         item.category || '',
         hodge.toFixed(2),
@@ -409,7 +420,7 @@ app.post('/api/market-intel/log', async (req, res) => {
     await sheets.spreadsheets.values.append({
       spreadsheetId: '1avLUXAsxnDWu8h5qY1_BAMlmJqS8q183qeszw0Wynxk',
       range: 'Sheet1!A:M',
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'RAW',
       requestBody: { values: rows },
     });
     res.json({ success: true, rowsAdded: rows.length });
