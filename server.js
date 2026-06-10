@@ -397,6 +397,7 @@ app.post('/api/market-intel/compare', async (req, res) => {
 app.post('/api/market-intel/log', async (req, res) => {
   try {
     const { branch, repName, customer, competitor, equipmentModel, quoteDate, lineItems } = req.body;
+    console.log('Log request received — branch:', branch, '| repName:', repName, '| items:', lineItems ? lineItems.length : 0);
     if (!lineItems || lineItems.length === 0) {
       return res.status(400).json({ error: 'No line items provided' });
     }
@@ -411,7 +412,7 @@ app.post('/api/market-intel/log', async (req, res) => {
       const hodge = parseFloat(item.hodgePrice) || 0;
       const comp  = parseFloat(item.competitorPrice) || 0;
       const delta = hodge - comp;
-      const pctDelta = comp !== 0 ? parseFloat(((delta / comp) * 100).toFixed(2)) : 'N/A';
+      const pctDelta = comp !== 0 ? Math.round((delta / comp) * 10000) / 100 : 'N/A';
       return [
         timestamp,
         branch || '',
