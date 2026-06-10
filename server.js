@@ -375,7 +375,7 @@ app.post('/api/market-intel/compare', async (req, res) => {
     const data = await response.json();
     if (data.error) throw new Error(data.error.message || 'Claude API error');
     const text = data.content[0].text.trim();
-    console.log('Claude raw response text:', text);
+    console.log('Compare raw response received, length:', text.length, 'chars');
     const jsonStr = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
     let result;
     try {
@@ -384,7 +384,19 @@ app.post('/api/market-intel/compare', async (req, res) => {
       console.error('JSON parse error:', parseErr.message, '\nRaw string was:', jsonStr);
       throw parseErr;
     }
-    console.log('Parsed result:', JSON.stringify(result, null, 2));
+    // Normalize Claude's field names to our expected schema
+    if (result.groups) {
+      result.groups = result.groups.map(g => ({
+        ...g,
+        lineItems: (g.lineItems || g.line_items || []).map(l => ({
+          description:     l.description     || l.item_description || "",
+          category:        l.category        || "",
+          hodgePrice:      l.hodgePrice      != null ? l.hodgePrice      : (l.hodge_total      != null ? l.hodge_total      : 0),
+          competitorPrice: l.competitorPrice != null ? l.competitorPrice : (l.competitor_total != null ? l.competitor_total : 0),
+        })),
+      }));
+    }
+    console.log('Parsed result groups:', result.groups ? result.groups.length : 0);
     res.json({ success: true, result });
   } catch (e) {
     console.error('market-intel/compare error:', e.message);
