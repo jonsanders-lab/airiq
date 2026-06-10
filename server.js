@@ -412,7 +412,7 @@ app.post('/api/market-intel/log', async (req, res) => {
       const hodge = parseFloat(item.hodgePrice) || 0;
       const comp  = parseFloat(item.competitorPrice) || 0;
       const delta = hodge - comp;
-      const pctDelta = comp === 0 ? 'N/A' : parseFloat(((hodge - comp) / comp * 100).toFixed(2));
+      const pctDelta = comp === 0 ? 'N/A' : ((hodge - comp) / comp * 100).toFixed(2);
       return [
         timestamp,
         branch || '',
