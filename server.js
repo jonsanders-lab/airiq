@@ -384,6 +384,7 @@ app.post('/api/market-intel/compare', async (req, res) => {
       console.error('JSON parse error:', parseErr.message, '\nRaw string was:', jsonStr);
       throw parseErr;
     }
+    console.log('Parsed top-level keys:', Object.keys(result));
     // Normalize Claude's field names to our expected schema
     if (result.groups) {
       result.groups = result.groups.map(g => ({
