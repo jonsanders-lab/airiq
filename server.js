@@ -347,7 +347,8 @@ app.post('/api/market-intel/compare', async (req, res) => {
         ? { type: 'image',    source: { type: 'base64', media_type: mimeType,          data: base64 } }
         : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } };
     }
-    const systemPrompt = `You are a precise market price analyst for an industrial compressed air company. You will receive two service quotes — a Hodge (our company) quote and a competitor quote. Your job is to produce a structured apples-to-apples comparison. Rules: 1) Match line items across quotes by what they ARE, not by part number or exact description. Air filter = air filter regardless of part number. 2) Group by equipment unit — each unit gets its own group. 3) If the same equipment model appears in both quotes, match their line items. 4) If a unit only appears in one quote, list it with that side's prices and 0 for the other side. 5) For each line item, assign the correct equipment model — not all models lumped together. 6) Classify as Parts (filters/oil/separators/lubricant/consumables), Labor (labor hours/rates), or Other (surcharges/fees/mileage/misc). 7) Return ONLY valid JSON, no other text, no markdown fences.`;
+    const systemPrompt = `You are a precise market price analyst for an industrial compressed air company. You will receive two service quotes. Analyze them carefully, then output a single valid JSON object and nothing else. No markdown, no code fences, no commentary outside the JSON.`;
+    const userMsg = `Compare these two quotes line by line. Group by equipment unit. Match line items by what they ARE (air filter = air filter regardless of part number). For units appearing in both quotes, match their line items side by side. For units in only one quote, include them with 0 for the missing side. Return this exact JSON structure — no extra fields, no duplicate keys, strictly valid JSON:\n\n{"competitor": "string", "customer": "string", "groups": [{"equipmentModel": "string", "lineItems": [{"description": "string", "category": "Parts|Labor|Other", "hodgePrice": number, "competitorPrice": number}]}]}`;
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -367,7 +368,7 @@ app.post('/api/market-intel/compare', async (req, res) => {
             makeBlock(hodgeBase64, hodgeMimeType),
             { type: 'text', text: 'This is the COMPETITOR quote:' },
             makeBlock(compBase64, compMimeType),
-            { type: 'text', text: 'Produce the comparison JSON now.' },
+            { type: 'text', text: userMsg },
           ],
         }],
       }),
@@ -382,21 +383,9 @@ app.post('/api/market-intel/compare', async (req, res) => {
       result = JSON.parse(jsonStr);
     } catch (parseErr) {
       console.error('JSON parse error:', parseErr.message, '\nRaw string was:', jsonStr);
-      throw parseErr;
+      return res.status(422).json({ error: 'Claude returned malformed JSON: ' + parseErr.message });
     }
     console.log('Parsed top-level keys:', Object.keys(result));
-    // Normalize Claude's field names to our expected schema
-    if (result.groups) {
-      result.groups = result.groups.map(g => ({
-        ...g,
-        lineItems: (g.lineItems || g.line_items || []).map(l => ({
-          description:     l.description     || l.item_description || "",
-          category:        l.category        || "",
-          hodgePrice:      l.hodgePrice      != null ? l.hodgePrice      : (l.hodge_total      != null ? l.hodge_total      : 0),
-          competitorPrice: l.competitorPrice != null ? l.competitorPrice : (l.competitor_total != null ? l.competitor_total : 0),
-        })),
-      }));
-    }
     console.log('Parsed result groups:', result.groups ? result.groups.length : 0);
     res.json({ success: true, result });
   } catch (e) {
