@@ -3658,7 +3658,7 @@ No fabricated prices.`;
       {/* ── STEP 5 — Build Your System ── */}
       <div id="comp-section" style={{marginBottom:12}}>
         {secHdr('buildSystem',
-          <><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign:'middle',marginRight:6}}><rect x="2" y="6" width="16" height="12" rx="2"/><circle cx="10" cy="12" r="3"/><circle cx="10" cy="12" r="1"/><path d="M18 9h2a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-2"/><line x1="2" y1="12" x2="5" y2="12" strokeDasharray="1 2"/><line x1="4" y1="6" x2="4" y2="4"/><line x1="8" y1="6" x2="8" y2="4"/></svg>BUILD YOUR SYSTEM</>,
+          <><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign:'middle',marginRight:6}}><path d="M4 8h12a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z"/><circle cx="9" cy="12" r="2"/><path d="M18 10h1.5a1.5 1.5 0 0 1 0 3H18"/><path d="M4 8V6"/><path d="M8 8V6"/><path d="M12 8V6"/></svg>BUILD YOUR SYSTEM</>,
           (()=>{const t=comps.length+dryers.length+tanks.length+reels.length;return t>0?`${t} component${t!==1?'s':''}`:null;})(),
           'STEP 5',
           null
@@ -4048,13 +4048,7 @@ No fabricated prices.`;
         )}
       </div>
 
-      {/* ── STEP 7 — Save & Export ── */}
-      <div style={{marginBottom:12}}>
-        {secHdr('saveexport','💾 SAVE & EXPORT',bomText?'BOM ready':null,'STEP 7',null)}
-        <div style={{overflow:'hidden',maxHeight:secOpen('saveexport')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
-          <div style={{padding:16}}>
-
-      {/* Save This Estimate */}
+      {/* ── Save & Export ── */}
       {bomText ? (
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:16,marginBottom:20}}>
           <Mono color={C.copper}>SAVE THIS ESTIMATE</Mono>
@@ -4103,9 +4097,6 @@ No fabricated prices.`;
           Generate a BOM above to unlock save &amp; export.
         </div>
       )}
-          </div>
-        </div>
-      </div>
 
       {/* Portal: render BOM print area outside #root so #root{display:none}
             hides all app UI and print content starts on page 1 */}
