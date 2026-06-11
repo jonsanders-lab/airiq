@@ -4153,6 +4153,420 @@ function SurveyCard({ title, done, open, onToggle, children }) {
   );
 }
 
+// ─── FACILITY DRAWING TOOL ────────────────────────────────────────────────────
+const FD = { W:1200, H:800, G:20 };
+const FD_PIPE_COLS = { blue:'#3B82F6', black:'#D1D5DB', gray:'#9CA3AF' };
+const FD_PIPE_W    = { '3/4"':2,'1"':3,'1.5"':4,'2"':5,'2.5"':6,'3"':8,'4"':10 };
+const FD_SYMBOLS   = [
+  {id:'compressor',label:'Compressor',sec:'EQUIPMENT'},
+  {id:'dryer',     label:'Air Dryer', sec:'EQUIPMENT'},
+  {id:'tank',      label:'Rcvr Tank', sec:'EQUIPMENT'},
+  {id:'filter',    label:'Filter',    sec:'EQUIPMENT'},
+  {id:'ows',       label:'O/W Sep.',  sec:'EQUIPMENT'},
+  {id:'ballvalve', label:'Ball Valve',sec:'FITTINGS'},
+  {id:'elbow90',   label:'90° Elbow', sec:'FITTINGS'},
+  {id:'elbow45',   label:'45° Elbow', sec:'FITTINGS'},
+  {id:'tee',       label:'Tee',       sec:'FITTINGS'},
+  {id:'coupling',  label:'Coupling',  sec:'FITTINGS'},
+  {id:'union',     label:'Union',     sec:'FITTINGS'},
+  {id:'endcap',    label:'End Cap',   sec:'FITTINGS'},
+  {id:'flexhose',  label:'Flex Hose', sec:'FITTINGS'},
+  {id:'quickconn', label:'Quick Conn',sec:'FITTINGS'},
+  {id:'nptadapt',  label:'NPT Adapt', sec:'FITTINGS'},
+  {id:'drop',      label:'Drop',      sec:'DROPS'},
+  {id:'termblock', label:'Term Block',sec:'DROPS'},
+  {id:'wallfac',   label:'Wall',      sec:'FACILITY'},
+  {id:'door',      label:'Door',      sec:'FACILITY'},
+  {id:'column',    label:'Column',    sec:'FACILITY'},
+  {id:'dimnarrow', label:'Dimension', sec:'FACILITY'},
+];
+
+function fdSym(ctx, sym, x, y) {
+  ctx.save();
+  ctx.strokeStyle='#3B82F6'; ctx.fillStyle='rgba(59,130,246,0.12)'; ctx.lineWidth=1.5;
+  switch(sym) {
+    case 'compressor':
+      ctx.fillRect(x-32,y-20,64,40); ctx.strokeRect(x-32,y-20,64,40);
+      ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+      ctx.fillText('COMP',x,y+3); break;
+    case 'dryer':
+      ctx.fillRect(x-28,y-18,56,36); ctx.strokeRect(x-28,y-18,56,36);
+      ctx.beginPath();
+      for(let i=0;i<3;i++){const wx=x-14+i*14;ctx.moveTo(wx,y+5);ctx.quadraticCurveTo(wx+4,y-3,wx+8,y+5);}
+      ctx.stroke();
+      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+      ctx.fillText('DRY',x,y-6); break;
+    case 'tank':
+      ctx.beginPath(); ctx.ellipse(x,y-24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillRect(x-14,y-24,28,48); ctx.strokeRect(x-14,y-24,28,48);
+      ctx.beginPath(); ctx.ellipse(x,y+24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+      ctx.fillText('TANK',x,y+4); break;
+    case 'filter':
+      ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#1D4ED8'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
+      ctx.fillText('F',x,y+4); break;
+    case 'ows':
+      ctx.fillRect(x-28,y-18,56,36); ctx.strokeRect(x-28,y-18,56,36);
+      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+      ctx.fillText('OWS',x,y+3); break;
+    case 'ballvalve':
+      ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x-10,y);
+      ctx.moveTo(x+10,y); ctx.lineTo(x+20,y); ctx.moveTo(x,y-10); ctx.lineTo(x,y-18); ctx.stroke(); break;
+    case 'elbow90':
+      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.arcTo(x,y,x,y-18,18); ctx.lineTo(x,y-18); ctx.stroke(); break;
+    case 'elbow45':
+      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.arcTo(x,y,x+13,y-13,14); ctx.lineTo(x+13,y-13); ctx.stroke(); break;
+    case 'tee':
+      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x+20,y); ctx.moveTo(x,y); ctx.lineTo(x,y-18); ctx.stroke(); break;
+    case 'coupling':
+      ctx.beginPath();
+      ctx.moveTo(x-20,y); ctx.lineTo(x-5,y); ctx.moveTo(x+5,y); ctx.lineTo(x+20,y);
+      ctx.moveTo(x-5,y-8); ctx.lineTo(x-5,y+8); ctx.moveTo(x+5,y-8); ctx.lineTo(x+5,y+8);
+      ctx.stroke(); break;
+    case 'union':
+      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x-8,y); ctx.moveTo(x+8,y); ctx.lineTo(x+20,y); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x-5,y,5,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x+5,y,5,0,Math.PI*2); ctx.stroke(); break;
+    case 'endcap':
+      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.lineTo(x+2,y); ctx.moveTo(x+2,y-10); ctx.lineTo(x+2,y+10); ctx.stroke(); break;
+    case 'flexhose':
+      ctx.beginPath(); ctx.moveTo(x-20,y);
+      for(let i=0;i<4;i++){ctx.quadraticCurveTo(x-15+i*10,y-8,x-10+i*10,y);ctx.quadraticCurveTo(x-5+i*10,y+8,x+i*10,y);}
+      ctx.stroke(); break;
+    case 'quickconn':
+      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.lineTo(x-2,y);
+      ctx.moveTo(x-2,y-8); ctx.lineTo(x+12,y); ctx.lineTo(x-2,y+8); ctx.closePath();
+      ctx.fill(); ctx.stroke(); break;
+    case 'nptadapt':
+      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.lineTo(x-4,y);
+      ctx.moveTo(x-4,y-10); ctx.lineTo(x+10,y); ctx.lineTo(x-4,y+10); ctx.closePath();
+      ctx.fill(); ctx.stroke(); break;
+    case 'drop':
+      ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y+6);
+      ctx.moveTo(x-8,y); ctx.lineTo(x,y+18); ctx.lineTo(x+8,y); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x,y+22,5,0,Math.PI*2); ctx.stroke(); break;
+    case 'termblock':
+      ctx.fillRect(x-22,y-12,44,24); ctx.strokeRect(x-22,y-12,44,24);
+      for(let i=0;i<4;i++){ctx.beginPath();ctx.moveTo(x-14+i*10,y-12);ctx.lineTo(x-14+i*10,y+12);ctx.stroke();} break;
+    case 'wallfac':
+      ctx.strokeStyle='#9CA3AF'; ctx.lineWidth=5; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(x-30,y); ctx.lineTo(x+30,y); ctx.stroke(); break;
+    case 'door':
+      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x+20,y);
+      ctx.moveTo(x-20,y); ctx.arc(x-20,y,40,0,Math.PI/2); ctx.stroke(); break;
+    case 'column':
+      ctx.fillStyle='#4B5563'; ctx.fillRect(x-10,y-10,20,20); ctx.strokeRect(x-10,y-10,20,20); break;
+    case 'dimnarrow':
+      ctx.beginPath(); ctx.moveTo(x-28,y); ctx.lineTo(x+28,y);
+      ctx.moveTo(x-28,y-6); ctx.lineTo(x-28,y+6); ctx.moveTo(x+28,y-6); ctx.lineTo(x+28,y+6);
+      ctx.stroke(); break;
+    default:
+      ctx.fillRect(x-16,y-12,32,24); ctx.strokeRect(x-16,y-12,32,24);
+  }
+  ctx.restore();
+}
+
+const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName, repName }, fdRef) {
+  const canvasRef = React.useRef(null);
+  const dragRef   = React.useRef(null);
+  const undoRef   = React.useRef([]);
+  const logoRef   = React.useRef(null);
+  const FD_LS     = 'airiq_facility_drawing_draft';
+
+  const [els,       setEls]       = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(FD_LS)||'[]');}catch{return[];} });
+  const [tool,      setTool]      = React.useState('wall');
+  const [activeSym, setActiveSym] = React.useState('compressor');
+  const [pipeSize,  setPipeSize]  = React.useState('1"');
+  const [pipeColor, setPipeColor] = React.useState('blue');
+  const [selected,  setSelected]  = React.useState(null);
+  const [drawing,   setDrawing]   = React.useState(null);
+  const [cursor,    setCursor]    = React.useState(null);
+  const [labelIn,   setLabelIn]   = React.useState({show:false,x:0,y:0,text:'',forId:null});
+
+  React.useEffect(()=>{ const img=new Image(); img.onload=()=>{logoRef.current=img;}; img.src=LOGO_SRC; },[]);
+
+  const snap = v => Math.round(v/FD.G)*FD.G;
+  const persist = list => { try{localStorage.setItem(FD_LS,JSON.stringify(list));}catch{} };
+
+  function mutate(fn) {
+    setEls(prev => { undoRef.current=[...undoRef.current.slice(-19),prev]; const next=fn(prev); persist(next); return next; });
+  }
+  const addEl  = el  => mutate(p=>[...p,el]);
+  const rmEl   = id  => { mutate(p=>p.filter(e=>e.id!==id)); setSelected(null); };
+  const updEl  = (id,u) => setEls(p=>{ const n=p.map(e=>e.id===id?{...e,...u}:e); persist(n); return n; });
+  const undo   = ()  => { const p=undoRef.current.pop(); if(p!=null){setEls(p);persist(p);} };
+  const clearAll = () => { if(!window.confirm('Clear entire drawing?'))return; mutate(()=>[]); setSelected(null); };
+
+  function getPos(e) {
+    const c=canvasRef.current; if(!c) return {x:0,y:0};
+    const r=c.getBoundingClientRect(), sx=FD.W/r.width, sy=FD.H/r.height;
+    const s=e.touches?e.touches[0]:e;
+    return {x:snap((s.clientX-r.left)*sx), y:snap((s.clientY-r.top)*sy)};
+  }
+
+  function hitTest(x,y) {
+    for(let i=els.length-1;i>=0;i--) {
+      const el=els[i];
+      if(el.type==='wall'||el.type==='pipe') {
+        const {x1,y1,x2,y2}=el, dx=x2-x1, dy=y2-y1, len2=dx*dx+dy*dy;
+        if(!len2) continue;
+        const t=Math.max(0,Math.min(1,((x-x1)*dx+(y-y1)*dy)/len2));
+        if(Math.hypot(x-(x1+t*dx),y-(y1+t*dy))<10) return el;
+      } else if(el.type==='label') {
+        if(Math.abs(x-el.x)<60&&Math.abs(y-el.y)<12) return el;
+      } else {
+        if(Math.abs(x-el.x)<42&&Math.abs(y-el.y)<36) return el;
+      }
+    }
+    return null;
+  }
+
+  function onDown(e) {
+    e.preventDefault();
+    const {x,y}=getPos(e);
+    if(tool==='erase')  { const h=hitTest(x,y); if(h)rmEl(h.id); return; }
+    if(tool==='label')  { setLabelIn({show:true,x,y,text:'',forId:null}); return; }
+    if(tool==='select') {
+      const h=hitTest(x,y);
+      if(h){setSelected(h.id); dragRef.current={id:h.id,sx:x,sy:y,orig:{...h}};}
+      else setSelected(null);
+      return;
+    }
+    if(tool==='wall'||tool==='pipe') {
+      if(!drawing){setDrawing({x1:x,y1:y,x2:x,y2:y});}
+      else{
+        addEl({id:(Date.now()+Math.random()).toString(36),type:tool==='wall'?'wall':'pipe',
+               x1:drawing.x1,y1:drawing.y1,x2:x,y2:y,
+               pipeSize:tool==='pipe'?pipeSize:null,pipeColor:tool==='pipe'?pipeColor:null});
+        setDrawing(null);
+      }
+      return;
+    }
+    if(tool==='symbol') {
+      const id=(Date.now()+Math.random()).toString(36);
+      addEl({id,type:'symbol',symbolId:activeSym,x,y,label:''});
+      setLabelIn({show:true,x,y:y-44,text:'',forId:id});
+    }
+  }
+
+  function onMove(e) {
+    const {x,y}=getPos(e); setCursor({x,y});
+    if(drawing){setDrawing(d=>({...d,x2:x,y2:y})); return;}
+    if(tool==='select'&&dragRef.current) {
+      const {id,sx,sy,orig}=dragRef.current, dx=x-sx, dy=y-sy;
+      if(orig.type==='wall'||orig.type==='pipe')
+        updEl(id,{x1:snap(orig.x1+dx),y1:snap(orig.y1+dy),x2:snap(orig.x2+dx),y2:snap(orig.y2+dy)});
+      else updEl(id,{x:snap(orig.x+dx),y:snap(orig.y+dy)});
+    }
+  }
+
+  function onUp() { dragRef.current=null; }
+
+  function commitLabel() {
+    const {forId,text,x,y}=labelIn;
+    if(forId) updEl(forId,{label:text});
+    else if(text.trim()) addEl({id:(Date.now()+Math.random()).toString(36),type:'label',x,y,text});
+    setLabelIn({show:false,x:0,y:0,text:'',forId:null});
+  }
+
+  React.useEffect(()=>{
+    const fn=e=>{
+      if((e.key==='Delete'||e.key==='Backspace')&&selected&&!labelIn.show){rmEl(selected);}
+      if(e.key==='Escape'){setDrawing(null);setLabelIn({show:false,x:0,y:0,text:'',forId:null});}
+    };
+    window.addEventListener('keydown',fn); return()=>window.removeEventListener('keydown',fn);
+  },[selected,labelIn.show,els]);
+
+  React.useEffect(()=>{
+    const cv=canvasRef.current; if(!cv) return;
+    const ctx=cv.getContext('2d');
+    ctx.fillStyle='#1A1A1A'; ctx.fillRect(0,0,FD.W,FD.H);
+    ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=0.5;
+    for(let x=0;x<=FD.W;x+=FD.G){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,FD.H);ctx.stroke();}
+    for(let y=0;y<=FD.H;y+=FD.G){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(FD.W,y);ctx.stroke();}
+    ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.font='10px monospace'; ctx.textAlign='left';
+    ctx.fillText('1 sq = 1 ft',8,FD.H-8);
+
+    for(const el of els) {
+      ctx.save();
+      if(el.type==='wall') {
+        ctx.strokeStyle='#9CA3AF'; ctx.lineWidth=4; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+      } else if(el.type==='pipe') {
+        ctx.strokeStyle=FD_PIPE_COLS[el.pipeColor]||FD_PIPE_COLS.blue;
+        ctx.lineWidth=FD_PIPE_W[el.pipeSize]||3; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+        const mx=(el.x1+el.x2)/2, my=(el.y1+el.y2)/2;
+        const ft=Math.round(Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G);
+        ctx.fillStyle=FD_PIPE_COLS[el.pipeColor]||FD_PIPE_COLS.blue;
+        ctx.font='9px monospace'; ctx.textAlign='center';
+        ctx.fillText(`${el.pipeSize} · ${ft}ft`,mx,my-6);
+      } else if(el.type==='symbol') {
+        fdSym(ctx,el.symbolId,el.x,el.y);
+        if(el.label){ctx.fillStyle='#C17A35';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText(el.label,el.x,el.y+42);}
+      } else if(el.type==='label') {
+        ctx.fillStyle='#F9FAFB'; ctx.font='12px monospace'; ctx.textAlign='left';
+        ctx.fillText(el.text,el.x,el.y);
+      }
+      if(el.id===selected) {
+        ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+        if(el.type==='wall'||el.type==='pipe'){
+          const pad=8;
+          ctx.strokeRect(Math.min(el.x1,el.x2)-pad,Math.min(el.y1,el.y2)-pad,
+                         Math.abs(el.x2-el.x1)+pad*2,Math.abs(el.y2-el.y1)+pad*2);
+        } else if(el.type==='symbol'){ctx.strokeRect(el.x-38,el.y-32,76,66);}
+        else{ctx.strokeRect(el.x-4,el.y-16,80,22);}
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
+
+    if(drawing) {
+      ctx.save(); ctx.setLineDash([6,4]);
+      ctx.strokeStyle=tool==='pipe'?(FD_PIPE_COLS[pipeColor]||'#3B82F6'):'#9CA3AF';
+      ctx.lineWidth=tool==='pipe'?(FD_PIPE_W[pipeSize]||3):4; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
+      ctx.setLineDash([]); ctx.restore();
+    }
+    if(cursor&&tool!=='select'&&tool!=='erase') {
+      ctx.save(); ctx.strokeStyle='rgba(193,122,53,0.7)'; ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(cursor.x-8,cursor.y); ctx.lineTo(cursor.x+8,cursor.y);
+      ctx.moveTo(cursor.x,cursor.y-8); ctx.lineTo(cursor.x,cursor.y+8);
+      ctx.stroke(); ctx.restore();
+    }
+  },[els,drawing,selected,cursor,tool,pipeSize,pipeColor]);
+
+  function buildExportCanvas() {
+    const src=canvasRef.current; if(!src) return null;
+    const ec=document.createElement('canvas');
+    ec.width=FD.W; ec.height=FD.H+64;
+    const ctx=ec.getContext('2d');
+    ctx.fillStyle='#1E3A8A'; ctx.fillRect(0,0,FD.W,64);
+    if(logoRef.current) ctx.drawImage(logoRef.current,10,8,46,46);
+    ctx.fillStyle='#FFFFFF'; ctx.font='bold 17px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('COMPRESSED AIR SYSTEM LAYOUT',66,26);
+    ctx.font='11px sans-serif';
+    ctx.fillText([customerName,repName,new Date().toLocaleDateString()].filter(Boolean).join('  ·  '),66,46);
+    ctx.fillStyle='#C17A35'; ctx.font='bold 12px sans-serif'; ctx.textAlign='right';
+    ctx.fillText('HODGE COMPRESSOR',FD.W-16,38);
+    ctx.drawImage(src,0,64);
+    return ec;
+  }
+
+  function doExport() {
+    const ec=buildExportCanvas(); if(!ec) return;
+    const a=document.createElement('a');
+    a.download=`facility-drawing-${(customerName||'site').replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.png`;
+    a.href=ec.toDataURL('image/png'); a.click();
+  }
+
+  React.useImperativeHandle(fdRef,()=>({
+    getDataURL: ()=>{ const ec=buildExportCanvas(); return ec?ec.toDataURL('image/png'):null; },
+  }));
+
+  function PalIcon({symId}) {
+    const r=React.useRef(null);
+    React.useEffect(()=>{
+      const cv=r.current; if(!cv) return;
+      const ctx=cv.getContext('2d'); ctx.clearRect(0,0,54,44);
+      fdSym(ctx,symId,27,22);
+    },[symId]);
+    return <canvas ref={r} width={54} height={44} style={{display:'block'}}/>;
+  }
+
+  const secs  = [...new Set(FD_SYMBOLS.map(s=>s.sec))];
+  const TOOLS = [{id:'select',i:'↖',l:'SELECT'},{id:'wall',i:'━',l:'WALL'},{id:'symbol',i:'⊞',l:'SYMBOL'},
+                 {id:'pipe',i:'─',l:'PIPE'},{id:'label',i:'T',l:'LABEL'},{id:'erase',i:'⌫',l:'ERASE'}];
+
+  return (
+    <div style={{borderRadius:'0 0 10px 10px',overflow:'hidden',border:`1.5px solid ${C.copper}`,borderTop:'none'}}>
+      {/* Toolbar */}
+      <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',background:'#0D0D0D',padding:'8px 10px',borderBottom:`1px solid ${C.border}`}}>
+        {TOOLS.map(t=>(
+          <button key={t.id} onClick={()=>setTool(t.id)} style={{
+            background:tool===t.id?`linear-gradient(135deg,${C.copper},#A0632A)`:C.surface2,
+            border:`1px solid ${tool===t.id?C.copper:C.border}`,borderRadius:5,
+            padding:'4px 9px',fontFamily:F.mono,fontSize:9,letterSpacing:1,
+            color:tool===t.id?'#fff':C.mid,cursor:'pointer',
+          }}>{t.i} {t.l}</button>
+        ))}
+        <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
+        <select value={pipeSize} onChange={e=>setPipeSize(e.target.value)}
+          style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,fontFamily:F.mono,fontSize:9,color:C.mid,padding:'3px 5px'}}>
+          {Object.keys(FD_PIPE_W).map(s=><option key={s}>{s}</option>)}
+        </select>
+        {Object.entries(FD_PIPE_COLS).map(([n,hex])=>(
+          <button key={n} onClick={()=>setPipeColor(n)} title={n} style={{
+            width:20,height:20,borderRadius:'50%',background:hex,cursor:'pointer',flexShrink:0,
+            border:pipeColor===n?`2px solid ${C.copper}`:'2px solid transparent',
+          }}/>
+        ))}
+        <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
+        <button onClick={undo}     style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,padding:'4px 9px',fontFamily:F.mono,fontSize:9,color:C.mid,cursor:'pointer'}}>↩ UNDO</button>
+        <button onClick={clearAll} style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,padding:'4px 9px',fontFamily:F.mono,fontSize:9,color:C.mid,cursor:'pointer'}}>✕ CLEAR</button>
+        <button onClick={doExport} style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:5,padding:'4px 12px',fontFamily:F.mono,fontSize:9,letterSpacing:1,color:'#fff',cursor:'pointer',marginLeft:'auto'}}>⬇ PNG</button>
+      </div>
+
+      {/* Palette + Canvas */}
+      <div style={{display:'flex'}}>
+        <div style={{width:158,flexShrink:0,background:'#0A0A0A',borderRight:`1px solid ${C.border}`,maxHeight:500,overflowY:'auto'}}>
+          {secs.map(sec=>(
+            <div key={sec}>
+              <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:2,color:C.copper,padding:'5px 8px 2px',borderBottom:'1px solid rgba(193,122,53,0.2)'}}>{sec}</div>
+              {FD_SYMBOLS.filter(s=>s.sec===sec).map(sym=>(
+                <div key={sym.id} onClick={()=>{setActiveSym(sym.id);setTool('symbol');}}
+                  style={{display:'flex',alignItems:'center',gap:4,padding:'2px 6px',cursor:'pointer',
+                    background:activeSym===sym.id&&tool==='symbol'?'rgba(193,122,53,0.12)':'transparent',
+                    borderLeft:activeSym===sym.id&&tool==='symbol'?`3px solid ${C.copper}`:'3px solid transparent'}}>
+                  <PalIcon symId={sym.id}/>
+                  <span style={{fontFamily:F.mono,fontSize:7,color:C.mid,lineHeight:1.3}}>{sym.label}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+          <canvas ref={canvasRef} width={FD.W} height={FD.H}
+            style={{width:'100%',height:'auto',display:'block',touchAction:'none',
+                   cursor:tool==='erase'?'crosshair':tool==='select'?'default':'crosshair'}}
+            onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+            onTouchStart={e=>{e.preventDefault();onDown(e);}}
+            onTouchMove={e=>{e.preventDefault();onMove(e);}}
+            onTouchEnd={onUp}
+          />
+          {labelIn.show&&(
+            <div style={{position:'absolute',left:`${(labelIn.x/FD.W)*100}%`,top:`${(labelIn.y/FD.H)*100}%`,zIndex:10,transform:'translateY(-110%)'}}>
+              <input autoFocus value={labelIn.text}
+                onChange={e=>setLabelIn(l=>({...l,text:e.target.value}))}
+                onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape')commitLabel();}}
+                onBlur={commitLabel}
+                placeholder={labelIn.forId?'Label (e.g. HD50)…':'Text…'}
+                style={{background:'rgba(0,0,0,0.92)',border:`1px solid ${C.copper}`,borderRadius:4,
+                       padding:'4px 8px',fontFamily:F.mono,fontSize:11,color:'#fff',outline:'none',width:140}}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Status bar */}
+      <div style={{padding:'3px 10px',background:'#0A0A0A',fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,borderTop:`1px solid ${C.border}`,display:'flex',gap:14,flexWrap:'wrap'}}>
+        <span>{els.filter(e=>e.type==='wall').length} walls</span>
+        <span>{els.filter(e=>e.type==='pipe').length} pipe runs</span>
+        <span>{els.filter(e=>e.type==='symbol').length} symbols</span>
+        <span>{els.filter(e=>e.type==='label').length} labels</span>
+        {selected&&<span style={{color:C.copper}}>selected — DEL removes · ESC cancels</span>}
+        {drawing&&<span style={{color:C.copper}}>click endpoint · ESC cancels</span>}
+      </div>
+    </div>
+  );
+});
+
 // ─── SITE SURVEY COMPONENT ────────────────────────────────────────────────────
 function SiteSurvey() {
   const LS_KEY = "airiq_site_survey_draft";
@@ -4202,7 +4616,9 @@ function SiteSurvey() {
   const [showPast, setShowPast]   = React.useState(false);
   const [pastList, setPastList]   = React.useState([]);
   const [pastLoading, setPastLoading] = React.useState(false);
-  const [savedData, setSavedData] = React.useState(null);
+  const [savedData, setSavedData]       = React.useState(null);
+  const [drawingOpen, setDrawingOpen]   = React.useState(false);
+  const drawingRef                      = React.useRef(null);
   const [repEmail, setRepEmail]   = React.useState(() => {
     try { return localStorage.getItem("airiq_rep_email")||""; } catch { return ""; }
   });
@@ -4349,6 +4765,8 @@ function SiteSurvey() {
     setBusy(true); setSaveMsg("");
     try {
       const snapshot = {...form};
+      const drawingDataURL = drawingRef.current?.getDataURL();
+      if (drawingDataURL) snapshot.drawingDataURL = drawingDataURL;
       const res = await fetch("/api/estimates", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({type:"site-survey", data:snapshot, savedAt:new Date().toISOString()})
@@ -4469,6 +4887,27 @@ function SiteSurvey() {
             : completedCount===0
               ? "TAP SECTIONS TO EXPAND"
               : `${10-completedCount} SECTION${10-completedCount!==1?"S":""} REMAINING`}
+        </div>
+      </div>
+
+      {/* FACILITY DRAWING TOOL */}
+      <div style={{marginBottom:12}}>
+        <div onClick={()=>setDrawingOpen(o=>!o)} style={{
+          display:'flex',justifyContent:'space-between',alignItems:'center',
+          cursor:'pointer',userSelect:'none',
+          background:`linear-gradient(135deg,rgba(193,122,53,0.08) 0%,${C.surface} 60%)`,
+          border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,
+          borderRadius:drawingOpen?'10px 10px 0 0':10,
+          padding:'14px 16px',marginBottom:0,
+        }}>
+          <div>
+            <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>📐 FACILITY DRAWING TOOL</div>
+            <div style={{fontFamily:F.body,fontSize:11,color:C.mid,marginTop:3}}>Sketch the facility — pipe runs, equipment placement, drops</div>
+          </div>
+          <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0}}>{drawingOpen?'▲':'▼'}</span>
+        </div>
+        <div style={{overflow:'hidden',maxHeight:drawingOpen?'9999px':'0',transition:'max-height 0.3s ease'}}>
+          <FacilityDrawing ref={drawingRef} customerName={form.customer} repName={form.rep}/>
         </div>
       </div>
 
