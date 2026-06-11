@@ -4758,7 +4758,7 @@ function SiteSurvey() {
             <button onClick={()=>{
               const subj = `Installation Quoting Form — ${savedData.customer||"Customer"}`;
               const body = buildEmailBody(savedData);
-              window.location.href = `mailto:service@hodgeindustrial.com?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+              window.open(`https://mail.google.com/mail/?view=cm&to=service@hodgeindustrial.com&su=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`, '_blank');
             }} style={{
               flex:1, background:C.surface2, border:`1px solid ${C.border}`, borderRadius:7,
               padding:"10px 8px", fontFamily:F.mono, fontSize:10, letterSpacing:1,
@@ -4768,7 +4768,7 @@ function SiteSurvey() {
               if(!repEmail) return;
               const subj = `Installation Quoting Form — ${savedData.customer||"Customer"}`;
               const body = buildEmailBody(savedData);
-              window.location.href = `mailto:${repEmail}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+              window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(repEmail)}&su=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`, '_blank');
             }} style={{
               flex:1, background:C.surface2,
               border:`1px solid ${repEmail ? C.border : C.dim}`, borderRadius:7,
@@ -4788,7 +4788,7 @@ function SiteSurvey() {
                 setRepEmail(email);
                 const subj = `Installation Quoting Form — ${savedData.customer||"Customer"}`;
                 const body = buildEmailBody(savedData);
-                window.location.href = `mailto:${email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+                window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`, '_blank');
               }} style={{
                 background:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
                 border:"none", borderRadius:7, padding:"10px 14px",
