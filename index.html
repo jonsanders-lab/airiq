@@ -2224,7 +2224,7 @@ function EnergyCalculator() {
           {/* Collapsible header */}
           <div onClick={()=>setOpen(o=>!o)} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',cursor:'pointer',userSelect:'none',marginBottom:open?14:0}}>
             <div>
-              <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>⚡ ENERGY & COST CALCULATOR</div>
+              <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>⚡ ENERGY & COST CALCULATOR</div>
               <div style={{fontFamily:F.body,fontSize:11,color:C.mid,marginTop:2}}>Estimate annual energy cost, savings, and VSD payback</div>
             </div>
             <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0,marginTop:2}}>{open?'▲':'▼'}</span>
@@ -2425,6 +2425,27 @@ function Estimator() {
   const [compEquipPrice, setCompEquipPrice]   = React.useState("");
   const [compAnnualMaint, setCompAnnualMaint] = React.useState("");
   const [selectedTier, setSelectedTier] = React.useState(null);
+  const [openSections, setOpenSections] = React.useState({compressors:true});
+  const toggleSection = k => setOpenSections(p=>({...p,[k]:!p[k]}));
+  const secOpen       = k => !!openSections[k];
+  const secHdr = (key, label, badge) => (
+    <div onClick={()=>toggleSection(key)} style={{
+      display:'flex', justifyContent:'space-between', alignItems:'center',
+      cursor:'pointer', userSelect:'none',
+      background:`linear-gradient(135deg,rgba(193,122,53,0.08) 0%,${C.surface} 60%)`,
+      border:`1.5px solid ${C.copper}`, borderLeft:`4px solid ${C.copper}`,
+      borderRadius: secOpen(key) ? '10px 10px 0 0' : 10,
+      padding:'14px 16px', marginBottom: secOpen(key) ? 0 : 12,
+    }}>
+      <div style={{display:'flex', alignItems:'center', gap:10}}>
+        <span style={{fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.copper}}>{label}</span>
+        {!secOpen(key) && badge && (
+          <span style={{fontFamily:F.mono, fontSize:9, color:C.copper, background:'rgba(193,122,53,0.12)', border:`1px solid rgba(193,122,53,0.3)`, borderRadius:4, padding:'2px 8px', letterSpacing:1}}>{badge}</span>
+        )}
+      </div>
+      <span style={{color:C.copper, fontSize:18}}>{secOpen(key)?'▲':'▼'}</span>
+    </div>
+  );
 
   const uid = () => Date.now() + Math.random();
 
@@ -2636,6 +2657,7 @@ Return ONLY valid JSON, no markdown fence, no extra text:
     setSelectedTier(tier);
     setSysOpen(false);
     setSysRec(null);
+    setOpenSections(p=>({...p,compressors:true}));
     setTimeout(()=>document.getElementById("comp-section")?.scrollIntoView({behavior:"smooth"}),100);
   }
 
@@ -3092,16 +3114,9 @@ No fabricated prices.`;
         {/* Copper accent bar */}
         <div style={{height:3,background:`linear-gradient(90deg,${C.copper},#E8860A,${C.orange})`}}/>
         <div style={{padding:16}}>
-        <div onClick={()=>setSysOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",cursor:"pointer",userSelect:"none",marginBottom:sysOpen?14:0}}>
-          <div>
-            <div style={{fontFamily:F.head,fontSize:26,letterSpacing:3,color:C.copper,lineHeight:1,marginBottom:6}}>
-              ⚙️ SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR
-            </div>
-            <div style={{fontFamily:F.body,fontSize:13,color:C.mid,lineHeight:1.4,fontStyle:"italic"}}>
-              Tell us what the customer needs — we'll design the right system.
-            </div>
-          </div>
-          <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0,marginTop:2}}>{sysOpen?"▲":"▼"}</span>
+        <div onClick={()=>setSysOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none",marginBottom:sysOpen?14:0}}>
+          <span style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>⚙️ SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR</span>
+          <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0}}>{sysOpen?"▲":"▼"}</span>
         </div>
 
         {sysOpen && (<>
@@ -3617,13 +3632,15 @@ No fabricated prices.`;
       {/* ── Energy & Cost Calculator ── */}
       <EnergyCalculator />
 
-      {/* Compressors */}
-      <div id="comp-section" style={card}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <Mono color={C.copper}>COMPRESSORS</Mono>
-          {addBtn("Add Compressor", addComp)}
-        </div>
-        {comps.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No compressors added.</div>}
+      {/* ── Compressors ── */}
+      <div id="comp-section" style={{marginBottom:12}}>
+        {secHdr('compressors','🖥️ COMPRESSORS',comps.length>0?`${comps.length} compressor${comps.length!==1?'s':''}`:null)}
+        <div style={{overflow:'hidden',maxHeight:secOpen('compressors')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+          <div style={{padding:16}}>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              {addBtn("Add Compressor", addComp)}
+            </div>
+            {comps.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No compressors added.</div>}
         {comps.map((c,idx)=>{
           const cfm = estCFM(c.series, c.model, c.pressure);
           const noTank = COMP_DB[c.series]?.noTank;
@@ -3696,15 +3713,19 @@ No fabricated prices.`;
             </div>
           );
         })}
+          </div>
+        </div>
       </div>
 
-      {/* Dryers & Filters */}
-      <div style={card}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <Mono color={C.copper}>DRYERS & FILTERS</Mono>
-          {addBtn("Add Item", ()=>addRow(setDryers, DRYER_OPTS[0]))}
-        </div>
-        {dryers.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No items added.</div>}
+      {/* ── Dryers & Filters ── */}
+      <div style={{marginBottom:12}}>
+        {secHdr('dryers','💧 DRYERS & FILTERS',dryers.length>0?`${dryers.length} item${dryers.length!==1?'s':''}`:null)}
+        <div style={{overflow:'hidden',maxHeight:secOpen('dryers')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+          <div style={{padding:16}}>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              {addBtn("Add Item", ()=>addRow(setDryers, DRYER_OPTS[0]))}
+            </div>
+            {dryers.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No items added.</div>}
         {dryers.map(d=>(
           <div key={d.id} style={{marginBottom:8}}>
             {d.fromDrawing && <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,marginBottom:3}}>📐 FROM DRAWING</div>}
@@ -3721,15 +3742,19 @@ No fabricated prices.`;
             </div>
           </div>
         ))}
+          </div>
+        </div>
       </div>
 
-      {/* Receiver Tanks */}
-      <div style={card}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <Mono color={C.copper}>RECEIVER TANKS</Mono>
-          {addBtn("Add Tank", ()=>addRow(setTanks, TANK_OPTS[0]))}
-        </div>
-        {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
+      {/* ── Receiver Tanks ── */}
+      <div style={{marginBottom:12}}>
+        {secHdr('tanks','🛢️ RECEIVER TANKS',tanks.length>0?`${tanks.length} tank${tanks.length!==1?'s':''}`:null)}
+        <div style={{overflow:'hidden',maxHeight:secOpen('tanks')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+          <div style={{padding:16}}>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              {addBtn("Add Tank", ()=>addRow(setTanks, TANK_OPTS[0]))}
+            </div>
+            {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
         {tanks.map(t=>(
           <div key={t.id} style={{marginBottom:8}}>
             {t.fromDrawing && <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,marginBottom:3}}>📐 FROM DRAWING</div>}
@@ -3746,15 +3771,19 @@ No fabricated prices.`;
             </div>
           </div>
         ))}
+          </div>
+        </div>
       </div>
 
-      {/* Hose Reels */}
-      <div style={card}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <Mono color={C.copper}>HOSE REELS</Mono>
-          {addBtn("Add Hose Reel", ()=>addRow(setReels, REEL_OPTS[0]))}
-        </div>
-        {reels.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No reels added.</div>}
+      {/* ── Hose Reels ── */}
+      <div style={{marginBottom:12}}>
+        {secHdr('reels','🔄 HOSE REELS',reels.length>0?`${reels.length} reel${reels.length!==1?'s':''}`:null)}
+        <div style={{overflow:'hidden',maxHeight:secOpen('reels')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+          <div style={{padding:16}}>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              {addBtn("Add Hose Reel", ()=>addRow(setReels, REEL_OPTS[0]))}
+            </div>
+            {reels.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No reels added.</div>}
         {reels.map(r=>(
           <div key={r.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
             <input type="number" value={r.qty} min={1}
@@ -3768,14 +3797,18 @@ No fabricated prices.`;
               style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
           </div>
         ))}
+          </div>
+        </div>
       </div>
 
-      {/* Layout Drawing Upload */}
-      <div style={card}>
-        <Mono color={C.copper}>LAYOUT DRAWINGS / PHOTOS</Mono>
-        <div style={{color:C.mid,fontSize:12,fontFamily:F.mono,letterSpacing:1,marginBottom:12}}>
-          Upload one or more facility sketches, GoodNotes exports, or site photos — AI consolidates all images into a single analysis
-        </div>
+      {/* ── Layout Drawings / Photos ── */}
+      <div style={{marginBottom:12}}>
+        {secHdr('layout','📐 LAYOUT DRAWINGS / PHOTOS',layoutAnalysis&&!layoutAnalysis.error?'analysis ready':layoutImgs.length>0?`${layoutImgs.length} image${layoutImgs.length!==1?'s':''}`:null)}
+        <div style={{overflow:'hidden',maxHeight:secOpen('layout')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+          <div style={{padding:16}}>
+            <div style={{color:C.mid,fontSize:12,fontFamily:F.mono,letterSpacing:1,marginBottom:12}}>
+              Upload one or more facility sketches, GoodNotes exports, or site photos — AI consolidates all images into a single analysis
+            </div>
         <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp"
           multiple style={{display:"none"}} onChange={handleFileUpload}/>
         {layoutImgs.length === 0 ? (
@@ -3963,7 +3996,15 @@ No fabricated prices.`;
             )}
           </div>
         )}
+          </div>
+        </div>
       </div>
+
+      {/* ── Save & Export ── */}
+      <div style={{marginBottom:12}}>
+        {secHdr('saveexport','💾 SAVE & EXPORT',bomText?'BOM ready':null)}
+        <div style={{overflow:'hidden',maxHeight:secOpen('saveexport')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+          <div style={{padding:16}}>
 
       {/* Generate BOM */}
       <button onClick={genBOM} disabled={bomBusy} style={{
@@ -4031,6 +4072,9 @@ No fabricated prices.`;
           )}
         </div>
       )}
+          </div>
+        </div>
+      </div>
 
       {/* Portal: render BOM print area outside #root so #root{display:none}
             hides all app UI and print content starts on page 1 */}
