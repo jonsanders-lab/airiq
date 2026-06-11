@@ -3658,7 +3658,7 @@ No fabricated prices.`;
       {/* ── STEP 5 — Build Your System ── */}
       <div id="comp-section" style={{marginBottom:12}}>
         {secHdr('buildSystem',
-          <><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign:'middle',marginRight:6}}><path d="M4 8h12a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z"/><circle cx="9" cy="12" r="2"/><path d="M18 10h1.5a1.5 1.5 0 0 1 0 3H18"/><path d="M4 8V6"/><path d="M8 8V6"/><path d="M12 8V6"/></svg>BUILD YOUR SYSTEM</>,
+          '🏭 BUILD YOUR SYSTEM',
           (()=>{const t=comps.length+dryers.length+tanks.length+reels.length;return t>0?`${t} component${t!==1?'s':''}`:null;})(),
           'STEP 5',
           null
@@ -3668,7 +3668,7 @@ No fabricated prices.`;
             {/* ── Compressors ── */}
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
-                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>🖥️ COMPRESSORS</span>
+                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>💨 COMPRESSORS</span>
                 {addBtn("Add Compressor", addComp)}
               </div>
               {comps.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No compressors added.</div>}
@@ -3774,7 +3774,7 @@ No fabricated prices.`;
             {/* ── Receiver Tanks ── */}
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
-                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper,display:'flex',alignItems:'center',gap:6}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="4" width="8" height="16" rx="4"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="12" y1="4" x2="12" y2="2"/><line x1="10" y1="2" x2="14" y2="2"/></svg>RECEIVER TANKS</span>
+                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>🔵 RECEIVER TANKS</span>
                 {addBtn("Add Tank", ()=>addRow(setTanks, TANK_OPTS[0]))}
               </div>
               {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
