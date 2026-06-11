@@ -32,6 +32,22 @@ app.use(express.static('.'));
 
 const PROXY_URL = 'https://airiq-st-proxy.jon-sanders.workers.dev';
 
+// ─── GOOGLE SHEETS CONFIG ─────────────────────────────────────────────────────
+const SHEET_ID   = '1Zrzr_PgEMmMmclJ2W1Dere-JEKYmaB4xa-N4MMUIUuI';
+const SHEET_NAME = 'Sheet1';
+const SHEET_HEADERS = [
+  'Date','Rep','Branch','Customer','Contact','Drive Time RT','Equipment Delivery',
+  'Electrical By','Piping By','New Equipment','Existing Equipment','Equipment Location',
+  'Loading Dock','Forklift','Unloading Issues','Path Clear','Doors/Halls',
+  'Levelers Required','Disconnect Within 10ft','Breaker Space','Wire Size',
+  'Electrical Notes','Pipe Material','Pipe Size','Linear Feet','Pipe Height Over 8ft',
+  'Elbows','Tees','Couplings','Ball Valves','NPT Connectors','Bushings/Reducers',
+  'Unions','Pipe Clips','Unistrut','Quick Branch','Bypasses','Drops','Drop Length/Size',
+  'Termination Blocks','Quick Connects','Obstructions','Beams/Workarounds','Piping Notes',
+  'Diesel Compressor','Scissor Lift','Forklift Rental','Lugging Tool','Other Rental',
+  'Drawing Checklist Complete','Manager Approval','Notes','Submitted At',
+];
+
 // In-memory inventory cache
 let inventoryCache = [];
 let lastCacheUpdate = null;
@@ -58,6 +74,80 @@ async function getGmailToken() {
     throw new Error('Gmail token error: ' + JSON.stringify(data));
   }
   return data.access_token;
+}
+
+// ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
+
+function buildSheetRow(body) {
+  const d = body.data || {};
+  const yn = v => v === true ? 'Yes' : v === false ? 'No' : '';
+  const newEq = [
+    d.eqRotaryScrew  && 'Rotary Screw',
+    d.eqRecip        && 'Reciprocating',
+    d.eqDryer        && 'Dryer',
+    d.eqReceiver     && 'Receiver Tank',
+    d.eqFilter       && 'Filter',
+    d.eqOWSep        && 'O/W Separator',
+    d.eqAutoDrains   && 'Auto Drains',
+    d.eqSafetyValve  && 'Safety Valve',
+    d.eqOther        && (d.eqOtherText || 'Other'),
+  ].filter(Boolean).join(', ');
+  const drawDone = [
+    d.drawDrops, d.drawElectrical, d.drawBypasses, d.drawEquipment,
+    d.drawBeams, d.drawDock, d.drawCustomerEquip, d.drawPiping, d.drawDiagrams,
+  ].every(Boolean) ? 'Yes' : 'No';
+  const withNote = (flag, note) => flag != null
+    ? (yn(flag) + (note ? ': ' + note : ''))
+    : '';
+  return [
+    d.date || '', d.rep || '', d.branch || '', d.customer || '', d.contact || '',
+    d.driveTime || '', d.delivery || '', d.electrical || '', d.piping || '',
+    newEq, d.existingEquip || '', d.equipLocation || '',
+    yn(d.hasDock), yn(d.hasForklift),
+    withNote(d.unloadingIssues, d.unloadingNotes),
+    yn(d.clearPath),
+    withNote(d.doorsHalls, d.doorsHallsNotes),
+    yn(d.needLevelers), yn(d.fusDisconnect), yn(d.circuitBreaker),
+    d.wireSize || '', d.electricalNotes || '',
+    d.pipeMaterial || '', d.pipeSize || '', d.linearFeet || '',
+    yn(d.pipeAbove8ft),
+    d.elbows90 || '', d.tees || '', d.couplings || '', d.ballValves || '',
+    d.nptConnectors || '', d.bushings || '', d.unions || '',
+    d.pipeClips || '', d.unistrut || '', d.quickBranch || '',
+    d.bypasses || '', d.numDrops || '', d.dropLength || '',
+    d.terminationBlocks || '', d.quickConnects || '',
+    withNote(d.equipObstructions, d.equipObstructionsNotes),
+    withNote(d.beams, d.beamsNotes),
+    d.pipingNotes || '',
+    d.rentalDiesel   ? 'Yes' : 'No',
+    d.rentalScissor  ? 'Yes' : 'No',
+    d.rentalForklift ? 'Yes' : 'No',
+    d.rentalLugging  ? 'Yes' : 'No',
+    d.rentalOther || '',
+    drawDone, yn(d.managerApproval), d.approvalNotes || '',
+    body.savedAt || new Date().toISOString(),
+  ];
+}
+
+async function appendToSheet(rowData) {
+  try {
+    const token = await getGmailToken();
+    const range = encodeURIComponent(`${SHEET_NAME}!A1`);
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [rowData] }),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) { console.error('Sheets append error:', JSON.stringify(data)); return false; }
+    return true;
+  } catch (err) {
+    console.error('Sheets append exception:', err.message);
+    return false;
+  }
 }
 
 async function fetchInventoryFromGmail() {
@@ -319,12 +409,35 @@ app.get('/api/estimates', (req, res) => {
   res.json(list.slice().reverse()); // newest first
 });
 
-app.post('/api/estimates', (req, res) => {
+app.post('/api/estimates', async (req, res) => {
   const list = readEstimates();
   const record = { id: Date.now().toString(), timestamp: new Date().toISOString(), ...req.body };
   list.push(record);
   writeEstimates(list);
+  if (req.body.type === 'site-survey') {
+    appendToSheet(buildSheetRow(req.body)); // fire-and-forget; never blocks response
+  }
   res.json(record);
+});
+
+app.get('/api/sheets/setup', async (req, res) => {
+  try {
+    const token = await getGmailToken();
+    const range = encodeURIComponent(`${SHEET_NAME}!A1`);
+    const r = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [SHEET_HEADERS] }),
+      }
+    );
+    const data = await r.json();
+    if (!r.ok) return res.status(500).json({ error: data });
+    res.json({ ok: true, updatedRange: data.updatedRange });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.delete('/api/estimates/:id', (req, res) => {
