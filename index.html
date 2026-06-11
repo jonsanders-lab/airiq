@@ -2149,25 +2149,26 @@ function EnergyCalculator() {
   const tPSI  = parseFloat(tank.pressure) || 100;
   const tBand = parseFloat(tank.band)     || 10;
   const tGal  = parseFloat(tank.gallons)  || 0;
-  const cycleTime      = tCFM > 0 ? (tGal * 0.1337 * tBand) / (tCFM / 60 * 14.7 / tPSI) : 0;
-  const cyclesPerHour  = cycleTime > 0 ? 3600 / cycleTime : 0;
+  const cycleTime     = tCFM > 0 ? (tGal * 0.1337 * tBand) / (tCFM / 60 * 14.7 / tPSI) : 0;
+  const cyclesPerHour = cycleTime > 0 ? 3600 / cycleTime : 0;
 
-  const savingsFixed      = existingCalc && hodgeFixed  ? existingCalc.annualCost - hodgeFixed.annualCost  : 0;
-  const savingsVSD        = existingCalc && hodgeVSD    ? existingCalc.annualCost - hodgeVSD.annualCost    : 0;
-  const savingsVSDvsFixed = hodgeFixed   && hodgeVSD    ? hodgeFixed.annualCost   - hodgeVSD.annualCost    : 0;
+  const savingsFixed      = existingCalc && hodgeFixed ? existingCalc.annualCost - hodgeFixed.annualCost  : 0;
+  const savingsVSD        = existingCalc && hodgeVSD   ? existingCalc.annualCost - hodgeVSD.annualCost    : 0;
+  const savingsVSDvsFixed = hodgeFixed   && hodgeVSD   ? hodgeFixed.annualCost   - hodgeVSD.annualCost    : 0;
 
-  const fmt  = n => '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
-  const fmtS = n => n > 0 ? '+'+fmt(n) : n < 0 ? '-'+fmt(n) : '$0';
+  const fmt    = n => '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
+  const fmtS   = n => n > 0 ? '+'+fmt(n) : n < 0 ? '-'+fmt(n) : '$0';
   const fmtKWh = n => Math.round(n).toLocaleString('en-US');
 
   const colBorder = [`2px solid ${C.mid}`, `2px solid ${C.blueLight}`, `2px solid ${C.copper}`];
   const colColor  = [C.mid, C.blueLight, C.copper];
-  const lbl9 = { display:'block', fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.dim, marginBottom:4 };
+  // lbl9: C.mid for better contrast throughout
+  const lbl9 = { display:'block', fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.mid, marginBottom:4 };
   const numIn = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:4, padding:'4px 6px', color:C.text, fontSize:12, fontFamily:F.mono, outline:'none', width:'100%' };
-  const tdS  = { padding:'6px 10px', fontSize:12, color:C.text, borderBottom:`1px solid ${C.border}` };
-  const thS  = { padding:'6px 10px', textAlign:'right', fontFamily:F.mono, fontSize:9, letterSpacing:1, color:C.mid, borderBottom:`1px solid ${C.border}`, fontWeight:'normal', whiteSpace:'nowrap' };
+  const tdS   = { padding:'6px 10px', fontSize:12, color:C.text, borderBottom:`1px solid ${C.border}` };
+  const thS   = { padding:'6px 10px', textAlign:'right', fontFamily:F.mono, fontSize:9, letterSpacing:1, color:C.mid, borderBottom:`1px solid ${C.border}`, fontWeight:'normal', whiteSpace:'nowrap' };
 
-  const refLF = (units.find(u=>u.id==='existing'&&u.enabled) || units.find(u=>u.id==='hodge'&&u.enabled) || units[0]).loadFactor;
+  const refLF    = (units.find(u=>u.id==='existing'&&u.enabled) || units.find(u=>u.id==='hodge'&&u.enabled) || units[0]).loadFactor;
   const vsdColor = refLF < 0.40 ? C.copper : refLF <= 0.80 ? C.green : C.blueLight;
   const vsdMsg   = refLF < 0.40
     ? `Load factor ${Math.round(refLF*100)}% — below 40%. A smaller fixed speed unit may be more cost effective than VSD.`
@@ -2175,179 +2176,209 @@ function EnergyCalculator() {
     ? `Load factor ${Math.round(refLF*100)}% — in VSD sweet spot (40–80%). VSD recommended, strong energy ROI.`
     : `Load factor ${Math.round(refLF*100)}% — above 80%. Fixed speed is competitive; evaluate VSD payback carefully.`;
 
+  // Always exactly 3 bullets
   const pts = (() => {
     const p = [];
-    if (existingCalc && existingCalc.enabled && hodgeFixed && hodgeFixed.enabled && savingsFixed > 0)
-      p.push(`Your current unit costs an estimated ${fmt(existingCalc.annualCost)}/year to run. Our ${hodgeFixed.label} cuts that to ${fmt(hodgeFixed.annualCost)} — saving you ${fmt(savingsFixed)} annually.`);
-    if (existingCalc && existingCalc.enabled && hodgeVSD && hodgeVSD.enabled && savingsVSD > 0) {
-      const pb = paybackMonths(hodgeVSD);
-      p.push(`At ${Math.round(refLF*100)}% average load, the VSD option${pb ? ` pays for itself in ${Math.round(pb)} months` : ''} — saving ${fmt(savingsVSD)}/year over the existing unit.`);
-    }
-    if (cyclesPerHour > 6)
-      p.push(`At ${cyclesPerHour.toFixed(0)} cycles/hr, the system is ${cyclesPerHour > 12 ? 'short cycling' : 'cycling frequently'}. Upsizing the receiver tank would reduce cycling and extend compressor life significantly.`);
-    if (p.length === 0) p.push('Enter unit details above to generate talking points.');
+    // Bullet 1: VSD savings vs existing
+    if (hodgeVSD && hodgeVSD.enabled && existingCalc && existingCalc.enabled && savingsVSD > 0)
+      p.push(`At ${Math.round(refLF*100)}% average load, switching to the ${hodgeVSD.label} saves ${fmt(savingsVSD)}/year over the existing unit.`);
+    else if (existingCalc && existingCalc.enabled && hodgeFixed && hodgeFixed.enabled && savingsFixed > 0)
+      p.push(`Your current unit costs ${fmt(existingCalc.annualCost)}/year to run. Our ${hodgeFixed.label} cuts that to ${fmt(hodgeFixed.annualCost)} — saving ${fmt(savingsFixed)} annually.`);
+    else
+      p.push('Enter HP and load factor above to see annual energy cost and savings vs. Hodge options.');
+    // Bullet 2: payback if cost entered, else tank sizing
+    const pbVSD   = hodgeVSD   ? paybackMonths(hodgeVSD)   : null;
+    const pbFixed = hodgeFixed ? paybackMonths(hodgeFixed) : null;
+    if (pbVSD)
+      p.push(`The ${hodgeVSD.label} pays for itself in approximately ${Math.round(pbVSD)} months at current energy rates.`);
+    else if (pbFixed)
+      p.push(`The ${hodgeFixed.label} pays for itself in approximately ${Math.round(pbFixed)} months at current energy rates.`);
+    else if (cyclesPerHour > 6)
+      p.push(`At ${cyclesPerHour.toFixed(0)} cycles/hr, ${cyclesPerHour > 12 ? 'the compressor is short cycling' : 'cycling is frequent'}. Upsizing the receiver tank reduces wear and improves system stability.`);
+    else
+      p.push('Enter equipment cost (optional) to calculate payback period based on energy savings.');
+    // Bullet 3: VSD sweet spot interpretation
+    if (refLF < 0.40)
+      p.push(`At ${Math.round(refLF*100)}% load factor, a smaller fixed speed unit may be more cost effective than VSD — consider right-sizing the compressor first.`);
+    else if (refLF <= 0.80)
+      p.push(`At ${Math.round(refLF*100)}% load factor, this system is in the VSD sweet spot. Variable speed drive delivers strong energy ROI here.`);
+    else
+      p.push(`At ${Math.round(refLF*100)}% load factor, the unit runs near full capacity. Fixed speed is competitive — evaluate VSD payback carefully before recommending.`);
     return p;
   })();
 
   return (
     <div style={{marginBottom:12}}>
-      <div onClick={()=>setOpen(o=>!o)} style={{
-        background:`linear-gradient(135deg,${C.copperSoft},rgba(193,122,53,0.04))`,
-        border:`1px solid rgba(193,122,53,0.35)`,
-        borderRadius: open ? '10px 10px 0 0' : 10,
-        padding:'12px 16px', cursor:'pointer', userSelect:'none',
-        display:'flex', justifyContent:'space-between', alignItems:'center',
+      {/* Copper glow container — matches Design Advisor treatment */}
+      <div style={{
+        background:`linear-gradient(135deg,rgba(193,122,53,0.08) 0%,${C.surface} 60%)`,
+        borderRadius:10, overflow:'hidden',
+        border:`1.5px solid ${C.copper}`,
+        borderLeft:`4px solid ${C.copper}`,
+        boxShadow:`0 0 40px rgba(193,122,53,0.28), 0 4px 16px rgba(0,0,0,0.5)`,
       }}>
-        <div>
-          <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>⚡ ENERGY & COST CALCULATOR</div>
-          <div style={{fontFamily:F.body,fontSize:11,color:C.dim,marginTop:2}}>Estimate annual energy cost, savings, and VSD payback</div>
-        </div>
-        <span style={{color:C.copper,fontSize:18,marginLeft:12}}>{open?'▲':'▼'}</span>
-      </div>
+        {/* Copper accent bar */}
+        <div style={{height:3,background:`linear-gradient(90deg,${C.copper},#E8860A,${C.orange})`}}/>
+        <div style={{padding:16}}>
 
-      {open && (
-        <div style={{background:C.surface,border:`1px solid rgba(193,122,53,0.35)`,borderTop:'none',borderRadius:'0 0 10px 10px',padding:16}}>
-
-          {/* Usage Parameters */}
-          <div style={{marginBottom:14}}>
-            <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:8}}>USAGE PARAMETERS</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(90px,1fr))',gap:8}}>
-              {[{l:'$/kWh',v:kwhRate,s:setKwhRate},{l:'Hrs/Day',v:hoursPerDay,s:setHoursPerDay},{l:'Days/Wk',v:daysPerWeek,s:setDaysPerWeek},{l:'Wks/Yr',v:weeksPerYear,s:setWeeksPerYear}].map(({l,v,s})=>(
-                <div key={l}><label style={lbl9}>{l}</label><input type="number" value={v} onChange={e=>s(e.target.value)} style={numIn}/></div>
-              ))}
+          {/* Collapsible header */}
+          <div onClick={()=>setOpen(o=>!o)} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',cursor:'pointer',userSelect:'none',marginBottom:open?14:0}}>
+            <div>
+              <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>⚡ ENERGY & COST CALCULATOR</div>
+              <div style={{fontFamily:F.body,fontSize:11,color:C.mid,marginTop:2}}>Estimate annual energy cost, savings, and VSD payback</div>
             </div>
-            <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,marginTop:6,letterSpacing:1}}>{annualHours.toLocaleString()} annual operating hours</div>
+            <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0,marginTop:2}}>{open?'▲':'▼'}</span>
           </div>
 
-          {/* Unit Cards */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,marginBottom:14}}>
-            {units.map((u,i)=>{
-              const c = calcs[i];
-              return (
-                <div key={u.id} style={{background:C.surface2,border:colBorder[i],borderRadius:8,padding:12,opacity:u.enabled?1:0.45,transition:'opacity 0.15s'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                    <input type="text" value={u.label} onChange={e=>updUnit(u.id,'label',e.target.value)} style={{background:'none',border:'none',outline:'none',fontFamily:F.mono,fontSize:10,letterSpacing:1.5,color:colColor[i],width:'100%',padding:0}}/>
-                    <button onClick={()=>updUnit(u.id,'enabled',!u.enabled)} style={{background:u.enabled?colColor[i]:'transparent',border:`1px solid ${colColor[i]}`,borderRadius:4,padding:'2px 6px',fontFamily:F.mono,fontSize:8,letterSpacing:1,color:u.enabled?C.bg:colColor[i],cursor:'pointer',flexShrink:0,marginLeft:6}}>{u.enabled?'ON':'OFF'}</button>
-                  </div>
-                  <div style={{marginBottom:8}}><label style={lbl9}>HP</label><input type="number" min="1" value={u.hp} onChange={e=>updUnit(u.id,'hp',e.target.value)} style={numIn}/></div>
-                  <div style={{marginBottom:8}}>
-                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><label style={{...lbl9,marginBottom:0}}>LOAD FACTOR</label><span style={{fontFamily:F.mono,fontSize:11,color:C.text}}>{Math.round(u.loadFactor*100)}%</span></div>
-                    <input type="range" min="0" max="100" value={Math.round(u.loadFactor*100)} onChange={e=>updUnit(u.id,'loadFactor',parseInt(e.target.value)/100)} style={{width:'100%',accentColor:C.orange}}/>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                    <input type="checkbox" id={`vsd-${u.id}`} checked={u.isVSD} onChange={e=>updUnit(u.id,'isVSD',e.target.checked)} style={{accentColor:C.orange,width:14,height:14}}/>
-                    <label htmlFor={`vsd-${u.id}`} style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,cursor:'pointer'}}>VARIABLE SPEED DRIVE</label>
-                  </div>
-                  <div><label style={lbl9}>EQUIP COST (optional)</label><input type="number" min="0" placeholder="$0" value={u.equipmentCost} onChange={e=>updUnit(u.id,'equipmentCost',e.target.value)} style={numIn}/></div>
-                  {u.enabled && (
-                    <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
-                      <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:1}}>{c.inputKW.toFixed(2)} kW · {fmtKWh(c.annualKWh)} kWh/yr</div>
-                      <div style={{fontFamily:F.mono,fontSize:14,color:colColor[i],marginTop:2,letterSpacing:1}}>{fmt(c.annualCost)}/yr</div>
-                    </div>
-                  )}
+          {open && (
+            <div>
+
+              {/* Usage Parameters */}
+              <div style={{marginBottom:14}}>
+                <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:8}}>USAGE PARAMETERS</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(90px,1fr))',gap:8}}>
+                  {[{l:'$/kWh',v:kwhRate,s:setKwhRate},{l:'Hrs/Day',v:hoursPerDay,s:setHoursPerDay},{l:'Days/Wk',v:daysPerWeek,s:setDaysPerWeek},{l:'Wks/Yr',v:weeksPerYear,s:setWeeksPerYear}].map(({l,v,s})=>(
+                    <div key={l}><label style={lbl9}>{l}</label><input type="number" value={v} onChange={e=>s(e.target.value)} style={numIn}/></div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+                <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,marginTop:6,letterSpacing:1}}>{annualHours.toLocaleString()} annual operating hours</div>
+              </div>
 
-          {/* VSD Recommendation Banner */}
-          <div style={{background:`${vsdColor}18`,border:`1px solid ${vsdColor}55`,borderRadius:7,padding:'8px 12px',marginBottom:14,display:'flex',alignItems:'center',gap:8}}>
-            <span style={{color:vsdColor,fontSize:12,flexShrink:0}}>●</span>
-            <span style={{fontFamily:F.mono,fontSize:10,color:vsdColor,lineHeight:1.5}}>{vsdMsg}</span>
-          </div>
-
-          {/* Comparison Table */}
-          <div style={{overflowX:'auto',marginBottom:14}}>
-            <table style={{width:'100%',borderCollapse:'collapse',minWidth:400}}>
-              <thead>
-                <tr style={{borderBottom:`1px solid ${C.border}`}}>
-                  <th style={{...thS,textAlign:'left'}}>METRIC</th>
-                  {units.map((u,i)=><th key={u.id} style={{...thS,color:colColor[i]}}>{u.label}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  {label:'HP / Motor kW', fn:c=>`${parseFloat(c.hp)||0} hp / ${c.motorKW.toFixed(2)} kW`},
-                  {label:'Load Factor',   fn:c=>`${Math.round(c.loadFactor*100)}% ${c.isVSD?'(VSD)':'(fixed)'}`},
-                  {label:'Input kW',      fn:c=>`${c.inputKW.toFixed(2)} kW`},
-                  {label:'Annual kWh',    fn:c=>`${fmtKWh(c.annualKWh)} kWh`},
-                  {label:'Annual Cost',   fn:c=>fmt(c.annualCost), highlight:true},
-                  {label:'Equip Cost',    fn:c=>c.equipmentCost?`$${Number(c.equipmentCost).toLocaleString()}`:'—'},
-                  {label:'Payback (mo)',  fn:c=>{ const pb=paybackMonths(c); return pb?`${Math.round(pb)} mo`:'—'; }},
-                ].map(row=>{
-                  const enabledCosts = calcs.filter(c=>c.enabled).map(c=>c.annualCost);
-                  const minCost = enabledCosts.length ? Math.min(...enabledCosts) : null;
+              {/* Unit Cards */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,marginBottom:14}}>
+                {units.map((u,i)=>{
+                  const c = calcs[i];
                   return (
-                    <tr key={row.label}>
-                      <td style={{...tdS,fontFamily:F.mono,fontSize:10,color:C.mid,letterSpacing:1,whiteSpace:'nowrap'}}>{row.label}</td>
-                      {calcs.map((c,i)=>{
-                        const isWinner = row.highlight && c.enabled && c.annualCost === minCost;
-                        return (
-                          <td key={c.id} style={{...tdS,textAlign:'right',fontFamily:F.mono,fontSize:11,color:c.enabled?colColor[i]:C.dim,background:isWinner?`${colColor[i]}15`:'transparent'}}>
-                            {c.enabled ? row.fn(c) : '—'}{isWinner&&<span style={{marginLeft:4,fontSize:9}}>★</span>}
-                          </td>
-                        );
-                      })}
-                    </tr>
+                    <div key={u.id} style={{background:C.surface2,border:colBorder[i],borderRadius:8,padding:12,opacity:u.enabled?1:0.45,transition:'opacity 0.15s'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                        <input type="text" value={u.label} onChange={e=>updUnit(u.id,'label',e.target.value)} style={{background:'none',border:'none',outline:'none',fontFamily:F.mono,fontSize:10,letterSpacing:1.5,color:colColor[i],width:'100%',padding:0}}/>
+                        <button onClick={()=>updUnit(u.id,'enabled',!u.enabled)} style={{background:u.enabled?colColor[i]:'transparent',border:`1px solid ${colColor[i]}`,borderRadius:4,padding:'2px 6px',fontFamily:F.mono,fontSize:8,letterSpacing:1,color:u.enabled?C.bg:colColor[i],cursor:'pointer',flexShrink:0,marginLeft:6}}>{u.enabled?'ON':'OFF'}</button>
+                      </div>
+                      <div style={{marginBottom:8}}><label style={lbl9}>HP</label><input type="number" min="1" value={u.hp} onChange={e=>updUnit(u.id,'hp',e.target.value)} style={numIn}/></div>
+                      <div style={{marginBottom:8}}>
+                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><label style={{...lbl9,marginBottom:0}}>LOAD FACTOR</label><span style={{fontFamily:F.mono,fontSize:11,color:C.text}}>{Math.round(u.loadFactor*100)}%</span></div>
+                        <input type="range" min="0" max="100" value={Math.round(u.loadFactor*100)} onChange={e=>updUnit(u.id,'loadFactor',parseInt(e.target.value)/100)} style={{width:'100%',accentColor:C.orange}}/>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                        <input type="checkbox" id={`vsd-${u.id}`} checked={u.isVSD} onChange={e=>updUnit(u.id,'isVSD',e.target.checked)} style={{accentColor:C.orange,width:14,height:14}}/>
+                        <label htmlFor={`vsd-${u.id}`} style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,cursor:'pointer'}}>VARIABLE SPEED DRIVE</label>
+                      </div>
+                      <div><label style={lbl9}>EQUIP COST (optional)</label><input type="number" min="0" placeholder="$0" value={u.equipmentCost} onChange={e=>updUnit(u.id,'equipmentCost',e.target.value)} style={numIn}/></div>
+                      {u.enabled && (
+                        <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+                          <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1}}>{c.inputKW.toFixed(2)} kW · {fmtKWh(c.annualKWh)} kWh/yr</div>
+                          <div style={{fontFamily:F.mono,fontSize:18,color:colColor[i],marginTop:2,letterSpacing:1}}>{fmt(c.annualCost)}/yr</div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Savings Summary */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:8,marginBottom:14}}>
-            {[
-              {label:'EXISTING → HODGE FIXED', val:savingsFixed,      color:C.blueLight},
-              {label:'EXISTING → HODGE VSD',   val:savingsVSD,        color:C.copper},
-              {label:'FIXED vs VSD DELTA',      val:savingsVSDvsFixed, color:C.green},
-            ].map(s=>(
-              <div key={s.label} style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:7,padding:'10px 12px'}}>
-                <div style={{fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1.5,marginBottom:4,lineHeight:1.4}}>{s.label}</div>
-                <div style={{fontFamily:F.mono,fontSize:14,color:s.val>0?s.color:C.dim,letterSpacing:1}}>{fmtS(s.val)}</div>
               </div>
-            ))}
-          </div>
 
-          {/* Tank Impact Calculator */}
-          <div style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginBottom:14}}>
-            <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:8}}>TANK IMPACT — LOAD/UNLOAD CYCLE CALCULATOR</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(90px,1fr))',gap:8,marginBottom:10}}>
-              {[{l:'CFM',k:'cfm'},{l:'System PSI',k:'pressure'},{l:'Pressure Band',k:'band'},{l:'Tank (gal)',k:'gallons'}].map(({l,k})=>(
-                <div key={k}><label style={lbl9}>{l}</label><input type="number" min="0" value={tank[k]} onChange={e=>setTank(p=>({...p,[k]:e.target.value}))} style={numIn}/></div>
-              ))}
+              {/* VSD Recommendation Banner */}
+              <div style={{background:`${vsdColor}18`,border:`1px solid ${vsdColor}55`,borderRadius:7,padding:'8px 12px',marginBottom:14,display:'flex',alignItems:'center',gap:8}}>
+                <span style={{color:vsdColor,fontSize:12,flexShrink:0}}>●</span>
+                <span style={{fontFamily:F.mono,fontSize:10,color:vsdColor,lineHeight:1.5}}>{vsdMsg}</span>
+              </div>
+
+              {/* Comparison Table */}
+              <div style={{overflowX:'auto',marginBottom:14}}>
+                <table style={{width:'100%',borderCollapse:'collapse',minWidth:400}}>
+                  <thead>
+                    <tr style={{borderBottom:`1px solid ${C.border}`}}>
+                      <th style={{...thS,textAlign:'left'}}>METRIC</th>
+                      {units.map((u,i)=><th key={u.id} style={{...thS,color:colColor[i]}}>{u.label}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      {label:'HP / Motor kW', fn:c=>`${parseFloat(c.hp)||0} hp / ${c.motorKW.toFixed(2)} kW`},
+                      {label:'Load Factor',   fn:c=>`${Math.round(c.loadFactor*100)}% ${c.isVSD?'(VSD)':'(fixed)'}`},
+                      {label:'Input kW',      fn:c=>`${c.inputKW.toFixed(2)} kW`},
+                      {label:'Annual kWh',    fn:c=>`${fmtKWh(c.annualKWh)} kWh`},
+                      {label:'Annual Cost',   fn:c=>fmt(c.annualCost), highlight:true},
+                      {label:'Equip Cost',    fn:c=>c.equipmentCost?`$${Number(c.equipmentCost).toLocaleString()}`:'—'},
+                      {label:'Payback (mo)',  fn:c=>{ const pb=paybackMonths(c); return pb?`${Math.round(pb)} mo`:'—'; }},
+                    ].map(row=>{
+                      const enabledCosts = calcs.filter(c=>c.enabled).map(c=>c.annualCost);
+                      const minCost = enabledCosts.length ? Math.min(...enabledCosts) : null;
+                      return (
+                        <tr key={row.label}>
+                          <td style={{...tdS,fontFamily:F.mono,fontSize:10,color:C.mid,letterSpacing:1,whiteSpace:'nowrap'}}>{row.label}</td>
+                          {calcs.map((c,i)=>{
+                            const isWinner = row.highlight && c.enabled && c.annualCost === minCost;
+                            return (
+                              <td key={c.id} style={{...tdS,textAlign:'right',fontFamily:F.mono,fontSize:11,color:c.enabled?colColor[i]:C.dim,background:isWinner?`${colColor[i]}15`:'transparent'}}>
+                                {c.enabled ? row.fn(c) : '—'}{isWinner&&<span style={{marginLeft:4,fontSize:9}}>★</span>}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Savings Summary */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:8,marginBottom:14}}>
+                {[
+                  {label:'EXISTING → HODGE FIXED', val:savingsFixed,      color:C.blueLight},
+                  {label:'EXISTING → HODGE VSD',   val:savingsVSD,        color:C.copper},
+                  {label:'FIXED vs VSD DELTA',      val:savingsVSDvsFixed, color:C.green},
+                ].map(s=>(
+                  <div key={s.label} style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:7,padding:'10px 12px'}}>
+                    <div style={{fontFamily:F.mono,fontSize:8,color:C.mid,letterSpacing:1.5,marginBottom:4,lineHeight:1.4}}>{s.label}</div>
+                    {s.val === 0
+                      ? <div style={{fontFamily:F.body,fontSize:11,color:C.mid,fontStyle:'italic',lineHeight:1.4}}>Same specs — adjust HP or load factor to compare</div>
+                      : <div style={{fontFamily:F.mono,fontSize:14,color:s.val>0?s.color:C.dim,letterSpacing:1}}>{fmtS(s.val)}</div>
+                    }
+                  </div>
+                ))}
+              </div>
+
+              {/* Tank Impact Calculator */}
+              <div style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginBottom:14}}>
+                <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:8}}>TANK IMPACT — LOAD/UNLOAD CYCLE CALCULATOR</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(90px,1fr))',gap:8,marginBottom:10}}>
+                  {[{l:'CFM',k:'cfm'},{l:'System PSI',k:'pressure'},{l:'Pressure Band',k:'band'},{l:'Tank (gal)',k:'gallons'}].map(({l,k})=>(
+                    <div key={k}><label style={lbl9}>{l}</label><input type="number" min="0" value={tank[k]} onChange={e=>setTank(p=>({...p,[k]:e.target.value}))} style={numIn}/></div>
+                  ))}
+                </div>
+                {cycleTime > 0 && (
+                  <div>
+                    <div style={{display:'flex',gap:16,marginBottom:8,flexWrap:'wrap'}}>
+                      <span style={{fontFamily:F.mono,fontSize:11,color:C.text}}>Cycle time: <b>{cycleTime.toFixed(1)}s</b></span>
+                      <span style={{fontFamily:F.mono,fontSize:11,color:C.text}}>Cycles/hr: <b>{cyclesPerHour.toFixed(1)}</b></span>
+                    </div>
+                    <div style={{padding:'6px 10px',borderRadius:6,
+                      background: cyclesPerHour<=6 ? C.greenSoft : cyclesPerHour<=12 ? C.copperSoft : 'rgba(220,38,38,0.10)',
+                      border:`1px solid ${cyclesPerHour<=6?C.green:cyclesPerHour<=12?C.copper:C.red}`,
+                      fontFamily:F.mono,fontSize:10,letterSpacing:0.5,
+                      color: cyclesPerHour<=6?C.green:cyclesPerHour<=12?C.copper:C.red,
+                    }}>
+                      {cyclesPerHour<=6 ? 'Good — minimal unload losses' : cyclesPerHour<=12 ? 'Acceptable — consider upsizing tank' : 'Short cycling — upsizing tank recommended, energy and wear impact significant'}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Rep Talking Points */}
+              <div style={{background:C.copperSoft,border:`1px solid rgba(193,122,53,0.25)`,borderRadius:8,padding:12}}>
+                <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.copper,marginBottom:8}}>REP TALKING POINTS</div>
+                {pts.map((pt,i)=>(
+                  <div key={i} style={{display:'flex',gap:8,marginBottom:i<pts.length-1?8:0}}>
+                    <span style={{color:C.copper,flexShrink:0,fontFamily:F.mono,fontSize:10,marginTop:2}}>•</span>
+                    <span style={{fontFamily:F.body,fontSize:13,color:C.text,lineHeight:1.5}}>{pt}</span>
+                  </div>
+                ))}
+              </div>
+
             </div>
-            {cycleTime > 0 && (
-              <div>
-                <div style={{display:'flex',gap:16,marginBottom:8,flexWrap:'wrap'}}>
-                  <span style={{fontFamily:F.mono,fontSize:11,color:C.text}}>Cycle time: <b>{cycleTime.toFixed(1)}s</b></span>
-                  <span style={{fontFamily:F.mono,fontSize:11,color:C.text}}>Cycles/hr: <b>{cyclesPerHour.toFixed(1)}</b></span>
-                </div>
-                <div style={{padding:'6px 10px',borderRadius:6,
-                  background: cyclesPerHour<=6 ? C.greenSoft : cyclesPerHour<=12 ? C.copperSoft : 'rgba(220,38,38,0.10)',
-                  border:`1px solid ${cyclesPerHour<=6?C.green:cyclesPerHour<=12?C.copper:C.red}`,
-                  fontFamily:F.mono,fontSize:10,letterSpacing:0.5,
-                  color: cyclesPerHour<=6?C.green:cyclesPerHour<=12?C.copper:C.red,
-                }}>
-                  {cyclesPerHour<=6 ? 'Good — minimal unload losses' : cyclesPerHour<=12 ? 'Acceptable — consider upsizing tank' : 'Short cycling — upsizing tank recommended, energy and wear impact significant'}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Rep Talking Points */}
-          <div style={{background:C.copperSoft,border:`1px solid rgba(193,122,53,0.25)`,borderRadius:8,padding:12}}>
-            <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.copper,marginBottom:8}}>REP TALKING POINTS</div>
-            {pts.map((pt,i)=>(
-              <div key={i} style={{display:'flex',gap:8,marginBottom:i<pts.length-1?6:0}}>
-                <span style={{color:C.copper,flexShrink:0,fontFamily:F.mono,fontSize:10,marginTop:2}}>•</span>
-                <span style={{fontFamily:F.body,fontSize:13,color:C.text,lineHeight:1.5}}>{pt}</span>
-              </div>
-            ))}
-          </div>
+          )}
 
         </div>
-      )}
+      </div>
     </div>
   );
 }
