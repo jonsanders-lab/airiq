@@ -2224,8 +2224,11 @@ function EnergyCalculator() {
           {/* Collapsible header */}
           <div onClick={()=>setOpen(o=>!o)} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',cursor:'pointer',userSelect:'none',marginBottom:open?14:0}}>
             <div>
-              <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>⚡ ENERGY & COST CALCULATOR</div>
-              <div style={{fontFamily:F.body,fontSize:11,color:C.mid,marginTop:2}}>Estimate annual energy cost, savings, and VSD payback</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                <span style={{fontFamily:F.mono,fontSize:8,letterSpacing:2,color:C.copper,background:'rgba(193,122,53,0.15)',border:'1px solid rgba(193,122,53,0.3)',padding:'2px 6px',borderRadius:4}}>STEP 3</span>
+                <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>⚡ ENERGY & COST CALCULATOR</div>
+              </div>
+              <div style={{fontFamily:F.body,fontSize:11,color:C.mid}}>Justify your recommendation with real energy numbers</div>
             </div>
             <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0,marginTop:2}}>{open?'▲':'▼'}</span>
           </div>
@@ -2425,10 +2428,10 @@ function Estimator() {
   const [compEquipPrice, setCompEquipPrice]   = React.useState("");
   const [compAnnualMaint, setCompAnnualMaint] = React.useState("");
   const [selectedTier, setSelectedTier] = React.useState(null);
-  const [openSections, setOpenSections] = React.useState({compressors:true});
+  const [openSections, setOpenSections] = React.useState({buildSystem:true,saveexport:false,valueJustification:false});
   const toggleSection = k => setOpenSections(p=>({...p,[k]:!p[k]}));
   const secOpen       = k => !!openSections[k];
-  const secHdr = (key, label, badge) => (
+  const secHdr = (key, label, badge, step, subtitle) => (
     <div onClick={()=>toggleSection(key)} style={{
       display:'flex', justifyContent:'space-between', alignItems:'center',
       cursor:'pointer', userSelect:'none',
@@ -2437,13 +2440,17 @@ function Estimator() {
       borderRadius: secOpen(key) ? '10px 10px 0 0' : 10,
       padding:'14px 16px', marginBottom: secOpen(key) ? 0 : 12,
     }}>
-      <div style={{display:'flex', alignItems:'center', gap:10}}>
-        <span style={{fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.copper}}>{label}</span>
-        {!secOpen(key) && badge && (
-          <span style={{fontFamily:F.mono, fontSize:9, color:C.copper, background:'rgba(193,122,53,0.12)', border:`1px solid rgba(193,122,53,0.3)`, borderRadius:4, padding:'2px 8px', letterSpacing:1}}>{badge}</span>
-        )}
+      <div>
+        <div style={{display:'flex', alignItems:'center', gap:8, marginBottom: subtitle ? 4 : 0}}>
+          {step && <span style={{fontFamily:F.mono,fontSize:8,letterSpacing:2,color:C.copper,background:'rgba(193,122,53,0.15)',border:'1px solid rgba(193,122,53,0.3)',padding:'2px 6px',borderRadius:4}}>{step}</span>}
+          <span style={{fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.copper}}>{label}</span>
+          {!secOpen(key) && badge && (
+            <span style={{fontFamily:F.mono, fontSize:9, color:C.copper, background:'rgba(193,122,53,0.12)', border:`1px solid rgba(193,122,53,0.3)`, borderRadius:4, padding:'2px 8px', letterSpacing:1}}>{badge}</span>
+          )}
+        </div>
+        {subtitle && <div style={{fontFamily:F.body, fontSize:11, color:C.mid}}>{subtitle}</div>}
       </div>
-      <span style={{color:C.copper, fontSize:18}}>{secOpen(key)?'▲':'▼'}</span>
+      <span style={{color:C.copper, fontSize:18, flexShrink:0, marginLeft:12}}>{secOpen(key)?'▲':'▼'}</span>
     </div>
   );
 
@@ -2657,7 +2664,7 @@ Return ONLY valid JSON, no markdown fence, no extra text:
     setSelectedTier(tier);
     setSysOpen(false);
     setSysRec(null);
-    setOpenSections(p=>({...p,compressors:true}));
+    setOpenSections(p=>({...p,buildSystem:true}));
     setTimeout(()=>document.getElementById("comp-section")?.scrollIntoView({behavior:"smooth"}),100);
   }
 
@@ -3115,7 +3122,13 @@ No fabricated prices.`;
         <div style={{height:3,background:`linear-gradient(90deg,${C.copper},#E8860A,${C.orange})`}}/>
         <div style={{padding:16}}>
         <div onClick={()=>setSysOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none",marginBottom:sysOpen?14:0}}>
-          <span style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>⚙️ SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR</span>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+              <span style={{fontFamily:F.mono,fontSize:8,letterSpacing:2,color:C.copper,background:"rgba(193,122,53,0.15)",border:"1px solid rgba(193,122,53,0.3)",padding:"2px 6px",borderRadius:4}}>STEP 2</span>
+              <span style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>⚙️ SYSTEM REQUIREMENTS &amp; DESIGN ADVISOR</span>
+            </div>
+            <div style={{fontFamily:F.body,fontSize:11,color:C.mid}}>Define requirements → get Good / Better / Best recommendation</div>
+          </div>
           <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0}}>{sysOpen?"▲":"▼"}</span>
         </div>
 
@@ -3379,6 +3392,15 @@ No fabricated prices.`;
         </div>
       )}
 
+      {/* ── STEP 3 — Energy & Cost Calculator ── */}
+      <EnergyCalculator />
+
+      {/* ── STEP 4 — Value Justification ── */}
+      <div style={{marginBottom:12}}>
+        {secHdr('valueJustification','💰 VALUE JUSTIFICATION',null,'STEP 4','Lifecycle cost, PM value, and competitive positioning')}
+        <div style={{overflow:'hidden',maxHeight:secOpen('valueJustification')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+          <div style={{padding:16}}>
+
       {/* ── TCO & PM Value Section ── */}
       {(()=>{
         const pillars = [
@@ -3629,18 +3651,27 @@ No fabricated prices.`;
         );
       })()}
 
-      {/* ── Energy & Cost Calculator ── */}
-      <EnergyCalculator />
+          </div>
+        </div>
+      </div>
 
-      {/* ── Compressors ── */}
+      {/* ── STEP 5 — Build Your System ── */}
       <div id="comp-section" style={{marginBottom:12}}>
-        {secHdr('compressors','🖥️ COMPRESSORS',comps.length>0?`${comps.length} compressor${comps.length!==1?'s':''}`:null)}
-        <div style={{overflow:'hidden',maxHeight:secOpen('compressors')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+        {secHdr('buildSystem',
+          <><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{verticalAlign:'middle',marginRight:6}}><rect x="2" y="8" width="14" height="8" rx="2"/><circle cx="9" cy="12" r="2.5"/><path d="M16 10h3a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-3"/><path d="M2 12h-1"/><path d="M6 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>BUILD YOUR SYSTEM</>,
+          (()=>{const t=comps.length+dryers.length+tanks.length+reels.length;return t>0?`${t} component${t!==1?'s':''}`:null;})(),
+          'STEP 5',
+          null
+        )}
+        <div style={{overflow:'hidden',maxHeight:secOpen('buildSystem')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
           <div style={{padding:16}}>
-            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-              {addBtn("Add Compressor", addComp)}
-            </div>
-            {comps.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No compressors added.</div>}
+            {/* ── Compressors ── */}
+            <div style={{marginBottom:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>🖥️ COMPRESSORS</span>
+                {addBtn("Add Compressor", addComp)}
+              </div>
+              {comps.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No compressors added.</div>}
         {comps.map((c,idx)=>{
           const cfm = estCFM(c.series, c.model, c.pressure);
           const noTank = COMP_DB[c.series]?.noTank;
@@ -3713,19 +3744,15 @@ No fabricated prices.`;
             </div>
           );
         })}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Dryers & Filters ── */}
-      <div style={{marginBottom:12}}>
-        {secHdr('dryers','💧 DRYERS & FILTERS',dryers.length>0?`${dryers.length} item${dryers.length!==1?'s':''}`:null)}
-        <div style={{overflow:'hidden',maxHeight:secOpen('dryers')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
-          <div style={{padding:16}}>
-            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-              {addBtn("Add Item", ()=>addRow(setDryers, DRYER_OPTS[0]))}
             </div>
-            {dryers.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No items added.</div>}
+
+            {/* ── Dryers & Filters ── */}
+            <div style={{marginBottom:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>💧 DRYERS & FILTERS</span>
+                {addBtn("Add Item", ()=>addRow(setDryers, DRYER_OPTS[0]))}
+              </div>
+              {dryers.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No items added.</div>}
         {dryers.map(d=>(
           <div key={d.id} style={{marginBottom:8}}>
             {d.fromDrawing && <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,marginBottom:3}}>📐 FROM DRAWING</div>}
@@ -3742,19 +3769,15 @@ No fabricated prices.`;
             </div>
           </div>
         ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Receiver Tanks ── */}
-      <div style={{marginBottom:12}}>
-        {secHdr('tanks','🛢️ RECEIVER TANKS',tanks.length>0?`${tanks.length} tank${tanks.length!==1?'s':''}`:null)}
-        <div style={{overflow:'hidden',maxHeight:secOpen('tanks')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
-          <div style={{padding:16}}>
-            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-              {addBtn("Add Tank", ()=>addRow(setTanks, TANK_OPTS[0]))}
             </div>
-            {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
+
+            {/* ── Receiver Tanks ── */}
+            <div style={{marginBottom:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper,display:'flex',alignItems:'center',gap:6}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="7" y="3" width="10" height="18" rx="3"/><line x1="9" y1="7" x2="17" y2="7"/><line x1="9" y1="17" x2="17" y2="17"/><line x1="12" y1="3" x2="12" y2="1"/><circle cx="12" cy="10" r="1.5"/></svg>RECEIVER TANKS</span>
+                {addBtn("Add Tank", ()=>addRow(setTanks, TANK_OPTS[0]))}
+              </div>
+              {tanks.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No tanks added.</div>}
         {tanks.map(t=>(
           <div key={t.id} style={{marginBottom:8}}>
             {t.fromDrawing && <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,marginBottom:3}}>📐 FROM DRAWING</div>}
@@ -3771,19 +3794,15 @@ No fabricated prices.`;
             </div>
           </div>
         ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Hose Reels ── */}
-      <div style={{marginBottom:12}}>
-        {secHdr('reels','🔄 HOSE REELS',reels.length>0?`${reels.length} reel${reels.length!==1?'s':''}`:null)}
-        <div style={{overflow:'hidden',maxHeight:secOpen('reels')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
-          <div style={{padding:16}}>
-            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-              {addBtn("Add Hose Reel", ()=>addRow(setReels, REEL_OPTS[0]))}
             </div>
-            {reels.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No reels added.</div>}
+
+            {/* ── Hose Reels ── */}
+            <div style={{marginBottom:0}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+                <span style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper}}>🔄 HOSE REELS</span>
+                {addBtn("Add Hose Reel", ()=>addRow(setReels, REEL_OPTS[0]))}
+              </div>
+              {reels.length===0 && <div style={{color:C.dim,fontSize:12,fontFamily:F.mono,letterSpacing:1}}>No reels added.</div>}
         {reels.map(r=>(
           <div key={r.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
             <input type="number" value={r.qty} min={1}
@@ -3797,13 +3816,18 @@ No fabricated prices.`;
               style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0,lineHeight:1}}>×</button>
           </div>
         ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── Layout Drawings / Photos ── */}
+      {/* ── STEP 6 — Layout Drawings / Photos ── */}
       <div style={{marginBottom:12}}>
-        {secHdr('layout','📐 LAYOUT DRAWINGS / PHOTOS',layoutAnalysis&&!layoutAnalysis.error?'analysis ready':layoutImgs.length>0?`${layoutImgs.length} image${layoutImgs.length!==1?'s':''}`:null)}
+        {secHdr('layout','📐 LAYOUT DRAWINGS / PHOTOS',
+          layoutAnalysis&&!layoutAnalysis.error?'analysis ready':layoutImgs.length>0?`${layoutImgs.length} image${layoutImgs.length!==1?'s':''}`:null,
+          'STEP 6',
+          'Upload site drawings → AI extracts fittings and pipe runs'
+        )}
         <div style={{overflow:'hidden',maxHeight:secOpen('layout')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
           <div style={{padding:16}}>
             <div style={{color:C.mid,fontSize:12,fontFamily:F.mono,letterSpacing:1,marginBottom:12}}>
@@ -4000,35 +4024,38 @@ No fabricated prices.`;
         </div>
       </div>
 
-      {/* ── Save & Export ── */}
+      {/* ── BILL OF MATERIALS ── */}
+      <div style={{marginBottom:20}}>
+        <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.copper,marginBottom:8}}>BILL OF MATERIALS</div>
+        <div style={{height:2,background:`linear-gradient(90deg,${C.copper},rgba(193,122,53,0))`,marginBottom:16,borderRadius:1}}/>
+        <button onClick={genBOM} disabled={bomBusy} style={{
+          width:"100%",
+          background:bomBusy?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+          border:"none",borderRadius:8,padding:15,
+          fontFamily:F.head,fontSize:18,letterSpacing:4,
+          color:bomBusy?C.dim:"#fff",transition:"all 0.2s",marginBottom:16,
+          boxShadow:bomBusy?"none":"0 0 28px rgba(193,122,53,0.25)",
+        }}>
+          {bomBusy?"GENERATING SYSTEM BOM...":"GENERATE SYSTEM BOM →"}
+        </button>
+        {bomText && (
+          <div style={{background:C.surface,border:`1px solid ${C.copper}44`,borderRadius:10,padding:16}}>
+            <Mono color={C.copper}>BILL OF MATERIALS</Mono>
+            <div style={{marginTop:14}}>
+              <BOMTable raw={bomText}/>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── STEP 7 — Save & Export ── */}
       <div style={{marginBottom:12}}>
-        {secHdr('saveexport','💾 SAVE & EXPORT',bomText?'BOM ready':null)}
+        {secHdr('saveexport','💾 SAVE & EXPORT',bomText?'BOM ready':null,'STEP 7',null)}
         <div style={{overflow:'hidden',maxHeight:secOpen('saveexport')?'9999px':'0',transition:'max-height 0.3s ease',background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
           <div style={{padding:16}}>
 
-      {/* Generate BOM */}
-      <button onClick={genBOM} disabled={bomBusy} style={{
-        width:"100%",
-        background:bomBusy?C.surface2:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
-        border:"none",borderRadius:8,padding:15,
-        fontFamily:F.head,fontSize:18,letterSpacing:4,
-        color:bomBusy?C.dim:"#fff",transition:"all 0.2s",marginBottom:16,
-        boxShadow:bomBusy?"none":"0 0 28px rgba(193,122,53,0.25)",
-      }}>
-        {bomBusy?"GENERATING SYSTEM BOM...":"GENERATE SYSTEM BOM →"}
-      </button>
-
-      {bomText && (
-        <div style={{background:C.surface,border:`1px solid ${C.copper}44`,borderRadius:10,padding:16,marginBottom:12}}>
-          <Mono color={C.copper}>BILL OF MATERIALS</Mono>
-          <div style={{marginTop:14}}>
-            <BOMTable raw={bomText}/>
-          </div>
-        </div>
-      )}
-
       {/* Save This Estimate */}
-      {bomText && (
+      {bomText ? (
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:16,marginBottom:20}}>
           <Mono color={C.copper}>SAVE THIS ESTIMATE</Mono>
           <div style={{display:"flex",gap:10,alignItems:"flex-end",marginTop:12,flexWrap:"wrap"}}>
@@ -4070,6 +4097,10 @@ No fabricated prices.`;
               {saveMsg}
             </div>
           )}
+        </div>
+      ) : (
+        <div style={{fontFamily:F.mono,fontSize:11,color:C.dim,letterSpacing:1,padding:"12px 0",textAlign:'center'}}>
+          Generate a BOM above to unlock save &amp; export.
         </div>
       )}
           </div>
