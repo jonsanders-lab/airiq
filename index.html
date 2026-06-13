@@ -792,8 +792,12 @@ function AirIQ() {
     el.style.height="40px"; el.style.height=Math.min(el.scrollHeight,120)+"px";
   };
 
+  const normalizeModelNumber = s =>
+    s.replace(/\b(HTM|HTV|HAD|HD|HV|HT|HB)\s+(\d+[A-Z]?)\b/gi,
+              (_, prefix, num) => prefix.toUpperCase() + num.toUpperCase());
+
   const submit = async (text) => {
-    const msg = text || input.trim();
+    const msg = normalizeModelNumber(text || input.trim());
     if (!msg || loading) return;
     setShowStarters(false); setInput("");
     if (textareaRef.current) textareaRef.current.style.height="40px";
