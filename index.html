@@ -4377,6 +4377,13 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [showTemplates,setShowTemplates]= React.useState(false);
   const [snapPt,       setSnapPt]       = React.useState(null);
+  const [ctxMenu,      setCtxMenu]      = React.useState({show:false,x:0,y:0,elId:null});
+
+  const longPressRef   = React.useRef(null);
+  const lastTapRef     = React.useRef({time:0,x:0,y:0});
+  const lastDrawTool   = React.useRef('pipe');
+  const twoFingerRef   = React.useRef(null);
+  const prevPipeRef    = React.useRef(null); // {x,y,angle} of last completed pipe
 
   React.useEffect(()=>{ zoomRef.current=zoom; },[zoom]);
   React.useEffect(()=>{ panRef.current=pan; },[pan]);
@@ -4395,6 +4402,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const undo     = ()  => { const p=undoRef.current.pop(); if(p!=null){setEls(p);persist(p);} };
   const clearAll = ()  => { if(!window.confirm('Clear entire drawing?'))return; mutate(()=>[]); setSelected(null); };
   const fitView  = ()  => { setZoom(1); setPan({x:0,y:0}); };
+  const changeTool = t => { if(t!=='select'&&t!=='erase') lastDrawTool.current=t; setTool(t); };
 
   function getCanvasPos(e) {
     const cv=canvasRef.current; if(!cv) return {x:0,y:0};
@@ -4415,10 +4423,22 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   }
 
   function findSnapPoint(wx, wy, elsList) {
-    const threshold=15/zoomRef.current;
+    const threshold=25/zoomRef.current;
+    // Connector points take priority
     for(const el of elsList) {
       for(const pt of getConnectors(el)) {
         if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y};
+      }
+    }
+    // Fallback: bbox edge centers of any symbol
+    for(const el of elsList) {
+      if(el.type!=='symbol') continue;
+      const sc=el.scale||1, rot=(el.rotation||0)*Math.PI/180;
+      const hw=38*sc, hh=32*sc;
+      for(const p of [{x:hw,y:0},{x:-hw,y:0},{x:0,y:-hh},{x:0,y:hh}]) {
+        const ex=el.x+p.x*Math.cos(rot)-p.y*Math.sin(rot);
+        const ey=el.y+p.x*Math.sin(rot)+p.y*Math.cos(rot);
+        if(Math.hypot(wx-ex,wy-ey)<threshold) return {x:ex,y:ey};
       }
     }
     return null;
@@ -4447,7 +4467,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     const sc=el.scale||1, rot=(el.rotation||0)*Math.PI/180;
     // Rotation handle: above symbol in its local up direction
     const rhx=el.x+Math.sin(rot)*50*sc, rhy=el.y-Math.cos(rot)*50*sc;
-    if(Math.hypot(x-rhx,y-rhy)<12) return 'rotate';
+    if(Math.hypot(x-rhx,y-rhy)<16) return 'rotate';
     // Corner handles
     const corners=[[-38*sc,-32*sc],[38*sc,-32*sc],[38*sc,32*sc],[-38*sc,32*sc]];
     const labels=['tl','tr','br','bl'];
@@ -4469,19 +4489,35 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
   function onDown(e) {
     e.preventDefault();
-    // Two-finger pinch/pan start
+    // Two-finger: pinch/pan setup + two-finger tap tracking
     if(e.touches&&e.touches.length===2) {
+      clearTimeout(longPressRef.current);
       const [t0,t1]=[e.touches[0],e.touches[1]];
+      const dist=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
+      twoFingerRef.current={time:Date.now(),moved:false};
       pinchRef.current={
-        dist:Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY),
-        cx:(t0.clientX+t1.clientX)/2, cy:(t0.clientY+t1.clientY)/2,
+        dist, cx:(t0.clientX+t1.clientX)/2, cy:(t0.clientY+t1.clientY)/2,
         startZoom:zoomRef.current, startPan:{...panRef.current},
       };
       return;
     }
 
+    clearTimeout(longPressRef.current);
     const raw=getPos(e,false);
     const snapped={x:snap(raw.x),y:snap(raw.y)};
+
+    // Double-tap (touch only, SELECT mode) → switch to last draw mode
+    if(e.touches&&e.touches.length===1&&tool==='select'&&!drawing) {
+      const now=Date.now(), last=lastTapRef.current;
+      if(now-last.time<300&&Math.hypot(raw.x-last.x,raw.y-last.y)<40) {
+        if(!hitTest(raw.x,raw.y)) {
+          changeTool(lastDrawTool.current);
+          lastTapRef.current={time:0,x:0,y:0};
+          return;
+        }
+      }
+      lastTapRef.current={time:now,x:raw.x,y:raw.y};
+    }
 
     if(tool==='erase') { const h=hitTest(raw.x,raw.y); if(h)rmEl(h.id); return; }
     if(tool==='label') { setLabelIn({show:true,x:snapped.x,y:snapped.y,text:'',forId:null,isPipe:false}); return; }
@@ -4504,6 +4540,14 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             dragRef.current={mode:'move',id:h.id,sx:snapped.x,sy:snapped.y,orig:{...h}};
           }
         }
+        // Long press on symbol (touch only) → context menu
+        if(e.touches&&h.type==='symbol') {
+          const tx=e.touches[0].clientX, ty=e.touches[0].clientY;
+          longPressRef.current=setTimeout(()=>{
+            setCtxMenu({show:true,x:tx,y:ty,elId:h.id});
+            dragRef.current=null;
+          },500);
+        }
       } else {
         setSelected(null);
         dragRef.current={mode:'pan',startCp:getCanvasPos(e),startPan:{...panRef.current}};
@@ -4521,12 +4565,39 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         const ex=sp2?sp2.x:snapped.x, ey=sp2?sp2.y:snapped.y;
         if(tool==='dim') {
           addEl({id:(Date.now()+Math.random()).toString(36),type:'dim',x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey});
+          setDrawing(null); setSnapPt(null);
+        } else if(tool==='wall') {
+          addEl({id:(Date.now()+Math.random()).toString(36),type:'wall',
+                 x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize:null,pipeColor:null});
+          setDrawing(null); setSnapPt(null);
         } else {
-          addEl({id:(Date.now()+Math.random()).toString(36),type:tool==='wall'?'wall':'pipe',
-                 x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,
-                 pipeSize:tool==='pipe'?pipeSize:null,pipeColor:tool==='pipe'?pipeColor:null});
+          // Pipe: auto-place elbow symbol when direction changes >30°
+          const newAngle=Math.atan2(ey-drawing.y1,ex-drawing.x1);
+          const elbowEls=[];
+          if(prevPipeRef.current) {
+            const {x:px,y:py,angle:prevAngle}=prevPipeRef.current;
+            if(Math.hypot(drawing.x1-px,drawing.y1-py)<FD.G*0.6) {
+              let diff=((newAngle-prevAngle)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);
+              if(diff>Math.PI) diff=Math.PI*2-diff;
+              if(diff>Math.PI/6) {
+                elbowEls.push({
+                  id:(Date.now()+Math.random()+0.1).toString(36),
+                  type:'symbol',symbolId:'elbow90',
+                  x:drawing.x1,y:drawing.y1,
+                  rotation:((prevAngle*180/Math.PI)%360+360)%360,
+                  scale:0.7,label:'',
+                });
+              }
+            }
+          }
+          prevPipeRef.current={x:ex,y:ey,angle:newAngle};
+          mutate(p=>[...p,
+            {id:(Date.now()+Math.random()).toString(36),type:'pipe',
+             x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize,pipeColor},
+            ...elbowEls,
+          ]);
+          setDrawing(null); setSnapPt(null);
         }
-        setDrawing(null); setSnapPt(null);
       }
       return;
     }
@@ -4550,10 +4621,13 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       const pcx=(cx-r.left)*(FD.W/r.width), pcy=(cy-r.top)*(FD.H/r.height);
       const newZoom=clampZoom(startZoom*(dist/d0));
       const wx=(pcx-startPan.x)/startZoom, wy=(pcy-startPan.y)/startZoom;
+      if(twoFingerRef.current&&Math.abs(dist-d0)>15) twoFingerRef.current.moved=true;
       setZoom(newZoom);
       setPan({x:pcx-wx*newZoom, y:pcy-wy*newZoom});
       return;
     }
+    // Any single-finger movement cancels long-press
+    clearTimeout(longPressRef.current);
 
     const cp=getCanvasPos(e);
     const raw=screenToWorld(cp);
@@ -4604,11 +4678,19 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   }
 
   function onUp(e) {
+    clearTimeout(longPressRef.current);
+
+    // Two-finger tap → undo (short two-touch with no significant pinch movement)
+    if(twoFingerRef.current&&(!e.touches||e.touches.length===0)) {
+      if(!twoFingerRef.current.moved&&Date.now()-twoFingerRef.current.time<350) undo();
+      twoFingerRef.current=null;
+    }
+
     const dr=dragRef.current;
-    // Rotation click-cycle: if barely moved, snap to next 90°
+    // Rotation click-cycle: if barely moved, snap to next 90° (threshold tightened to 3 world units)
     if(dr?.mode==='rotate'&&e) {
       const final=getPos(e,false);
-      if(Math.hypot(final.x-dr.startX,final.y-dr.startY)<8/zoomRef.current) {
+      if(Math.hypot(final.x-dr.startX,final.y-dr.startY)<3/zoomRef.current) {
         const cur=Math.round((dr.orig.rotation||0)/90)*90;
         updEl(dr.id,{rotation:(cur+90)%360});
       }
@@ -4827,12 +4909,14 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       ctx.setLineDash([]); ctx.restore();
     }
 
-    // Snap indicator (green dot)
+    // Snap indicator: filled green circle at snap point
     if(snapPt) {
       ctx.save();
-      ctx.beginPath(); ctx.arc(snapPt.x,snapPt.y,6,0,Math.PI*2);
-      ctx.fillStyle='rgba(34,197,94,0.35)'; ctx.fill();
-      ctx.strokeStyle='#22C55E'; ctx.lineWidth=2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(snapPt.x,snapPt.y,9,0,Math.PI*2);
+      ctx.fillStyle='rgba(34,197,94,0.25)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(snapPt.x,snapPt.y,5,0,Math.PI*2);
+      ctx.fillStyle='#22C55E'; ctx.fill();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
       ctx.restore();
     }
 
@@ -4925,17 +5009,23 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const btnBase = {
     background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,
     padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:C.mid,
-    cursor:'pointer',whiteSpace:'nowrap',minHeight:34,
+    cursor:'pointer',whiteSpace:'nowrap',minHeight:44,
+    touchAction:'manipulation',WebkitTouchCallout:'none',
   };
   const btnActive = {
     background:`linear-gradient(135deg,${C.orange},#C2540A)`,
     border:`1px solid ${C.orange}`,color:'#fff',
   };
 
+  const touchCss = {WebkitTouchCallout:'none',userSelect:'none',WebkitUserSelect:'none'};
   const outerStyle = isFullscreen
     ? {position:'fixed',top:0,left:0,width:'100vw',height:'100vh',zIndex:9999,
-       background:'#0A0A0A',display:'flex',flexDirection:'column',borderRadius:0}
-    : {borderRadius:'0 0 10px 10px',overflow:'hidden',border:`1.5px solid ${C.copper}`,borderTop:'none',display:'flex',flexDirection:'column'};
+       background:'#0A0A0A',display:'flex',flexDirection:'column',borderRadius:0,
+       paddingTop:'env(safe-area-inset-top, 44px)',
+       paddingLeft:'env(safe-area-inset-left, 0px)',
+       paddingRight:'env(safe-area-inset-right, 0px)',
+       ...touchCss}
+    : {borderRadius:'0 0 10px 10px',overflow:'hidden',border:`1.5px solid ${C.copper}`,borderTop:'none',display:'flex',flexDirection:'column',...touchCss};
 
   const paletteStyle = {
     width:200,flexShrink:0,background:'#0A0A0A',borderRight:`1px solid ${C.border}`,
@@ -4959,7 +5049,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       {/* Toolbar */}
       <div style={toolbarStyle}>
         {TOOLS.map(t=>(
-          <button key={t.id} onClick={()=>setTool(t.id)} title={t.tip}
+          <button key={t.id} onClick={()=>changeTool(t.id)} title={t.tip}
             style={{...btnBase,...(tool===t.id?btnActive:{})}}>{t.i} {t.l}</button>
         ))}
         <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
@@ -5002,7 +5092,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
               <div style={{fontFamily:F.body,fontSize:11,fontWeight:'bold',letterSpacing:1.5,color:C.copper,padding:'6px 10px 3px',borderBottom:'1px solid rgba(193,122,53,0.25)'}}>{sec}</div>
               {FD_SYMBOLS.filter(s=>s.sec===sec).map(sym=>(
                 <div key={sym.id}
-                  onClick={()=>{ setActiveSym(sym.id); setTool(sym.id==='dimnarrow'?'dim':'symbol'); }}
+                  onClick={()=>{ setActiveSym(sym.id); changeTool(sym.id==='dimnarrow'?'dim':'symbol'); }}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'3px 8px',cursor:'pointer',
                     background:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?'rgba(193,122,53,0.14)':'transparent',
                     borderLeft:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?`3px solid ${C.copper}`:'3px solid transparent'}}>
@@ -5052,6 +5142,50 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         {drawing&&<span style={{color:C.copper}}>click endpoint · ESC cancels{snapPt?' · snapping to connector':''}</span>}
         {tool==='select'&&!selected&&!drawing&&<span style={{color:C.dim}}>drag empty space to pan · scroll to zoom · F to fit</span>}
       </div>
+
+      {/* Context menu (long-press on symbol) */}
+      {ctxMenu.show&&(
+        <div onClick={()=>setCtxMenu(m=>({...m,show:false}))}
+          style={{position:'fixed',inset:0,zIndex:10002}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{position:'absolute',left:ctxMenu.x,top:ctxMenu.y,
+                    background:'#1A1A1A',border:`1px solid ${C.copper}`,borderRadius:10,
+                    overflow:'hidden',minWidth:190,boxShadow:'0 8px 32px rgba(0,0,0,0.85)',zIndex:10003}}>
+            {[
+              {l:'Edit Label',icon:'✏️',fn:()=>{
+                const el=els.find(e=>e.id===ctxMenu.elId);
+                if(el) setLabelIn({show:true,x:el.x,y:el.y-44,text:el.label||'',forId:el.id,isPipe:false});
+              }},
+              {l:'Rotate 90°',icon:'↻',fn:()=>{
+                const el=els.find(e=>e.id===ctxMenu.elId);
+                if(el) updEl(el.id,{rotation:((el.rotation||0)+90)%360});
+              }},
+              {l:'Duplicate',icon:'⧉',fn:()=>{
+                const el=els.find(e=>e.id===ctxMenu.elId);
+                if(el) addEl({...el,id:(Date.now()+Math.random()).toString(36),x:el.x+FD.G*2,y:el.y+FD.G*2});
+              }},
+              {l:'Delete',icon:'✕',danger:true,fn:()=>rmEl(ctxMenu.elId)},
+            ].map(item=>(
+              <button key={item.l}
+                onClick={()=>{item.fn();setCtxMenu(m=>({...m,show:false}));}}
+                style={{display:'flex',alignItems:'center',gap:10,width:'100%',
+                        background:'transparent',border:'none',
+                        borderBottom:`1px solid rgba(255,255,255,0.06)`,
+                        padding:'13px 16px',fontFamily:F.body,fontSize:14,
+                        color:item.danger?C.red:'#fff',textAlign:'left',cursor:'pointer',
+                        touchAction:'manipulation'}}>
+                <span style={{opacity:0.7,fontSize:15}}>{item.icon}</span>{item.l}
+              </button>
+            ))}
+            <button onClick={()=>setCtxMenu(m=>({...m,show:false}))}
+              style={{display:'block',width:'100%',background:'transparent',border:'none',
+                      padding:'10px 16px',fontFamily:F.body,fontSize:12,color:C.mid,
+                      textAlign:'center',cursor:'pointer',touchAction:'manipulation'}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Template modal */}
       {showTemplates&&(
