@@ -4266,34 +4266,35 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0) {
   ctx.translate(x,y);
   if(rotation) ctx.rotate(rotation*Math.PI/180);
   if(scale!==1) ctx.scale(scale,scale);
-  ctx.strokeStyle='#3B82F6'; ctx.fillStyle='rgba(59,130,246,0.12)'; ctx.lineWidth=1.5;
+  ctx.strokeStyle='#C17A35'; ctx.fillStyle='#111A2E'; ctx.lineWidth=2.5;
+  const SYM_FONT = "bold 12px 'Barlow Semi Condensed',sans-serif";
   switch(sym) {
     case 'compressor':
       ctx.fillRect(-32,-20,64,40); ctx.strokeRect(-32,-20,64,40);
       ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.stroke();
-      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
-      ctx.fillText('COMP',0,3); break;
+      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
+      ctx.fillText('COMP',0,4); break;
     case 'dryer':
       ctx.fillRect(-28,-18,56,36); ctx.strokeRect(-28,-18,56,36);
       ctx.beginPath();
       for(let i=0;i<3;i++){const wx=-14+i*14;ctx.moveTo(wx,5);ctx.quadraticCurveTo(wx+4,-3,wx+8,5);}
       ctx.stroke();
-      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
-      ctx.fillText('DRY',0,-6); break;
+      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
+      ctx.fillText('DRY',0,-5); break;
     case 'tank':
       ctx.beginPath(); ctx.ellipse(0,-24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.fillRect(-14,-24,28,48); ctx.strokeRect(-14,-24,28,48);
       ctx.beginPath(); ctx.ellipse(0,24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('TANK',0,4); break;
     case 'filter':
       ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle='#1D4ED8'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
-      ctx.fillText('F',0,4); break;
+      ctx.fillStyle='#fff'; ctx.font="bold 16px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
+      ctx.fillText('F',0,5); break;
     case 'ows':
       ctx.fillRect(-28,-18,56,36); ctx.strokeRect(-28,-18,56,36);
-      ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
-      ctx.fillText('OWS',0,3); break;
+      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
+      ctx.fillText('OWS',0,4); break;
     case 'ballvalve':
       ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(-10,0);
@@ -4532,7 +4533,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
     if(tool==='symbol') {
       const id=(Date.now()+Math.random()).toString(36);
-      addEl({id,type:'symbol',symbolId:activeSym,x:snapped.x,y:snapped.y,label:'',rotation:0,scale:1});
+      addEl({id,type:'symbol',symbolId:activeSym,x:snapped.x,y:snapped.y,label:'',rotation:0,scale:1.2});
       setLabelIn({show:true,x:snapped.x,y:snapped.y-44,text:'',forId:id,isPipe:false});
     }
   }
@@ -4675,10 +4676,31 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     ctx.save();
     ctx.setTransform(zoom,0,0,zoom,pan.x,pan.y);
 
-    // Grid
-    ctx.strokeStyle='rgba(255,255,255,0.055)'; ctx.lineWidth=0.5/zoom;
-    for(let gx=0;gx<=FD.W;gx+=FD.G){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,FD.H);ctx.stroke();}
-    for(let gy=0;gy<=FD.H;gy+=FD.G){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(FD.W,gy);ctx.stroke();}
+    // Grid — minor (1 ft) and major (5 ft) lines in copper
+    ctx.lineCap='butt';
+    for(let gx=0;gx<=FD.W;gx+=FD.G){
+      const major=(gx%(FD.G*5)===0);
+      ctx.strokeStyle=major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)';
+      ctx.lineWidth=(major?1:0.5)/zoom;
+      ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,FD.H); ctx.stroke();
+    }
+    for(let gy=0;gy<=FD.H;gy+=FD.G){
+      const major=(gy%(FD.G*5)===0);
+      ctx.strokeStyle=major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)';
+      ctx.lineWidth=(major?1:0.5)/zoom;
+      ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(FD.W,gy); ctx.stroke();
+    }
+    // Footage labels along top and left edges every 5 ft
+    ctx.fillStyle='rgba(193,122,53,0.65)';
+    ctx.font=`bold ${Math.round(10/zoom)}px 'Barlow Semi Condensed',sans-serif`;
+    ctx.textAlign='center';
+    for(let gx=FD.G*5;gx<FD.W;gx+=FD.G*5){
+      ctx.fillText(`${gx/FD.G}`,gx,12/zoom);
+    }
+    ctx.textAlign='right';
+    for(let gy=FD.G*5;gy<FD.H;gy+=FD.G*5){
+      ctx.fillText(`${gy/FD.G}`,34/zoom,gy+4/zoom);
+    }
 
     // Elements
     for(const el of els) {
@@ -4695,8 +4717,12 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         const ft=Math.round(ftRaw*2)/2;
         const colorName=el.pipeColor?(el.pipeColor.charAt(0).toUpperCase()+el.pipeColor.slice(1)):'Blue';
         const lbl=el.customLabel||(ft>0?`${el.pipeSize} ${colorName} — ${ft} ft`:`${el.pipeSize}`);
-        ctx.fillStyle=col; ctx.font='9px monospace'; ctx.textAlign='center';
-        ctx.fillText(lbl,mx,my-6);
+        ctx.font="bold 12px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
+        const lblW=ctx.measureText(lbl).width;
+        ctx.fillStyle='rgba(8,10,20,0.78)';
+        ctx.fillRect(mx-lblW/2-5,my-19,lblW+10,16);
+        ctx.fillStyle='#fff';
+        ctx.fillText(lbl,mx,my-7);
       } else if(el.type==='dim') {
         const {x1,y1,x2,y2}=el;
         const mx=(x1+x2)/2, my=(y1+y2)/2;
@@ -4723,11 +4749,11 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         fdSym(ctx,el.symbolId,el.x,el.y,el.scale||1,el.rotation||0);
         if(el.label){
           const sc=el.scale||1;
-          ctx.fillStyle='#C17A35'; ctx.font='9px monospace'; ctx.textAlign='center';
-          ctx.fillText(el.label,el.x,el.y+42*sc);
+          ctx.fillStyle='#fff'; ctx.font="bold 13px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
+          ctx.fillText(el.label,el.x,el.y+44*sc);
         }
       } else if(el.type==='label') {
-        ctx.fillStyle='#F9FAFB'; ctx.font='12px monospace'; ctx.textAlign='left';
+        ctx.fillStyle='#F9FAFB'; ctx.font="bold 13px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='left';
         ctx.fillText(el.text,el.x,el.y);
       }
 
@@ -4749,13 +4775,14 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           });
         } else if(el.type==='symbol') {
           const sc=el.scale||1, rot=(el.rotation||0)*Math.PI/180;
-          // Rotated selection box
-          ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+          // Rotated selection box with orange glow
+          ctx.strokeStyle='#F97316'; ctx.lineWidth=3; ctx.setLineDash([5,3]);
+          ctx.shadowColor='#F97316'; ctx.shadowBlur=10;
           ctx.save();
           ctx.translate(el.x,el.y); ctx.rotate(rot);
           ctx.strokeRect(-38*sc,-32*sc,76*sc,64*sc);
           ctx.restore();
-          ctx.setLineDash([]);
+          ctx.setLineDash([]); ctx.shadowBlur=0;
           // Rotation handle
           const rhx=el.x+Math.sin(rot)*50*sc, rhy=el.y-Math.cos(rot)*50*sc;
           ctx.fillStyle='#C17A35';
@@ -4822,7 +4849,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
     // Screen-space overlays (fixed size regardless of zoom)
     ctx.save(); ctx.setTransform(1,0,0,1,0,0);
-    ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.font='9px monospace'; ctx.textAlign='left';
+    ctx.fillStyle='rgba(193,122,53,0.45)'; ctx.font="bold 10px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='left';
     ctx.fillText('1 sq = 1 ft',8,FD.H-8);
     ctx.restore();
 
@@ -4873,30 +4900,36 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     const r=React.useRef(null);
     React.useEffect(()=>{
       const cv=r.current; if(!cv) return;
-      const ctx=cv.getContext('2d'); ctx.clearRect(0,0,54,44);
-      fdSym(ctx,symId,27,22,1,0);
+      const ctx=cv.getContext('2d'); ctx.clearRect(0,0,60,52);
+      fdSym(ctx,symId,30,26,1,0);
     },[symId]);
-    return <canvas ref={r} width={54} height={44} style={{display:'block'}}/>;
+    return <canvas ref={r} width={60} height={52} style={{display:'block',flexShrink:0}}/>;
   }
 
   const secs  = [...new Set(FD_SYMBOLS.map(s=>s.sec))];
   const TOOLS = [
-    {id:'select',i:'↖',l:'SELECT'},{id:'wall',i:'━',l:'WALL'},{id:'symbol',i:'⊞',l:'SYMBOL'},
-    {id:'pipe',i:'─',l:'PIPE'},{id:'dim',i:'↔',l:'DIM'},{id:'label',i:'T',l:'LABEL'},{id:'erase',i:'⌫',l:'ERASE'},
+    {id:'select',i:'↖',l:'SELECT',tip:'Select, move, rotate, resize elements'},
+    {id:'wall',  i:'━',l:'WALL',  tip:'Draw facility walls (click start → click end)'},
+    {id:'symbol',i:'⊞',l:'SYMBOL',tip:'Place equipment symbol from the left palette'},
+    {id:'pipe',  i:'─',l:'PIPE',  tip:'Draw pipe run (click start → click end)'},
+    {id:'dim',   i:'↔',l:'DIM',   tip:'Draw dimension arrow showing footage'},
+    {id:'label', i:'T', l:'LABEL',tip:'Add a free text label'},
+    {id:'erase', i:'⌫',l:'ERASE',tip:'Click any element to delete it'},
   ];
 
   const toolbarStyle = {
-    display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',
+    display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',
     background: isFullscreen?'#0A0A0A':'#0D0D0D',
-    padding:'8px 10px',borderBottom:`1px solid ${C.border}`,flexShrink:0,
+    padding:'8px 12px',minHeight:48,borderBottom:`1px solid ${C.border}`,flexShrink:0,
   };
   const btnBase = {
-    background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,
-    padding:'4px 9px',fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid,cursor:'pointer',
+    background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,
+    padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:C.mid,
+    cursor:'pointer',whiteSpace:'nowrap',minHeight:34,
   };
   const btnActive = {
-    background:`linear-gradient(135deg,${C.copper},#A0632A)`,
-    border:`1px solid ${C.copper}`,color:'#fff',
+    background:`linear-gradient(135deg,${C.orange},#C2540A)`,
+    border:`1px solid ${C.orange}`,color:'#fff',
   };
 
   const outerStyle = isFullscreen
@@ -4905,7 +4938,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     : {borderRadius:'0 0 10px 10px',overflow:'hidden',border:`1.5px solid ${C.copper}`,borderTop:'none',display:'flex',flexDirection:'column'};
 
   const paletteStyle = {
-    width:158,flexShrink:0,background:'#0A0A0A',borderRight:`1px solid ${C.border}`,
+    width:200,flexShrink:0,background:'#0A0A0A',borderRight:`1px solid ${C.border}`,
     overflowY:'auto', maxHeight: isFullscreen?'100%':500,
   };
 
@@ -4926,37 +4959,37 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       {/* Toolbar */}
       <div style={toolbarStyle}>
         {TOOLS.map(t=>(
-          <button key={t.id} onClick={()=>setTool(t.id)}
+          <button key={t.id} onClick={()=>setTool(t.id)} title={t.tip}
             style={{...btnBase,...(tool===t.id?btnActive:{})}}>{t.i} {t.l}</button>
         ))}
-        <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
-        <select value={pipeSize} onChange={e=>setPipeSize(e.target.value)}
-          style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,fontFamily:F.mono,fontSize:9,color:C.mid,padding:'3px 5px'}}>
+        <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
+        <select value={pipeSize} onChange={e=>setPipeSize(e.target.value)} title="Pipe size"
+          style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,fontFamily:F.body,fontSize:12,color:C.mid,padding:'5px 6px',minHeight:34}}>
           {Object.keys(FD_PIPE_W).map(s=><option key={s}>{s}</option>)}
         </select>
         {Object.entries(FD_PIPE_COLS).map(([n,hex])=>(
-          <button key={n} onClick={()=>setPipeColor(n)} title={n} style={{
-            width:20,height:20,borderRadius:'50%',background:hex,cursor:'pointer',flexShrink:0,
-            border:pipeColor===n?`2px solid ${C.copper}`:'2px solid transparent',
+          <button key={n} onClick={()=>setPipeColor(n)} title={`${n} pipe`} style={{
+            width:24,height:24,borderRadius:'50%',background:hex,cursor:'pointer',flexShrink:0,
+            border:pipeColor===n?`2.5px solid ${C.copper}`:'2.5px solid transparent',
           }}/>
         ))}
-        <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
+        <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
         <button onClick={()=>{ const newZ=clampZoom(zoom*1.25); const cx=FD.W/2,cy=FD.H/2; const wx=(cx-pan.x)/zoom,wy=(cy-pan.y)/zoom; setZoom(newZ); setPan({x:cx-wx*newZ,y:cy-wy*newZ}); }}
-          style={btnBase} title="Zoom in">+ ZOOM</button>
+          style={btnBase} title="Zoom in (scroll wheel)">+ ZOOM</button>
         <button onClick={()=>{ const newZ=clampZoom(zoom/1.25); const cx=FD.W/2,cy=FD.H/2; const wx=(cx-pan.x)/zoom,wy=(cy-pan.y)/zoom; setZoom(newZ); setPan({x:cx-wx*newZ,y:cy-wy*newZ}); }}
-          style={btnBase} title="Zoom out">− ZOOM</button>
-        <span style={{fontFamily:F.mono,fontSize:9,color:C.mid,minWidth:32,textAlign:'center'}}>{Math.round(zoom*100)}%</span>
-        <button onClick={fitView} style={btnBase} title="Fit to screen (F)">⊡ FIT</button>
-        <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
-        <button onClick={undo}     style={btnBase}>↩ UNDO</button>
-        <button onClick={clearAll} style={btnBase}>✕ CLEAR</button>
-        <button onClick={()=>setShowTemplates(true)}
+          style={btnBase} title="Zoom out (scroll wheel)">− ZOOM</button>
+        <span style={{fontFamily:F.body,fontSize:12,color:C.mid,minWidth:36,textAlign:'center'}}>{Math.round(zoom*100)}%</span>
+        <button onClick={fitView} style={btnBase} title="Fit to screen (press F)">⊡ FIT</button>
+        <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
+        <button onClick={undo}     style={btnBase} title="Undo last action">↩ UNDO</button>
+        <button onClick={clearAll} style={btnBase} title="Clear entire drawing">✕ CLEAR</button>
+        <button onClick={()=>setShowTemplates(true)} title="Start from a pre-built layout"
           style={{...btnBase,color:C.copper,borderColor:C.copper}}>⊞ TEMPLATE</button>
-        <button onClick={doExport}
-          style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:5,padding:'4px 12px',fontFamily:F.mono,fontSize:9,letterSpacing:1,color:'#fff',cursor:'pointer'}}>⬇ PNG</button>
+        <button onClick={doExport} title="Export drawing as PNG"
+          style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:6,padding:'6px 13px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:'#fff',cursor:'pointer',minHeight:34}}>⬇ PNG</button>
         <button onClick={()=>setIsFullscreen(f=>!f)}
           style={{...btnBase, marginLeft:'auto', color:isFullscreen?C.copper:C.mid, borderColor:isFullscreen?C.copper:C.border}}
-          title={isFullscreen?'Exit fullscreen':'Fullscreen'}>
+          title={isFullscreen?'Exit fullscreen (Esc)':'Expand to fullscreen'}>
           {isFullscreen?'✕ EXIT':'⛶ FULL'}
         </button>
       </div>
@@ -4966,15 +4999,15 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         <div style={paletteStyle}>
           {secs.map(sec=>(
             <div key={sec}>
-              <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:2,color:C.copper,padding:'5px 8px 2px',borderBottom:'1px solid rgba(193,122,53,0.2)'}}>{sec}</div>
+              <div style={{fontFamily:F.body,fontSize:11,fontWeight:'bold',letterSpacing:1.5,color:C.copper,padding:'6px 10px 3px',borderBottom:'1px solid rgba(193,122,53,0.25)'}}>{sec}</div>
               {FD_SYMBOLS.filter(s=>s.sec===sec).map(sym=>(
                 <div key={sym.id}
                   onClick={()=>{ setActiveSym(sym.id); setTool(sym.id==='dimnarrow'?'dim':'symbol'); }}
-                  style={{display:'flex',alignItems:'center',gap:4,padding:'2px 6px',cursor:'pointer',
-                    background:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?'rgba(193,122,53,0.12)':'transparent',
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'3px 8px',cursor:'pointer',
+                    background:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?'rgba(193,122,53,0.14)':'transparent',
                     borderLeft:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?`3px solid ${C.copper}`:'3px solid transparent'}}>
                   <PalIcon symId={sym.id}/>
-                  <span style={{fontFamily:F.mono,fontSize:7,color:C.mid,lineHeight:1.3}}>{sym.label}</span>
+                  <span style={{fontFamily:F.body,fontSize:11,color:'#fff',lineHeight:1.3}}>{sym.label}</span>
                 </div>
               ))}
             </div>
