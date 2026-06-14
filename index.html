@@ -4185,136 +4185,248 @@ const FD_SYMBOLS   = [
   {id:'dimnarrow', label:'Dimension', sec:'FACILITY'},
 ];
 
-function fdSym(ctx, sym, x, y) {
+// Connection points per symbol (relative to center 0,0, before rotation/scale)
+const FD_CONNECTORS = {
+  compressor:[{x:-32,y:0},{x:32,y:0}],
+  dryer:     [{x:-28,y:0},{x:28,y:0}],
+  tank:      [{x:0,y:-24},{x:0,y:24}],
+  filter:    [{x:-16,y:0},{x:16,y:0}],
+  ows:       [{x:-28,y:0},{x:28,y:0}],
+  ballvalve: [{x:-20,y:0},{x:20,y:0}],
+  tee:       [{x:-20,y:0},{x:20,y:0},{x:0,y:-18}],
+  drop:      [{x:0,y:-20},{x:0,y:22}],
+};
+
+function getConnectors(el) {
+  if(el.type!=='symbol') return [];
+  const pts=FD_CONNECTORS[el.symbolId]||[];
+  const rot=(el.rotation||0)*Math.PI/180, sc=el.scale||1;
+  return pts.map(p=>{
+    const lx=p.x*sc, ly=p.y*sc;
+    return {x:el.x+lx*Math.cos(rot)-ly*Math.sin(rot), y:el.y+lx*Math.sin(rot)+ly*Math.cos(rot)};
+  });
+}
+
+const FD_TEMPLATES = {
+  single(){
+    const id=()=>(Date.now()+Math.random()).toString(36);
+    return [
+      {id:id(),type:'symbol',symbolId:'compressor',x:200,y:400,label:'Compressor',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'dryer',     x:380,y:400,label:'Air Dryer', rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'filter',    x:540,y:400,label:'Filter',    rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'tank',      x:700,y:360,label:'Rcvr Tank', rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:232,y1:400,x2:352,y2:400,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:408,y1:400,x2:524,y2:400,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:556,y1:400,x2:700,y2:384,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:700,y1:336,x2:920,y2:336,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'drop',x:780,y:340,label:'Drop 1',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:900,y:340,label:'Drop 2',rotation:0,scale:1},
+    ];
+  },
+  loop(){
+    const id=()=>(Date.now()+Math.random()).toString(36);
+    return [
+      {id:id(),type:'symbol',symbolId:'compressor',x:160,y:400,label:'Compressor',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'dryer',     x:340,y:400,label:'Air Dryer', rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'tank',      x:500,y:360,label:'Rcvr Tank', rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:192,y1:400,x2:312,y2:400,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:368,y1:400,x2:500,y2:384,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:500,y1:336,x2:500,y2:180,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:500,y1:180,x2:1000,y2:180,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:1000,y1:180,x2:1000,y2:620,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:1000,y1:620,x2:500,y2:620,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:500,y1:620,x2:500,y2:384,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'drop',x:620,y:200,label:'Drop 1',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:760,y:200,label:'Drop 2',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:900,y:200,label:'Drop 3',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:760,y:600,label:'Drop 4',rotation:0,scale:1},
+    ];
+  },
+  dual(){
+    const id=()=>(Date.now()+Math.random()).toString(36);
+    return [
+      {id:id(),type:'symbol',symbolId:'compressor',x:160,y:300,label:'Compressor 1',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'compressor',x:160,y:500,label:'Compressor 2',rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:192,y1:300,x2:360,y2:300,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:192,y1:500,x2:360,y2:500,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:360,y1:300,x2:360,y2:500,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:360,y1:400,x2:480,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'dryer',x:540,y:400,label:'Air Dryer',rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:568,y1:400,x2:680,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'filter',x:700,y:400,label:'Filter',rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:716,y1:400,x2:820,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'tank',x:860,y:360,label:'Rcvr Tank',rotation:0,scale:1},
+    ];
+  },
+};
+
+// fdSym draws a symbol centered at (0,0) inside a translate/scale/rotate transform
+function fdSym(ctx, sym, x, y, scale=1, rotation=0) {
   ctx.save();
+  ctx.translate(x,y);
+  if(rotation) ctx.rotate(rotation*Math.PI/180);
+  if(scale!==1) ctx.scale(scale,scale);
   ctx.strokeStyle='#3B82F6'; ctx.fillStyle='rgba(59,130,246,0.12)'; ctx.lineWidth=1.5;
   switch(sym) {
     case 'compressor':
-      ctx.fillRect(x-32,y-20,64,40); ctx.strokeRect(x-32,y-20,64,40);
-      ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.stroke();
+      ctx.fillRect(-32,-20,64,40); ctx.strokeRect(-32,-20,64,40);
+      ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.stroke();
       ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
-      ctx.fillText('COMP',x,y+3); break;
+      ctx.fillText('COMP',0,3); break;
     case 'dryer':
-      ctx.fillRect(x-28,y-18,56,36); ctx.strokeRect(x-28,y-18,56,36);
+      ctx.fillRect(-28,-18,56,36); ctx.strokeRect(-28,-18,56,36);
       ctx.beginPath();
-      for(let i=0;i<3;i++){const wx=x-14+i*14;ctx.moveTo(wx,y+5);ctx.quadraticCurveTo(wx+4,y-3,wx+8,y+5);}
+      for(let i=0;i<3;i++){const wx=-14+i*14;ctx.moveTo(wx,5);ctx.quadraticCurveTo(wx+4,-3,wx+8,5);}
       ctx.stroke();
       ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
-      ctx.fillText('DRY',x,y-6); break;
+      ctx.fillText('DRY',0,-6); break;
     case 'tank':
-      ctx.beginPath(); ctx.ellipse(x,y-24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.fillRect(x-14,y-24,28,48); ctx.strokeRect(x-14,y-24,28,48);
-      ctx.beginPath(); ctx.ellipse(x,y+24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,-24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillRect(-14,-24,28,48); ctx.strokeRect(-14,-24,28,48);
+      ctx.beginPath(); ctx.ellipse(0,24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
-      ctx.fillText('TANK',x,y+4); break;
+      ctx.fillText('TANK',0,4); break;
     case 'filter':
-      ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.fillStyle='#1D4ED8'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
-      ctx.fillText('F',x,y+4); break;
+      ctx.fillText('F',0,4); break;
     case 'ows':
-      ctx.fillRect(x-28,y-18,56,36); ctx.strokeRect(x-28,y-18,56,36);
+      ctx.fillRect(-28,-18,56,36); ctx.strokeRect(-28,-18,56,36);
       ctx.fillStyle='#1D4ED8'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
-      ctx.fillText('OWS',x,y+3); break;
+      ctx.fillText('OWS',0,3); break;
     case 'ballvalve':
-      ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x-10,y);
-      ctx.moveTo(x+10,y); ctx.lineTo(x+20,y); ctx.moveTo(x,y-10); ctx.lineTo(x,y-18); ctx.stroke(); break;
+      ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(-10,0);
+      ctx.moveTo(10,0); ctx.lineTo(20,0); ctx.moveTo(0,-10); ctx.lineTo(0,-18); ctx.stroke(); break;
     case 'elbow90':
-      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.arcTo(x,y,x,y-18,18); ctx.lineTo(x,y-18); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(-18,0); ctx.arcTo(0,0,0,-18,18); ctx.lineTo(0,-18); ctx.stroke(); break;
     case 'elbow45':
-      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.arcTo(x,y,x+13,y-13,14); ctx.lineTo(x+13,y-13); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(-18,0); ctx.arcTo(0,0,13,-13,14); ctx.lineTo(13,-13); ctx.stroke(); break;
     case 'tee':
-      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x+20,y); ctx.moveTo(x,y); ctx.lineTo(x,y-18); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(20,0); ctx.moveTo(0,0); ctx.lineTo(0,-18); ctx.stroke(); break;
     case 'coupling':
       ctx.beginPath();
-      ctx.moveTo(x-20,y); ctx.lineTo(x-5,y); ctx.moveTo(x+5,y); ctx.lineTo(x+20,y);
-      ctx.moveTo(x-5,y-8); ctx.lineTo(x-5,y+8); ctx.moveTo(x+5,y-8); ctx.lineTo(x+5,y+8);
+      ctx.moveTo(-20,0); ctx.lineTo(-5,0); ctx.moveTo(5,0); ctx.lineTo(20,0);
+      ctx.moveTo(-5,-8); ctx.lineTo(-5,8); ctx.moveTo(5,-8); ctx.lineTo(5,8);
       ctx.stroke(); break;
     case 'union':
-      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x-8,y); ctx.moveTo(x+8,y); ctx.lineTo(x+20,y); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x-5,y,5,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x+5,y,5,0,Math.PI*2); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(-8,0); ctx.moveTo(8,0); ctx.lineTo(20,0); ctx.stroke();
+      ctx.beginPath(); ctx.arc(-5,0,5,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(5,0,5,0,Math.PI*2); ctx.stroke(); break;
     case 'endcap':
-      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.lineTo(x+2,y); ctx.moveTo(x+2,y-10); ctx.lineTo(x+2,y+10); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(-18,0); ctx.lineTo(2,0); ctx.moveTo(2,-10); ctx.lineTo(2,10); ctx.stroke(); break;
     case 'flexhose':
-      ctx.beginPath(); ctx.moveTo(x-20,y);
-      for(let i=0;i<4;i++){ctx.quadraticCurveTo(x-15+i*10,y-8,x-10+i*10,y);ctx.quadraticCurveTo(x-5+i*10,y+8,x+i*10,y);}
+      ctx.beginPath(); ctx.moveTo(-20,0);
+      for(let i=0;i<4;i++){ctx.quadraticCurveTo(-15+i*10,-8,-10+i*10,0);ctx.quadraticCurveTo(-5+i*10,8,i*10,0);}
       ctx.stroke(); break;
     case 'quickconn':
-      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.lineTo(x-2,y);
-      ctx.moveTo(x-2,y-8); ctx.lineTo(x+12,y); ctx.lineTo(x-2,y+8); ctx.closePath();
+      ctx.beginPath(); ctx.moveTo(-18,0); ctx.lineTo(-2,0);
+      ctx.moveTo(-2,-8); ctx.lineTo(12,0); ctx.lineTo(-2,8); ctx.closePath();
       ctx.fill(); ctx.stroke(); break;
     case 'nptadapt':
-      ctx.beginPath(); ctx.moveTo(x-18,y); ctx.lineTo(x-4,y);
-      ctx.moveTo(x-4,y-10); ctx.lineTo(x+10,y); ctx.lineTo(x-4,y+10); ctx.closePath();
+      ctx.beginPath(); ctx.moveTo(-18,0); ctx.lineTo(-4,0);
+      ctx.moveTo(-4,-10); ctx.lineTo(10,0); ctx.lineTo(-4,10); ctx.closePath();
       ctx.fill(); ctx.stroke(); break;
     case 'drop':
-      ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y+6);
-      ctx.moveTo(x-8,y); ctx.lineTo(x,y+18); ctx.lineTo(x+8,y); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x,y+22,5,0,Math.PI*2); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(0,-20); ctx.lineTo(0,6);
+      ctx.moveTo(-8,0); ctx.lineTo(0,18); ctx.lineTo(8,0); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,22,5,0,Math.PI*2); ctx.stroke(); break;
     case 'termblock':
-      ctx.fillRect(x-22,y-12,44,24); ctx.strokeRect(x-22,y-12,44,24);
-      for(let i=0;i<4;i++){ctx.beginPath();ctx.moveTo(x-14+i*10,y-12);ctx.lineTo(x-14+i*10,y+12);ctx.stroke();} break;
+      ctx.fillRect(-22,-12,44,24); ctx.strokeRect(-22,-12,44,24);
+      for(let i=0;i<4;i++){ctx.beginPath();ctx.moveTo(-14+i*10,-12);ctx.lineTo(-14+i*10,12);ctx.stroke();} break;
     case 'wallfac':
       ctx.strokeStyle='#9CA3AF'; ctx.lineWidth=5; ctx.lineCap='round';
-      ctx.beginPath(); ctx.moveTo(x-30,y); ctx.lineTo(x+30,y); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(-30,0); ctx.lineTo(30,0); ctx.stroke(); break;
     case 'door':
-      ctx.beginPath(); ctx.moveTo(x-20,y); ctx.lineTo(x+20,y);
-      ctx.moveTo(x-20,y); ctx.arc(x-20,y,40,0,Math.PI/2); ctx.stroke(); break;
+      ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(20,0);
+      ctx.moveTo(-20,0); ctx.arc(-20,0,40,0,Math.PI/2); ctx.stroke(); break;
     case 'column':
-      ctx.fillStyle='#4B5563'; ctx.fillRect(x-10,y-10,20,20); ctx.strokeRect(x-10,y-10,20,20); break;
+      ctx.fillStyle='#4B5563'; ctx.fillRect(-10,-10,20,20); ctx.strokeRect(-10,-10,20,20); break;
     case 'dimnarrow':
-      ctx.beginPath(); ctx.moveTo(x-28,y); ctx.lineTo(x+28,y);
-      ctx.moveTo(x-28,y-6); ctx.lineTo(x-28,y+6); ctx.moveTo(x+28,y-6); ctx.lineTo(x+28,y+6);
+      ctx.beginPath(); ctx.moveTo(-28,0); ctx.lineTo(28,0);
+      ctx.moveTo(-28,-6); ctx.lineTo(-28,6); ctx.moveTo(28,-6); ctx.lineTo(28,6);
       ctx.stroke(); break;
     default:
-      ctx.fillRect(x-16,y-12,32,24); ctx.strokeRect(x-16,y-12,32,24);
+      ctx.fillRect(-16,-12,32,24); ctx.strokeRect(-16,-12,32,24);
   }
   ctx.restore();
 }
 
 const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName, repName }, fdRef) {
-  const canvasRef = React.useRef(null);
-  const dragRef   = React.useRef(null);
-  const undoRef   = React.useRef([]);
-  const logoRef   = React.useRef(null);
-  const FD_LS     = 'airiq_facility_drawing_draft';
+  const canvasRef   = React.useRef(null);
+  const dragRef     = React.useRef(null);
+  const pinchRef    = React.useRef(null);
+  const undoRef     = React.useRef([]);
+  const logoRef     = React.useRef(null);
+  const zoomRef     = React.useRef(1);
+  const panRef      = React.useRef({x:0,y:0});
+  const FD_LS       = 'airiq_facility_drawing_draft';
 
-  const [els,       setEls]       = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(FD_LS)||'[]');}catch{return[];} });
-  const [tool,      setTool]      = React.useState('wall');
-  const [activeSym, setActiveSym] = React.useState('compressor');
-  const [pipeSize,  setPipeSize]  = React.useState('1"');
-  const [pipeColor, setPipeColor] = React.useState('blue');
-  const [selected,  setSelected]  = React.useState(null);
-  const [drawing,   setDrawing]   = React.useState(null);
-  const [cursor,    setCursor]    = React.useState(null);
-  const [labelIn,   setLabelIn]   = React.useState({show:false,x:0,y:0,text:'',forId:null});
+  const [els,          setEls]          = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(FD_LS)||'[]');}catch{return[];} });
+  const [tool,         setTool]         = React.useState('wall');
+  const [activeSym,    setActiveSym]    = React.useState('compressor');
+  const [pipeSize,     setPipeSize]     = React.useState('1"');
+  const [pipeColor,    setPipeColor]    = React.useState('blue');
+  const [selected,     setSelected]     = React.useState(null);
+  const [drawing,      setDrawing]      = React.useState(null);
+  const [cursor,       setCursor]       = React.useState(null);
+  const [labelIn,      setLabelIn]      = React.useState({show:false,x:0,y:0,text:'',forId:null,isPipe:false});
+  const [zoom,         setZoom]         = React.useState(1);
+  const [pan,          setPan]          = React.useState({x:0,y:0});
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [showTemplates,setShowTemplates]= React.useState(false);
+  const [snapPt,       setSnapPt]       = React.useState(null);
 
+  React.useEffect(()=>{ zoomRef.current=zoom; },[zoom]);
+  React.useEffect(()=>{ panRef.current=pan; },[pan]);
   React.useEffect(()=>{ const img=new Image(); img.onload=()=>{logoRef.current=img;}; img.src=LOGO_SRC; },[]);
 
-  const snap = v => Math.round(v/FD.G)*FD.G;
-  const persist = list => { try{localStorage.setItem(FD_LS,JSON.stringify(list));}catch{} };
+  const snap        = v => Math.round(v/FD.G)*FD.G;
+  const clampZoom   = z => Math.max(0.25,Math.min(4,z));
+  const persist     = list => { try{localStorage.setItem(FD_LS,JSON.stringify(list));}catch{} };
 
   function mutate(fn) {
-    setEls(prev => { undoRef.current=[...undoRef.current.slice(-19),prev]; const next=fn(prev); persist(next); return next; });
+    setEls(prev=>{ undoRef.current=[...undoRef.current.slice(-19),prev]; const next=fn(prev); persist(next); return next; });
   }
-  const addEl  = el  => mutate(p=>[...p,el]);
-  const rmEl   = id  => { mutate(p=>p.filter(e=>e.id!==id)); setSelected(null); };
-  const updEl  = (id,u) => setEls(p=>{ const n=p.map(e=>e.id===id?{...e,...u}:e); persist(n); return n; });
-  const undo   = ()  => { const p=undoRef.current.pop(); if(p!=null){setEls(p);persist(p);} };
-  const clearAll = () => { if(!window.confirm('Clear entire drawing?'))return; mutate(()=>[]); setSelected(null); };
+  const addEl    = el  => mutate(p=>[...p,el]);
+  const rmEl     = id  => { mutate(p=>p.filter(e=>e.id!==id)); setSelected(null); };
+  const updEl    = (id,u) => setEls(p=>{ const n=p.map(e=>e.id===id?{...e,...u}:e); persist(n); return n; });
+  const undo     = ()  => { const p=undoRef.current.pop(); if(p!=null){setEls(p);persist(p);} };
+  const clearAll = ()  => { if(!window.confirm('Clear entire drawing?'))return; mutate(()=>[]); setSelected(null); };
+  const fitView  = ()  => { setZoom(1); setPan({x:0,y:0}); };
 
-  function getPos(e) {
-    const c=canvasRef.current; if(!c) return {x:0,y:0};
-    const r=c.getBoundingClientRect(), sx=FD.W/r.width, sy=FD.H/r.height;
-    const s=e.touches?e.touches[0]:e;
-    return {x:snap((s.clientX-r.left)*sx), y:snap((s.clientY-r.top)*sy)};
+  function getCanvasPos(e) {
+    const cv=canvasRef.current; if(!cv) return {x:0,y:0};
+    const r=cv.getBoundingClientRect();
+    const src=e.changedTouches?e.changedTouches[0]:(e.touches?e.touches[0]:e);
+    if(!src) return {x:0,y:0};
+    return {x:(src.clientX-r.left)*(FD.W/r.width), y:(src.clientY-r.top)*(FD.H/r.height)};
   }
 
-  function hitTest(x,y) {
+  function screenToWorld(cp) {
+    const z=zoomRef.current, p=panRef.current;
+    return {x:(cp.x-p.x)/z, y:(cp.y-p.y)/z};
+  }
+
+  function getPos(e, doSnap=true) {
+    const w=screenToWorld(getCanvasPos(e));
+    return doSnap?{x:snap(w.x),y:snap(w.y)}:w;
+  }
+
+  function findSnapPoint(wx, wy, elsList) {
+    const threshold=15/zoomRef.current;
+    for(const el of elsList) {
+      for(const pt of getConnectors(el)) {
+        if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y};
+      }
+    }
+    return null;
+  }
+
+  function hitTest(x, y) {
     for(let i=els.length-1;i>=0;i--) {
       const el=els[i];
-      if(el.type==='wall'||el.type==='pipe') {
+      if(el.type==='wall'||el.type==='pipe'||el.type==='dim') {
         const {x1,y1,x2,y2}=el, dx=x2-x1, dy=y2-y1, len2=dx*dx+dy*dy;
         if(!len2) continue;
         const t=Math.max(0,Math.min(1,((x-x1)*dx+(y-y1)*dy)/len2));
@@ -4322,119 +4434,382 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       } else if(el.type==='label') {
         if(Math.abs(x-el.x)<60&&Math.abs(y-el.y)<12) return el;
       } else {
-        if(Math.abs(x-el.x)<42&&Math.abs(y-el.y)<36) return el;
+        const sc=el.scale||1;
+        if(Math.abs(x-el.x)<42*sc&&Math.abs(y-el.y)<36*sc) return el;
       }
     }
     return null;
   }
 
+  function hitHandle(x, y, el) {
+    if(!el||el.type!=='symbol') return null;
+    const sc=el.scale||1, rot=(el.rotation||0)*Math.PI/180;
+    // Rotation handle: above symbol in its local up direction
+    const rhx=el.x+Math.sin(rot)*50*sc, rhy=el.y-Math.cos(rot)*50*sc;
+    if(Math.hypot(x-rhx,y-rhy)<12) return 'rotate';
+    // Corner handles
+    const corners=[[-38*sc,-32*sc],[38*sc,-32*sc],[38*sc,32*sc],[-38*sc,32*sc]];
+    const labels=['tl','tr','br','bl'];
+    for(let i=0;i<4;i++){
+      const [lx,ly]=corners[i];
+      const wx=el.x+lx*Math.cos(rot)-ly*Math.sin(rot);
+      const wy=el.y+lx*Math.sin(rot)+ly*Math.cos(rot);
+      if(Math.hypot(x-wx,y-wy)<9) return labels[i];
+    }
+    return null;
+  }
+
+  function hitEndpoint(x, y, el) {
+    if(!el.x1) return null;
+    if(Math.hypot(x-el.x1,y-el.y1)<14) return 'p1';
+    if(Math.hypot(x-el.x2,y-el.y2)<14) return 'p2';
+    return null;
+  }
+
   function onDown(e) {
     e.preventDefault();
-    const {x,y}=getPos(e);
-    if(tool==='erase')  { const h=hitTest(x,y); if(h)rmEl(h.id); return; }
-    if(tool==='label')  { setLabelIn({show:true,x,y,text:'',forId:null}); return; }
-    if(tool==='select') {
-      const h=hitTest(x,y);
-      if(h){setSelected(h.id); dragRef.current={id:h.id,sx:x,sy:y,orig:{...h}};}
-      else setSelected(null);
+    // Two-finger pinch/pan start
+    if(e.touches&&e.touches.length===2) {
+      const [t0,t1]=[e.touches[0],e.touches[1]];
+      pinchRef.current={
+        dist:Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY),
+        cx:(t0.clientX+t1.clientX)/2, cy:(t0.clientY+t1.clientY)/2,
+        startZoom:zoomRef.current, startPan:{...panRef.current},
+      };
       return;
     }
-    if(tool==='wall'||tool==='pipe') {
-      if(!drawing){setDrawing({x1:x,y1:y,x2:x,y2:y});}
-      else{
-        addEl({id:(Date.now()+Math.random()).toString(36),type:tool==='wall'?'wall':'pipe',
-               x1:drawing.x1,y1:drawing.y1,x2:x,y2:y,
-               pipeSize:tool==='pipe'?pipeSize:null,pipeColor:tool==='pipe'?pipeColor:null});
-        setDrawing(null);
+
+    const raw=getPos(e,false);
+    const snapped={x:snap(raw.x),y:snap(raw.y)};
+
+    if(tool==='erase') { const h=hitTest(raw.x,raw.y); if(h)rmEl(h.id); return; }
+    if(tool==='label') { setLabelIn({show:true,x:snapped.x,y:snapped.y,text:'',forId:null,isPipe:false}); return; }
+
+    if(tool==='select') {
+      const h=hitTest(raw.x,raw.y);
+      if(h) {
+        setSelected(h.id);
+        const handle=hitHandle(raw.x,raw.y,h);
+        if(handle==='rotate') {
+          dragRef.current={mode:'rotate',id:h.id,orig:{...h},
+            startAngle:Math.atan2(raw.y-h.y,raw.x-h.x),startX:raw.x,startY:raw.y};
+        } else if(['tl','tr','br','bl'].includes(handle)) {
+          dragRef.current={mode:'resize',id:h.id,orig:{...h},corner:handle};
+        } else {
+          const ep=hitEndpoint(raw.x,raw.y,h);
+          if(ep) {
+            dragRef.current={mode:'endpoint',id:h.id,orig:{...h},ep};
+          } else {
+            dragRef.current={mode:'move',id:h.id,sx:snapped.x,sy:snapped.y,orig:{...h}};
+          }
+        }
+      } else {
+        setSelected(null);
+        dragRef.current={mode:'pan',startCp:getCanvasPos(e),startPan:{...panRef.current}};
       }
       return;
     }
+
+    if(tool==='wall'||tool==='pipe'||tool==='dim') {
+      const sp=findSnapPoint(raw.x,raw.y,els);
+      const fx=sp?sp.x:snapped.x, fy=sp?sp.y:snapped.y;
+      if(!drawing) {
+        setDrawing({x1:fx,y1:fy,x2:fx,y2:fy,isDim:tool==='dim'});
+      } else {
+        const sp2=findSnapPoint(raw.x,raw.y,els);
+        const ex=sp2?sp2.x:snapped.x, ey=sp2?sp2.y:snapped.y;
+        if(tool==='dim') {
+          addEl({id:(Date.now()+Math.random()).toString(36),type:'dim',x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey});
+        } else {
+          addEl({id:(Date.now()+Math.random()).toString(36),type:tool==='wall'?'wall':'pipe',
+                 x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,
+                 pipeSize:tool==='pipe'?pipeSize:null,pipeColor:tool==='pipe'?pipeColor:null});
+        }
+        setDrawing(null); setSnapPt(null);
+      }
+      return;
+    }
+
     if(tool==='symbol') {
       const id=(Date.now()+Math.random()).toString(36);
-      addEl({id,type:'symbol',symbolId:activeSym,x,y,label:''});
-      setLabelIn({show:true,x,y:y-44,text:'',forId:id});
+      addEl({id,type:'symbol',symbolId:activeSym,x:snapped.x,y:snapped.y,label:'',rotation:0,scale:1});
+      setLabelIn({show:true,x:snapped.x,y:snapped.y-44,text:'',forId:id,isPipe:false});
     }
   }
 
   function onMove(e) {
-    const {x,y}=getPos(e); setCursor({x,y});
-    if(drawing){setDrawing(d=>({...d,x2:x,y2:y})); return;}
+    // Pinch zoom/pan (two fingers)
+    if(e.touches&&e.touches.length===2&&pinchRef.current) {
+      const [t0,t1]=[e.touches[0],e.touches[1]];
+      const dist=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
+      const cx=(t0.clientX+t1.clientX)/2, cy=(t0.clientY+t1.clientY)/2;
+      const {dist:d0,startZoom,startPan}=pinchRef.current;
+      const cv=canvasRef.current; if(!cv) return;
+      const r=cv.getBoundingClientRect();
+      const pcx=(cx-r.left)*(FD.W/r.width), pcy=(cy-r.top)*(FD.H/r.height);
+      const newZoom=clampZoom(startZoom*(dist/d0));
+      const wx=(pcx-startPan.x)/startZoom, wy=(pcy-startPan.y)/startZoom;
+      setZoom(newZoom);
+      setPan({x:pcx-wx*newZoom, y:pcy-wy*newZoom});
+      return;
+    }
+
+    const cp=getCanvasPos(e);
+    const raw=screenToWorld(cp);
+    const snapped={x:snap(raw.x),y:snap(raw.y)};
+    setCursor(snapped);
+
+    // Pan drag in SELECT mode
+    if(dragRef.current?.mode==='pan') {
+      const dr=dragRef.current;
+      setPan({x:dr.startPan.x+(cp.x-dr.startCp.x), y:dr.startPan.y+(cp.y-dr.startCp.y)});
+      return;
+    }
+
+    // Snap check while drawing pipe/dim
+    if((tool==='pipe'||tool==='dim')&&drawing) {
+      const sp=findSnapPoint(raw.x,raw.y,els);
+      setSnapPt(sp);
+      setDrawing(d=>({...d, x2:sp?sp.x:snapped.x, y2:sp?sp.y:snapped.y}));
+      return;
+    }
+    if(drawing) { setDrawing(d=>({...d,x2:snapped.x,y2:snapped.y})); return; }
+
+    // Connector snap preview even before drawing starts
+    if(tool==='pipe'||tool==='dim') {
+      setSnapPt(findSnapPoint(raw.x,raw.y,els));
+    }
+
+    // SELECT mode element manipulation
     if(tool==='select'&&dragRef.current) {
-      const {id,sx,sy,orig}=dragRef.current, dx=x-sx, dy=y-sy;
-      if(orig.type==='wall'||orig.type==='pipe')
-        updEl(id,{x1:snap(orig.x1+dx),y1:snap(orig.y1+dy),x2:snap(orig.x2+dx),y2:snap(orig.y2+dy)});
-      else updEl(id,{x:snap(orig.x+dx),y:snap(orig.y+dy)});
+      const dr=dragRef.current;
+      if(dr.mode==='move') {
+        const dx=snapped.x-dr.sx, dy=snapped.y-dr.sy;
+        if(dr.orig.type==='wall'||dr.orig.type==='pipe'||dr.orig.type==='dim')
+          updEl(dr.id,{x1:snap(dr.orig.x1+dx),y1:snap(dr.orig.y1+dy),x2:snap(dr.orig.x2+dx),y2:snap(dr.orig.y2+dy)});
+        else updEl(dr.id,{x:snap(dr.orig.x+dx),y:snap(dr.orig.y+dy)});
+      } else if(dr.mode==='rotate') {
+        const angle=Math.atan2(raw.y-dr.orig.y,raw.x-dr.orig.x);
+        const delta=(angle-dr.startAngle)*180/Math.PI;
+        updEl(dr.id,{rotation:((dr.orig.rotation||0)+delta+360)%360});
+      } else if(dr.mode==='resize') {
+        const dist=Math.hypot(raw.x-dr.orig.x,raw.y-dr.orig.y);
+        updEl(dr.id,{scale:Math.max(0.5,Math.min(3,dist/50))});
+      } else if(dr.mode==='endpoint') {
+        if(dr.ep==='p1') updEl(dr.id,{x1:snapped.x,y1:snapped.y});
+        else              updEl(dr.id,{x2:snapped.x,y2:snapped.y});
+      }
     }
   }
 
-  function onUp() { dragRef.current=null; }
+  function onUp(e) {
+    const dr=dragRef.current;
+    // Rotation click-cycle: if barely moved, snap to next 90°
+    if(dr?.mode==='rotate'&&e) {
+      const final=getPos(e,false);
+      if(Math.hypot(final.x-dr.startX,final.y-dr.startY)<8/zoomRef.current) {
+        const cur=Math.round((dr.orig.rotation||0)/90)*90;
+        updEl(dr.id,{rotation:(cur+90)%360});
+      }
+    }
+    dragRef.current=null; pinchRef.current=null;
+  }
+
+  function onDblClick(e) {
+    const raw=getPos(e,false);
+    const h=hitTest(raw.x,raw.y);
+    if(h&&h.type==='pipe') {
+      const mx=(h.x1+h.x2)/2, my=(h.y1+h.y2)/2;
+      setLabelIn({show:true,x:mx,y:my,text:h.customLabel||'',forId:h.id,isPipe:true});
+    }
+  }
 
   function commitLabel() {
-    const {forId,text,x,y}=labelIn;
-    if(forId) updEl(forId,{label:text});
-    else if(text.trim()) addEl({id:(Date.now()+Math.random()).toString(36),type:'label',x,y,text});
-    setLabelIn({show:false,x:0,y:0,text:'',forId:null});
+    const {forId,text,x,y,isPipe}=labelIn;
+    if(forId) {
+      if(isPipe) updEl(forId,{customLabel:text||null});
+      else updEl(forId,{label:text});
+    } else if(text.trim()) {
+      addEl({id:(Date.now()+Math.random()).toString(36),type:'label',x,y,text});
+    }
+    setLabelIn({show:false,x:0,y:0,text:'',forId:null,isPipe:false});
   }
+
+  // Wheel zoom (non-passive so we can preventDefault)
+  React.useEffect(()=>{
+    const cv=canvasRef.current; if(!cv) return;
+    const handler=e=>{
+      e.preventDefault();
+      const cp=getCanvasPos(e);
+      const z=zoomRef.current, p=panRef.current;
+      const factor=e.deltaY<0?1.12:1/1.12;
+      const newZ=clampZoom(z*factor);
+      const wx=(cp.x-p.x)/z, wy=(cp.y-p.y)/z;
+      setZoom(newZ);
+      setPan({x:cp.x-wx*newZ, y:cp.y-wy*newZ});
+    };
+    cv.addEventListener('wheel',handler,{passive:false});
+    return ()=>cv.removeEventListener('wheel',handler);
+  },[]);
 
   React.useEffect(()=>{
     const fn=e=>{
       if((e.key==='Delete'||e.key==='Backspace')&&selected&&!labelIn.show){rmEl(selected);}
-      if(e.key==='Escape'){setDrawing(null);setLabelIn({show:false,x:0,y:0,text:'',forId:null});}
+      if(e.key==='Escape'){setDrawing(null);setSnapPt(null);setLabelIn({show:false,x:0,y:0,text:'',forId:null,isPipe:false});}
+      if(e.key==='f'||e.key==='F'){fitView();}
     };
     window.addEventListener('keydown',fn); return()=>window.removeEventListener('keydown',fn);
   },[selected,labelIn.show,els]);
 
+  // Canvas draw
   React.useEffect(()=>{
     const cv=canvasRef.current; if(!cv) return;
     const ctx=cv.getContext('2d');
-    ctx.fillStyle='#1A1A1A'; ctx.fillRect(0,0,FD.W,FD.H);
-    ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=0.5;
-    for(let x=0;x<=FD.W;x+=FD.G){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,FD.H);ctx.stroke();}
-    for(let y=0;y<=FD.H;y+=FD.G){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(FD.W,y);ctx.stroke();}
-    ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.font='10px monospace'; ctx.textAlign='left';
-    ctx.fillText('1 sq = 1 ft',8,FD.H-8);
 
+    // Clear in screen space
+    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle='#141414'; ctx.fillRect(0,0,FD.W,FD.H);
+    ctx.restore();
+
+    // Apply zoom/pan
+    ctx.save();
+    ctx.setTransform(zoom,0,0,zoom,pan.x,pan.y);
+
+    // Grid
+    ctx.strokeStyle='rgba(255,255,255,0.055)'; ctx.lineWidth=0.5/zoom;
+    for(let gx=0;gx<=FD.W;gx+=FD.G){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,FD.H);ctx.stroke();}
+    for(let gy=0;gy<=FD.H;gy+=FD.G){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(FD.W,gy);ctx.stroke();}
+
+    // Elements
     for(const el of els) {
       ctx.save();
       if(el.type==='wall') {
         ctx.strokeStyle='#9CA3AF'; ctx.lineWidth=4; ctx.lineCap='round';
         ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
       } else if(el.type==='pipe') {
-        ctx.strokeStyle=FD_PIPE_COLS[el.pipeColor]||FD_PIPE_COLS.blue;
-        ctx.lineWidth=FD_PIPE_W[el.pipeSize]||3; ctx.lineCap='round';
+        const col=FD_PIPE_COLS[el.pipeColor]||FD_PIPE_COLS.blue;
+        ctx.strokeStyle=col; ctx.lineWidth=FD_PIPE_W[el.pipeSize]||3; ctx.lineCap='round';
         ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
         const mx=(el.x1+el.x2)/2, my=(el.y1+el.y2)/2;
-        const ft=Math.round(Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G);
-        ctx.fillStyle=FD_PIPE_COLS[el.pipeColor]||FD_PIPE_COLS.blue;
-        ctx.font='9px monospace'; ctx.textAlign='center';
-        ctx.fillText(`${el.pipeSize} · ${ft}ft`,mx,my-6);
+        const ftRaw=Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G;
+        const ft=Math.round(ftRaw*2)/2;
+        const colorName=el.pipeColor?(el.pipeColor.charAt(0).toUpperCase()+el.pipeColor.slice(1)):'Blue';
+        const lbl=el.customLabel||(ft>0?`${el.pipeSize} ${colorName} — ${ft} ft`:`${el.pipeSize}`);
+        ctx.fillStyle=col; ctx.font='9px monospace'; ctx.textAlign='center';
+        ctx.fillText(lbl,mx,my-6);
+      } else if(el.type==='dim') {
+        const {x1,y1,x2,y2}=el;
+        const mx=(x1+x2)/2, my=(y1+y2)/2;
+        const ft=Math.round(Math.hypot(x2-x1,y2-y1)/FD.G*2)/2;
+        const ang=Math.atan2(y2-y1,x2-x1);
+        const px=Math.cos(ang+Math.PI/2)*7, py=Math.sin(ang+Math.PI/2)*7;
+        ctx.strokeStyle='#E5E7EB'; ctx.lineWidth=1.5; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x1+px,y1+py); ctx.lineTo(x1-px,y1-py);
+        ctx.moveTo(x2+px,y2+py); ctx.lineTo(x2-px,y2-py);
+        ctx.stroke();
+        const aw=10;
+        ctx.beginPath();
+        ctx.moveTo(x1,y1); ctx.lineTo(x1+Math.cos(ang+0.38)*aw,y1+Math.sin(ang+0.38)*aw);
+        ctx.moveTo(x1,y1); ctx.lineTo(x1+Math.cos(ang-0.38)*aw,y1+Math.sin(ang-0.38)*aw);
+        ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.cos(ang+Math.PI+0.38)*aw,y2+Math.sin(ang+Math.PI+0.38)*aw);
+        ctx.moveTo(x2,y2); ctx.lineTo(x2+Math.cos(ang+Math.PI-0.38)*aw,y2+Math.sin(ang+Math.PI-0.38)*aw);
+        ctx.stroke();
+        ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(mx-28,my-19,56,15);
+        ctx.fillStyle='#F9FAFB'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
+        ctx.fillText(`${ft} ft`,mx,my-8);
       } else if(el.type==='symbol') {
-        fdSym(ctx,el.symbolId,el.x,el.y);
-        if(el.label){ctx.fillStyle='#C17A35';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText(el.label,el.x,el.y+42);}
+        fdSym(ctx,el.symbolId,el.x,el.y,el.scale||1,el.rotation||0);
+        if(el.label){
+          const sc=el.scale||1;
+          ctx.fillStyle='#C17A35'; ctx.font='9px monospace'; ctx.textAlign='center';
+          ctx.fillText(el.label,el.x,el.y+42*sc);
+        }
       } else if(el.type==='label') {
         ctx.fillStyle='#F9FAFB'; ctx.font='12px monospace'; ctx.textAlign='left';
         ctx.fillText(el.text,el.x,el.y);
       }
+
+      // Selection indicators
       if(el.id===selected) {
-        ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
-        if(el.type==='wall'||el.type==='pipe'){
+        if(el.type==='wall'||el.type==='pipe'||el.type==='dim') {
+          ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
           const pad=8;
           ctx.strokeRect(Math.min(el.x1,el.x2)-pad,Math.min(el.y1,el.y2)-pad,
                          Math.abs(el.x2-el.x1)+pad*2,Math.abs(el.y2-el.y1)+pad*2);
-        } else if(el.type==='symbol'){ctx.strokeRect(el.x-38,el.y-32,76,66);}
-        else{ctx.strokeRect(el.x-4,el.y-16,80,22);}
-        ctx.setLineDash([]);
+          ctx.setLineDash([]);
+          // Endpoint handles for dim/pipe/wall
+          [el.x1,el.y1,el.x2,el.y2].forEach((v,i)=>{
+            if(i%2===0) {
+              ctx.fillStyle='#fff'; ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1.5;
+              ctx.beginPath(); ctx.arc(i===0?el.x1:el.x2,i===0?el.y1:el.y2,5,0,Math.PI*2);
+              ctx.fill(); ctx.stroke();
+            }
+          });
+        } else if(el.type==='symbol') {
+          const sc=el.scale||1, rot=(el.rotation||0)*Math.PI/180;
+          // Rotated selection box
+          ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+          ctx.save();
+          ctx.translate(el.x,el.y); ctx.rotate(rot);
+          ctx.strokeRect(-38*sc,-32*sc,76*sc,64*sc);
+          ctx.restore();
+          ctx.setLineDash([]);
+          // Rotation handle
+          const rhx=el.x+Math.sin(rot)*50*sc, rhy=el.y-Math.cos(rot)*50*sc;
+          ctx.fillStyle='#C17A35';
+          ctx.beginPath(); ctx.arc(rhx,rhy,9,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='#fff'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+          ctx.fillText('↻',rhx,rhy+4);
+          // Rotation label
+          ctx.fillStyle='rgba(193,122,53,0.9)'; ctx.font='8px monospace'; ctx.textAlign='center';
+          ctx.fillText(`${Math.round(el.rotation||0)}°`,el.x,el.y-36*sc-10);
+          // Corner resize handles
+          const corners=[[-38*sc,-32*sc],[38*sc,-32*sc],[38*sc,32*sc],[-38*sc,32*sc]];
+          corners.forEach(([lx,ly])=>{
+            const wx=el.x+lx*Math.cos(rot)-ly*Math.sin(rot);
+            const wy=el.y+lx*Math.sin(rot)+ly*Math.cos(rot);
+            ctx.fillStyle='#fff'; ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1.5;
+            ctx.fillRect(wx-5,wy-5,10,10); ctx.strokeRect(wx-5,wy-5,10,10);
+          });
+          // Connector dots
+          for(const pt of getConnectors(el)) {
+            ctx.beginPath(); ctx.arc(pt.x,pt.y,4,0,Math.PI*2);
+            ctx.fillStyle='rgba(59,130,246,0.5)'; ctx.fill();
+            ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1; ctx.stroke();
+          }
+        } else {
+          ctx.strokeStyle='#3B82F6'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+          ctx.strokeRect(el.x-4,el.y-16,80,22); ctx.setLineDash([]);
+        }
       }
       ctx.restore();
     }
 
+    // In-progress drawing preview
     if(drawing) {
       ctx.save(); ctx.setLineDash([6,4]);
-      ctx.strokeStyle=tool==='pipe'?(FD_PIPE_COLS[pipeColor]||'#3B82F6'):'#9CA3AF';
-      ctx.lineWidth=tool==='pipe'?(FD_PIPE_W[pipeSize]||3):4; ctx.lineCap='round';
+      if(drawing.isDim) {
+        ctx.strokeStyle='#E5E7EB'; ctx.lineWidth=1.5; ctx.lineCap='round';
+      } else {
+        ctx.strokeStyle=tool==='pipe'?(FD_PIPE_COLS[pipeColor]||'#3B82F6'):'#9CA3AF';
+        ctx.lineWidth=tool==='pipe'?(FD_PIPE_W[pipeSize]||3):4; ctx.lineCap='round';
+      }
       ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
       ctx.setLineDash([]); ctx.restore();
     }
+
+    // Snap indicator (green dot)
+    if(snapPt) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(snapPt.x,snapPt.y,6,0,Math.PI*2);
+      ctx.fillStyle='rgba(34,197,94,0.35)'; ctx.fill();
+      ctx.strokeStyle='#22C55E'; ctx.lineWidth=2; ctx.stroke();
+      ctx.restore();
+    }
+
+    // Cursor crosshair
     if(cursor&&tool!=='select'&&tool!=='erase') {
       ctx.save(); ctx.strokeStyle='rgba(193,122,53,0.7)'; ctx.lineWidth=1;
       ctx.beginPath();
@@ -4442,7 +4817,16 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       ctx.moveTo(cursor.x,cursor.y-8); ctx.lineTo(cursor.x,cursor.y+8);
       ctx.stroke(); ctx.restore();
     }
-  },[els,drawing,selected,cursor,tool,pipeSize,pipeColor]);
+
+    ctx.restore(); // end zoom/pan transform
+
+    // Screen-space overlays (fixed size regardless of zoom)
+    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.font='9px monospace'; ctx.textAlign='left';
+    ctx.fillText('1 sq = 1 ft',8,FD.H-8);
+    ctx.restore();
+
+  },[els,drawing,selected,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt]);
 
   function buildExportCanvas() {
     const src=canvasRef.current; if(!src) return null;
@@ -4462,14 +4846,27 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   }
 
   function doExport() {
-    const ec=buildExportCanvas(); if(!ec) return;
-    const a=document.createElement('a');
-    a.download=`facility-drawing-${(customerName||'site').replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.png`;
-    a.href=ec.toDataURL('image/png'); a.click();
+    // Export at zoom=1, pan=0 — temporarily reset
+    const savedZoom=zoom, savedPan={...pan};
+    setZoom(1); setPan({x:0,y:0});
+    // Use setTimeout to let state/canvas re-render before capturing
+    setTimeout(()=>{
+      const ec=buildExportCanvas(); if(!ec) return;
+      const a=document.createElement('a');
+      a.download=`facility-drawing-${(customerName||'site').replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.png`;
+      a.href=ec.toDataURL('image/png'); a.click();
+      setZoom(savedZoom); setPan(savedPan);
+    },80);
+  }
+
+  function applyTemplate(key) {
+    if(els.length>0&&!window.confirm('This will replace your current drawing. Continue?')) return;
+    mutate(()=>FD_TEMPLATES[key]());
+    setSelected(null); setShowTemplates(false);
   }
 
   React.useImperativeHandle(fdRef,()=>({
-    getDataURL: ()=>{ const ec=buildExportCanvas(); return ec?ec.toDataURL('image/png'):null; },
+    getDataURL:()=>{ const ec=buildExportCanvas(); return ec?ec.toDataURL('image/png'):null; },
   }));
 
   function PalIcon({symId}) {
@@ -4477,26 +4874,60 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     React.useEffect(()=>{
       const cv=r.current; if(!cv) return;
       const ctx=cv.getContext('2d'); ctx.clearRect(0,0,54,44);
-      fdSym(ctx,symId,27,22);
+      fdSym(ctx,symId,27,22,1,0);
     },[symId]);
     return <canvas ref={r} width={54} height={44} style={{display:'block'}}/>;
   }
 
   const secs  = [...new Set(FD_SYMBOLS.map(s=>s.sec))];
-  const TOOLS = [{id:'select',i:'↖',l:'SELECT'},{id:'wall',i:'━',l:'WALL'},{id:'symbol',i:'⊞',l:'SYMBOL'},
-                 {id:'pipe',i:'─',l:'PIPE'},{id:'label',i:'T',l:'LABEL'},{id:'erase',i:'⌫',l:'ERASE'}];
+  const TOOLS = [
+    {id:'select',i:'↖',l:'SELECT'},{id:'wall',i:'━',l:'WALL'},{id:'symbol',i:'⊞',l:'SYMBOL'},
+    {id:'pipe',i:'─',l:'PIPE'},{id:'dim',i:'↔',l:'DIM'},{id:'label',i:'T',l:'LABEL'},{id:'erase',i:'⌫',l:'ERASE'},
+  ];
+
+  const toolbarStyle = {
+    display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',
+    background: isFullscreen?'#0A0A0A':'#0D0D0D',
+    padding:'8px 10px',borderBottom:`1px solid ${C.border}`,flexShrink:0,
+  };
+  const btnBase = {
+    background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,
+    padding:'4px 9px',fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid,cursor:'pointer',
+  };
+  const btnActive = {
+    background:`linear-gradient(135deg,${C.copper},#A0632A)`,
+    border:`1px solid ${C.copper}`,color:'#fff',
+  };
+
+  const outerStyle = isFullscreen
+    ? {position:'fixed',top:0,left:0,width:'100vw',height:'100vh',zIndex:9999,
+       background:'#0A0A0A',display:'flex',flexDirection:'column',borderRadius:0}
+    : {borderRadius:'0 0 10px 10px',overflow:'hidden',border:`1.5px solid ${C.copper}`,borderTop:'none',display:'flex',flexDirection:'column'};
+
+  const paletteStyle = {
+    width:158,flexShrink:0,background:'#0A0A0A',borderRight:`1px solid ${C.border}`,
+    overflowY:'auto', maxHeight: isFullscreen?'100%':500,
+  };
+
+  // Convert world coord to canvas-element percentage for overlay positioning
+  const worldToPct = (wx,wy) => ({
+    left:`${((wx*zoom+pan.x)/FD.W)*100}%`,
+    top:`${((wy*zoom+pan.y)/FD.H)*100}%`,
+  });
+
+  const TEMPLATE_OPTS = [
+    {key:'single',name:'Basic Single Compressor',desc:'Comp → Dryer → Filter → Tank → 2 drops'},
+    {key:'loop',  name:'Loop System',            desc:'Comp → Dryer → Tank → loop with 4 drops'},
+    {key:'dual',  name:'Dual Compressor Manifold',desc:'2 Comps → manifold → Dryer → Filter → Tank'},
+  ];
 
   return (
-    <div style={{borderRadius:'0 0 10px 10px',overflow:'hidden',border:`1.5px solid ${C.copper}`,borderTop:'none'}}>
+    <div style={outerStyle}>
       {/* Toolbar */}
-      <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',background:'#0D0D0D',padding:'8px 10px',borderBottom:`1px solid ${C.border}`}}>
+      <div style={toolbarStyle}>
         {TOOLS.map(t=>(
-          <button key={t.id} onClick={()=>setTool(t.id)} style={{
-            background:tool===t.id?`linear-gradient(135deg,${C.copper},#A0632A)`:C.surface2,
-            border:`1px solid ${tool===t.id?C.copper:C.border}`,borderRadius:5,
-            padding:'4px 9px',fontFamily:F.mono,fontSize:9,letterSpacing:1,
-            color:tool===t.id?'#fff':C.mid,cursor:'pointer',
-          }}>{t.i} {t.l}</button>
+          <button key={t.id} onClick={()=>setTool(t.id)}
+            style={{...btnBase,...(tool===t.id?btnActive:{})}}>{t.i} {t.l}</button>
         ))}
         <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
         <select value={pipeSize} onChange={e=>setPipeSize(e.target.value)}
@@ -4510,22 +4941,38 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           }}/>
         ))}
         <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
-        <button onClick={undo}     style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,padding:'4px 9px',fontFamily:F.mono,fontSize:9,color:C.mid,cursor:'pointer'}}>↩ UNDO</button>
-        <button onClick={clearAll} style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,padding:'4px 9px',fontFamily:F.mono,fontSize:9,color:C.mid,cursor:'pointer'}}>✕ CLEAR</button>
-        <button onClick={doExport} style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:5,padding:'4px 12px',fontFamily:F.mono,fontSize:9,letterSpacing:1,color:'#fff',cursor:'pointer',marginLeft:'auto'}}>⬇ PNG</button>
+        <button onClick={()=>{ const newZ=clampZoom(zoom*1.25); const cx=FD.W/2,cy=FD.H/2; const wx=(cx-pan.x)/zoom,wy=(cy-pan.y)/zoom; setZoom(newZ); setPan({x:cx-wx*newZ,y:cy-wy*newZ}); }}
+          style={btnBase} title="Zoom in">+ ZOOM</button>
+        <button onClick={()=>{ const newZ=clampZoom(zoom/1.25); const cx=FD.W/2,cy=FD.H/2; const wx=(cx-pan.x)/zoom,wy=(cy-pan.y)/zoom; setZoom(newZ); setPan({x:cx-wx*newZ,y:cy-wy*newZ}); }}
+          style={btnBase} title="Zoom out">− ZOOM</button>
+        <span style={{fontFamily:F.mono,fontSize:9,color:C.mid,minWidth:32,textAlign:'center'}}>{Math.round(zoom*100)}%</span>
+        <button onClick={fitView} style={btnBase} title="Fit to screen (F)">⊡ FIT</button>
+        <span style={{width:1,height:20,background:C.border,margin:'0 2px',flexShrink:0}}/>
+        <button onClick={undo}     style={btnBase}>↩ UNDO</button>
+        <button onClick={clearAll} style={btnBase}>✕ CLEAR</button>
+        <button onClick={()=>setShowTemplates(true)}
+          style={{...btnBase,color:C.copper,borderColor:C.copper}}>⊞ TEMPLATE</button>
+        <button onClick={doExport}
+          style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:5,padding:'4px 12px',fontFamily:F.mono,fontSize:9,letterSpacing:1,color:'#fff',cursor:'pointer'}}>⬇ PNG</button>
+        <button onClick={()=>setIsFullscreen(f=>!f)}
+          style={{...btnBase, marginLeft:'auto', color:isFullscreen?C.copper:C.mid, borderColor:isFullscreen?C.copper:C.border}}
+          title={isFullscreen?'Exit fullscreen':'Fullscreen'}>
+          {isFullscreen?'✕ EXIT':'⛶ FULL'}
+        </button>
       </div>
 
       {/* Palette + Canvas */}
-      <div style={{display:'flex'}}>
-        <div style={{width:158,flexShrink:0,background:'#0A0A0A',borderRight:`1px solid ${C.border}`,maxHeight:500,overflowY:'auto'}}>
+      <div style={{display:'flex',flex:1,overflow:'hidden',minHeight:0}}>
+        <div style={paletteStyle}>
           {secs.map(sec=>(
             <div key={sec}>
               <div style={{fontFamily:F.mono,fontSize:7,letterSpacing:2,color:C.copper,padding:'5px 8px 2px',borderBottom:'1px solid rgba(193,122,53,0.2)'}}>{sec}</div>
               {FD_SYMBOLS.filter(s=>s.sec===sec).map(sym=>(
-                <div key={sym.id} onClick={()=>{setActiveSym(sym.id);setTool('symbol');}}
+                <div key={sym.id}
+                  onClick={()=>{ setActiveSym(sym.id); setTool(sym.id==='dimnarrow'?'dim':'symbol'); }}
                   style={{display:'flex',alignItems:'center',gap:4,padding:'2px 6px',cursor:'pointer',
-                    background:activeSym===sym.id&&tool==='symbol'?'rgba(193,122,53,0.12)':'transparent',
-                    borderLeft:activeSym===sym.id&&tool==='symbol'?`3px solid ${C.copper}`:'3px solid transparent'}}>
+                    background:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?'rgba(193,122,53,0.12)':'transparent',
+                    borderLeft:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?`3px solid ${C.copper}`:'3px solid transparent'}}>
                   <PalIcon symId={sym.id}/>
                   <span style={{fontFamily:F.mono,fontSize:7,color:C.mid,lineHeight:1.3}}>{sym.label}</span>
                 </div>
@@ -4534,39 +4981,76 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           ))}
         </div>
 
-        <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+        <div style={{flex:1,position:'relative',overflow:'hidden',background:'#141414'}}>
           <canvas ref={canvasRef} width={FD.W} height={FD.H}
             style={{width:'100%',height:'auto',display:'block',touchAction:'none',
                    cursor:tool==='erase'?'crosshair':tool==='select'?'default':'crosshair'}}
             onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+            onDoubleClick={onDblClick}
             onTouchStart={e=>{e.preventDefault();onDown(e);}}
             onTouchMove={e=>{e.preventDefault();onMove(e);}}
-            onTouchEnd={onUp}
+            onTouchEnd={e=>onUp(e)}
           />
-          {labelIn.show&&(
-            <div style={{position:'absolute',left:`${(labelIn.x/FD.W)*100}%`,top:`${(labelIn.y/FD.H)*100}%`,zIndex:10,transform:'translateY(-110%)'}}>
-              <input autoFocus value={labelIn.text}
-                onChange={e=>setLabelIn(l=>({...l,text:e.target.value}))}
-                onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape')commitLabel();}}
-                onBlur={commitLabel}
-                placeholder={labelIn.forId?'Label (e.g. HD50)…':'Text…'}
-                style={{background:'rgba(0,0,0,0.92)',border:`1px solid ${C.copper}`,borderRadius:4,
-                       padding:'4px 8px',fontFamily:F.mono,fontSize:11,color:'#fff',outline:'none',width:140}}
-              />
-            </div>
-          )}
+          {labelIn.show&&(()=>{
+            const pos=worldToPct(labelIn.x,labelIn.y);
+            return (
+              <div style={{position:'absolute',left:pos.left,top:pos.top,zIndex:10,transform:'translateY(-110%)'}}>
+                <input autoFocus value={labelIn.text}
+                  onChange={e=>setLabelIn(l=>({...l,text:e.target.value}))}
+                  onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape')commitLabel();}}
+                  onBlur={commitLabel}
+                  placeholder={labelIn.isPipe?'Custom pipe label…':labelIn.forId?'Label (e.g. HD50)…':'Text…'}
+                  style={{background:'rgba(0,0,0,0.92)',border:`1px solid ${C.copper}`,borderRadius:4,
+                         padding:'4px 8px',fontFamily:F.mono,fontSize:11,color:'#fff',outline:'none',width:160}}
+                />
+              </div>
+            );
+          })()}
         </div>
       </div>
 
       {/* Status bar */}
-      <div style={{padding:'3px 10px',background:'#0A0A0A',fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,borderTop:`1px solid ${C.border}`,display:'flex',gap:14,flexWrap:'wrap'}}>
+      <div style={{padding:'3px 10px',background:'#0A0A0A',fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,borderTop:`1px solid ${C.border}`,display:'flex',gap:14,flexWrap:'wrap',flexShrink:0}}>
         <span>{els.filter(e=>e.type==='wall').length} walls</span>
         <span>{els.filter(e=>e.type==='pipe').length} pipe runs</span>
+        <span>{els.filter(e=>e.type==='dim').length} dims</span>
         <span>{els.filter(e=>e.type==='symbol').length} symbols</span>
-        <span>{els.filter(e=>e.type==='label').length} labels</span>
-        {selected&&<span style={{color:C.copper}}>selected — DEL removes · ESC cancels</span>}
-        {drawing&&<span style={{color:C.copper}}>click endpoint · ESC cancels</span>}
+        {selected&&<span style={{color:C.copper}}>selected — DEL removes · drag handle to rotate/resize · ESC cancels</span>}
+        {drawing&&<span style={{color:C.copper}}>click endpoint · ESC cancels{snapPt?' · snapping to connector':''}</span>}
+        {tool==='select'&&!selected&&!drawing&&<span style={{color:C.dim}}>drag empty space to pan · scroll to zoom · F to fit</span>}
       </div>
+
+      {/* Template modal */}
+      {showTemplates&&(
+        <div onClick={()=>setShowTemplates(false)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',zIndex:10001,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:'#141414',border:`1.5px solid ${C.copper}`,borderRadius:10,padding:24,maxWidth:480,width:'92%'}}>
+            <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper,marginBottom:16}}>START FROM TEMPLATE</div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {TEMPLATE_OPTS.map(t=>(
+                <button key={t.key} onClick={()=>applyTemplate(t.key)}
+                  style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:7,padding:'12px 16px',
+                         textAlign:'left',cursor:'pointer',transition:'border-color 0.15s'}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=C.copper}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                  <div style={{fontFamily:F.mono,fontSize:10,color:'#fff',marginBottom:3}}>{t.name}</div>
+                  <div style={{fontFamily:F.mono,fontSize:8,color:C.mid}}>{t.desc}</div>
+                </button>
+              ))}
+              <button onClick={()=>{ if(els.length>0&&!window.confirm('Clear current drawing?'))return; mutate(()=>[]); setShowTemplates(false); }}
+                style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:7,padding:'10px 16px',
+                       fontFamily:F.mono,fontSize:9,color:C.dim,cursor:'pointer',textAlign:'left'}}>
+                Blank canvas (clear current)
+              </button>
+            </div>
+            <button onClick={()=>setShowTemplates(false)}
+              style={{marginTop:14,background:'transparent',border:'none',fontFamily:F.mono,fontSize:9,color:C.mid,cursor:'pointer'}}>
+              ✕ cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
