@@ -5,7 +5,35 @@ const XLSX = require('xlsx');
 const mammoth = require('mammoth');
 const fs = require('fs');
 const { google } = require('googleapis');
+const { Pool }   = require('pg');
 const app = require('express')();
+
+// ─── POSTGRESQL (FIELD LOG) ───────────────────────────────────────────────────
+const pgPool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  : null;
+
+async function initFieldLogTable() {
+  if (!pgPool) return;
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS field_log_entries (
+      id             SERIAL PRIMARY KEY,
+      rep_name       TEXT NOT NULL,
+      logged_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      pm_opp         BOOLEAN DEFAULT FALSE,
+      equip_opp      BOOLEAN DEFAULT FALSE,
+      service_lead   BOOLEAN DEFAULT FALSE,
+      piping_opp     BOOLEAN DEFAULT FALSE,
+      sticker        BOOLEAN DEFAULT FALSE,
+      vr_pres        BOOLEAN DEFAULT FALSE,
+      appt_set       BOOLEAN DEFAULT FALSE,
+      nothing        BOOLEAN DEFAULT FALSE,
+      location       TEXT,
+      notable_moment TEXT
+    )
+  `);
+  console.log('field_log_entries table ready');
+}
 
 // ─── ESTIMATES PERSISTENCE ────────────────────────────────────────────────────
 const ESTIMATES_FILE = path.join(__dirname, 'data', 'estimates.json');
@@ -555,6 +583,73 @@ app.post('/api/market-intel/log', async (req, res) => {
   }
 });
 
+// ─── FIELD LOG ────────────────────────────────────────────────────────────────
+app.post('/api/field-log', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const { repName, pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres, apptSet, nothing, location, notableMoment } = req.body;
+    if (!repName) return res.status(400).json({ error: 'repName required' });
+    const { rows } = await pgPool.query(
+      `INSERT INTO field_log_entries
+         (rep_name, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing, location, notable_moment)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING id, logged_at`,
+      [repName, !!pmOpp, !!equipOpp, !!serviceLead, !!pipingOpp, !!sticker, !!vrPres, !!apptSet, !!nothing,
+       location || null, notableMoment || null]
+    );
+    res.json({ success: true, id: rows[0].id, loggedAt: rows[0].logged_at });
+  } catch (e) {
+    console.error('field-log POST error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/field-log/today/:repName', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const { rows } = await pgPool.query(
+      `SELECT
+         COUNT(*)::int               AS stops,
+         SUM(pm_opp::int)::int       AS pm_opps,
+         SUM(equip_opp::int)::int    AS equip_opps,
+         SUM(service_lead::int)::int AS service_leads,
+         SUM(piping_opp::int)::int   AS piping_opps,
+         SUM(sticker::int)::int      AS stickers,
+         SUM(vr_pres::int)::int      AS vr_pres,
+         SUM(appt_set::int)::int     AS appt_set,
+         SUM(nothing::int)::int      AS nothing
+       FROM field_log_entries
+       WHERE rep_name = $1 AND logged_at >= NOW()::date`,
+      [req.params.repName]
+    );
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/field-log/dashboard', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const { rows } = await pgPool.query(
+      `SELECT
+         rep_name,
+         COUNT(*)::int               AS stops,
+         SUM(pm_opp::int)::int       AS pm_opps,
+         SUM(equip_opp::int)::int    AS equip_opps,
+         SUM(appt_set::int)::int     AS appt_set,
+         MAX(logged_at)              AS last_logged
+       FROM field_log_entries
+       WHERE logged_at >= NOW()::date
+       GROUP BY rep_name
+       ORDER BY stops DESC`
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -565,12 +660,8 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`AirIQ running on port ${PORT}`);
-  // Load inventory from today's Gmail report on startup
-  try {
-    await fetchInventoryFromGmail();
-  } catch (e) {
-    console.error('Initial Gmail inventory load failed:', e.message);
-  }
+  try { await initFieldLogTable(); } catch (e) { console.error('Field log table init failed:', e.message); }
+  try { await fetchInventoryFromGmail(); } catch (e) { console.error('Initial Gmail inventory load failed:', e.message); }
 });
 
 // Refresh daily at 6:10am EST (11:10 UTC) — after the 5:56am ST email arrives

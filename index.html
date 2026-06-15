@@ -712,6 +712,10 @@ function App() {
           height:"100%", overflowY:"auto" }}>
           <MarketIntel/>
         </div>
+        <div style={{ display: tab==="field-log" ? "flex" : "none",
+          flexDirection:"column", height:"100%", overflow:"hidden" }}>
+          <FieldLog/>
+        </div>
       </div>
 
       {/* Bottom Tab Bar */}
@@ -726,6 +730,7 @@ function App() {
           { id:"estimator",   icon:null,  label:"System Eng" },
           { id:"site-design", icon:"📋", label:"Site Design" },
           { id:"market-intel", icon:"📊", label:"Mkt Intel"  },
+          { id:"field-log",    icon:"📍", label:"Field Log"  },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex:1,
@@ -6340,6 +6345,305 @@ function MarketIntel() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// ─── FIELD LOG ───────────────────────────────────────────────────────────────
+function FieldLog() {
+  const REPS = ["Dan","Zac","Dave J","Chase","Devon","Earl","David G","Javier","Jon L","Jackson","Mike","Jack","Tristian","Connor"];
+  const ACTIVITIES = [
+    { id:"pmOpp",       label:"PM Opp"           },
+    { id:"equipOpp",    label:"Equipment Opp"    },
+    { id:"serviceLead", label:"Service Lead"     },
+    { id:"pipingOpp",   label:"Piping/Install"   },
+    { id:"sticker",     label:"Sticker Placed"   },
+    { id:"vrPres",      label:"VR Presentation"  },
+    { id:"apptSet",     label:"Appointment Set"  },
+    { id:"nothing",     label:"Nothing"          },
+  ];
+
+  const [view,       setView]       = React.useState("rep");
+  const [repName,    setRepName]    = React.useState(() => localStorage.getItem("fieldlog_rep") || "");
+  const [selected,   setSelected]   = React.useState({});
+  const [location,   setLocation]   = React.useState("");
+  const [notable,    setNotable]    = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [tally,      setTally]      = React.useState(null);
+  const [msg,        setMsg]        = React.useState("");
+  const [dashboard,  setDashboard]  = React.useState([]);
+  const [dashLoad,   setDashLoad]   = React.useState(false);
+  const dashTimer = React.useRef(null);
+
+  React.useEffect(() => {
+    if (repName) fetchTally(repName);
+  }, []);
+
+  React.useEffect(() => {
+    if (view === "leader") {
+      fetchDashboard();
+      dashTimer.current = setInterval(fetchDashboard, 60000);
+    } else {
+      clearInterval(dashTimer.current);
+    }
+    return () => clearInterval(dashTimer.current);
+  }, [view]);
+
+  async function fetchTally(name) {
+    try {
+      const r = await fetch(`/api/field-log/today/${encodeURIComponent(name)}`);
+      const d = await r.json();
+      setTally(d);
+    } catch {}
+  }
+
+  async function fetchDashboard() {
+    setDashLoad(true);
+    try {
+      const r = await fetch('/api/field-log/dashboard');
+      const d = await r.json();
+      setDashboard(Array.isArray(d) ? d : []);
+    } catch {}
+    setDashLoad(false);
+  }
+
+  function toggleActivity(id) {
+    if (id === "nothing") {
+      setSelected(prev => ({ nothing: !prev.nothing }));
+    } else {
+      setSelected(prev => ({ ...prev, [id]: !prev[id], nothing: false }));
+    }
+  }
+
+  async function logStop() {
+    if (!repName)                              { setMsg("Select your name first"); return; }
+    if (!Object.values(selected).some(Boolean)) { setMsg("Tap what you found");   return; }
+    setSubmitting(true);
+    setMsg("");
+    try {
+      const r = await fetch('/api/field-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repName, ...selected, location: location.trim(), notableMoment: notable.trim() }),
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || 'Unknown error');
+      setSelected({});
+      setLocation("");
+      setNotable("");
+      setMsg("✓ Stop logged!");
+      await fetchTally(repName);
+      setTimeout(() => setMsg(""), 3000);
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    }
+    setSubmitting(false);
+  }
+
+  function paceColor(stops) {
+    const s = Number(stops);
+    if (s >= 20) return C.green;
+    if (s >= 10) return "#F59E0B";
+    return C.red;
+  }
+
+  function timeSince(ts) {
+    if (!ts) return "—";
+    const mins = Math.round((Date.now() - new Date(ts)) / 60000);
+    if (mins < 1)  return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    return `${Math.floor(mins/60)}h ${mins % 60}m ago`;
+  }
+
+  // Merge live dashboard data with full rep roster
+  const repRows = React.useMemo(() => {
+    const map = {};
+    dashboard.forEach(d => { map[d.rep_name] = d; });
+    return REPS
+      .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, appt_set: 0, last_logged: null })
+      .sort((a, b) => Number(b.stops) - Number(a.stops));
+  }, [dashboard]);
+
+  return (
+    <div style={{ height:"100%", display:"flex", flexDirection:"column", background:C.bg }}>
+
+      {/* View toggle */}
+      <div style={{ padding:"10px 16px 0", flexShrink:0 }}>
+        <div style={{ display:"flex", background:C.surface2, borderRadius:8, padding:3, border:`1px solid ${C.border}` }}>
+          {[["rep","MY LOG"],["leader","LEADER VIEW"]].map(([v,label]) => (
+            <button key={v} onClick={() => setView(v)} style={{
+              flex:1, padding:"9px 0", borderRadius:6,
+              background: view===v ? C.blue : "transparent",
+              border:"none", fontFamily:F.mono, fontSize:12, letterSpacing:2,
+              color: view===v ? "#fff" : C.mid, cursor:"pointer", transition:"all 0.15s",
+            }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── REP VIEW ── */}
+      {view === "rep" && (
+        <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
+
+          {/* Name selector */}
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>REP</label>
+            <select value={repName} onChange={e => {
+                const v = e.target.value;
+                setRepName(v);
+                localStorage.setItem("fieldlog_rep", v);
+                if (v) fetchTally(v);
+              }}
+              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                color: repName ? C.text : C.mid, fontFamily:F.body, fontSize:16,
+                padding:"12px 14px", appearance:"none", boxSizing:"border-box" }}>
+              <option value="">Select your name...</option>
+              {REPS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          {/* Activity grid */}
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:8 }}>WHAT DID YOU FIND?</label>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              {ACTIVITIES.map(a => (
+                <button key={a.id} onClick={() => toggleActivity(a.id)} style={{
+                  padding:"14px 10px",
+                  background: selected[a.id]
+                    ? `linear-gradient(135deg,${C.blue} 0%,#2D5BBF 100%)`
+                    : C.surface2,
+                  border:`1.5px solid ${selected[a.id] ? C.blueLight : C.border}`,
+                  borderRadius:8, fontFamily:F.body, fontSize:14, fontWeight:600,
+                  color: selected[a.id] ? "#fff" : C.text,
+                  cursor:"pointer", transition:"all 0.15s", textAlign:"center",
+                }}>{a.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Location */}
+          <div style={{ marginBottom:10 }}>
+            <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>
+              AREA / LOCATION <span style={{ color:C.dim }}>(optional)</span>
+            </label>
+            <input value={location} onChange={e => setLocation(e.target.value)}
+              placeholder="e.g. Midtown Atlanta, Industrial Pkwy"
+              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}/>
+          </div>
+
+          {/* Notable moment */}
+          <div style={{ marginBottom:18 }}>
+            <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>
+              NOTABLE MOMENT <span style={{ color:C.dim }}>(optional)</span>
+            </label>
+            <textarea value={notable} onChange={e => setNotable(e.target.value)}
+              rows={2} placeholder="Hot lead, competitor spotted, anything worth flagging..."
+              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px",
+                boxSizing:"border-box", resize:"none" }}/>
+          </div>
+
+          {/* LOG STOP button */}
+          <button onClick={logStop} disabled={submitting} style={{
+            width:"100%", padding:"18px 0",
+            background: submitting ? C.surface2 : `linear-gradient(135deg,${C.orange} 0%,#EA580C 100%)`,
+            border:`1.5px solid ${submitting ? C.border : C.orange}`,
+            borderRadius:10, fontFamily:F.head, fontSize:28, letterSpacing:4,
+            color: submitting ? C.dim : "#fff",
+            cursor: submitting ? "not-allowed" : "pointer", transition:"all 0.15s",
+          }}>{submitting ? "LOGGING..." : "LOG STOP"}</button>
+
+          {msg && (
+            <div style={{
+              marginTop:10, padding:"11px 14px", borderRadius:8,
+              background: msg.startsWith("✓") ? C.greenSoft : "rgba(220,38,38,0.10)",
+              border:`1px solid ${msg.startsWith("✓") ? C.green : C.red}`,
+              fontFamily:F.mono, fontSize:12, letterSpacing:1,
+              color: msg.startsWith("✓") ? C.green : C.red,
+            }}>{msg}</div>
+          )}
+
+          {/* Today's tally */}
+          {tally && repName && (
+            <div style={{ marginTop:18, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
+              <div style={{ fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:10 }}>
+                TODAY — {repName.toUpperCase()}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+                {[
+                  ["STOPS",    tally.stops,         C.orange],
+                  ["PM OPP",   tally.pm_opps,       C.blueLight],
+                  ["EQ OPP",   tally.equip_opps,    C.blueLight],
+                  ["SVC LEAD", tally.service_leads, C.blueLight],
+                  ["PIPING",   tally.piping_opps,   C.blueLight],
+                  ["STICKER",  tally.stickers,      C.mid],
+                  ["VR PRES",  tally.vr_pres,       C.mid],
+                  ["APPT SET", tally.appt_set,      C.green],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{ background:C.surface2, borderRadius:8, padding:"10px 6px", textAlign:"center" }}>
+                    <div style={{ fontFamily:F.head, fontSize:22, color, lineHeight:1 }}>{val || 0}</div>
+                    <div style={{ fontFamily:F.mono, fontSize:8, letterSpacing:0.5, color:C.dim, marginTop:3 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── LEADER VIEW ── */}
+      {view === "leader" && (
+        <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.text }}>FIELD ACTIVITY — TODAY</div>
+            <div style={{ fontFamily:F.mono, fontSize:9, color:dashLoad ? C.orange : C.mid, letterSpacing:1 }}>
+              {dashLoad ? "REFRESHING..." : "AUTO-REFRESH 60s"}
+            </div>
+          </div>
+
+          {/* Pace legend */}
+          <div style={{ display:"flex", gap:14, marginBottom:14 }}>
+            {[[C.green,"20+ on pace"],["#F59E0B","10–19 behind"],[C.red,"<10 low"]].map(([color,label]) => (
+              <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:color, flexShrink:0 }}/>
+                <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:0.5, color:C.mid }}>{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {repRows.map(row => {
+              const stops = Number(row.stops);
+              const pace  = paceColor(stops);
+              return (
+                <div key={row.rep_name} style={{
+                  background:C.surface, border:`1px solid ${C.border}`,
+                  borderLeft:`3px solid ${pace}`, borderRadius:8, padding:"11px 14px",
+                }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <div style={{ fontFamily:F.body, fontSize:16, fontWeight:700, color:C.text }}>{row.rep_name}</div>
+                    <div style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{timeSince(row.last_logged)}</div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:4 }}>
+                    {[
+                      ["STOPS",  stops,            pace],
+                      ["PM OPP", row.pm_opps,      C.blueLight],
+                      ["EQ OPP", row.equip_opps,   C.blueLight],
+                      ["APPT",   row.appt_set,     C.green],
+                    ].map(([label, val, color]) => (
+                      <div key={label} style={{ textAlign:"center" }}>
+                        <div style={{ fontFamily:F.head, fontSize:22, color, lineHeight:1 }}>{val || 0}</div>
+                        <div style={{ fontFamily:F.mono, fontSize:8, letterSpacing:0.5, color:C.dim, marginTop:2 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
