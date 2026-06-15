@@ -983,16 +983,24 @@ function AirIQ() {
               }),
             });
             const data2 = await res2.json();
-            // FIX 5: descriptive error if data2.error present
+            console.log('data2 content types:', (data2.content||[]).map(b=>b.type));
+            console.log('data2 stop_reason:', data2.stop_reason);
             if (data2.error) throw new Error(`Claude res2 error: ${data2.error.message||JSON.stringify(data2.error)}`);
-            finalReply = (data2.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
             webSearched = webSearched || (data2.content||[]).some(b=>b.type==="tool_use"&&b.name==="web_search");
-            // FIX 6: if res2 returned no text, fall back to any text in data1
-            if (!finalReply) {
+            const textBlocks = (data2.content||[]).filter(b=>b.type==="text");
+            if (textBlocks.length > 0) {
+              finalReply = textBlocks.map(b=>b.text).join("\n");
+            } else if (data2.stop_reason === "tool_use") {
+              finalReply = (data2.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n") ||
+                           (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n") ||
+                           "Checking ServiceTitan... please try again.";
+            } else {
               finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
             }
+            if (!finalReply) {
+              finalReply = "I found data in ServiceTitan but had trouble formatting the response. Please try asking again.";
+            }
           } catch(res2Err) {
-            // FIX 1 fallback: res2 failed — use whatever text data1 already has
             finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
           }
         }
