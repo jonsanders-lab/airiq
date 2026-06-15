@@ -901,10 +901,10 @@ function AirIQ() {
       return;
     }
 
-    const modelMatches = msg.match(MODEL_REGEX);
+    const modelMatches = [...new Set(msg.match(MODEL_REGEX) || [])].slice(0, 5);
     const hasIntent    = INTENT_REGEX.test(msg);
-    const needsST      = !!(modelMatches && hasIntent) || hasIntent;
-    const searchTerms  = needsST ? (modelMatches ? [...new Set(modelMatches)].slice(0,3) : [msg.replace(INTENT_REGEX,"").trim().slice(0,40)]) : [];
+    const needsST      = !!(modelMatches.length > 0 && hasIntent) || hasIntent;
+    const searchTerms  = needsST ? (modelMatches.length > 0 ? modelMatches : [msg.replace(INTENT_REGEX,"").trim().slice(0,40)]) : [];
     if (needsST) setStLookupActive(true);
 
     const stTool = {
@@ -937,39 +937,35 @@ function AirIQ() {
         if (!data1.content || !Array.isArray(data1.content) || data1.content.length === 0) {
           finalReply = "";
         } else {
-          const searchTerm = toolUseBlock.input.search_term || searchTerms[0] || "";
+          const lookupTerms = searchTerms.length > 0 ? searchTerms : [toolUseBlock.input.search_term || ""];
           let stResult = "No data found.";
-          try {
-            const workerRes = await fetch("/api/st", {
-              method:"POST", headers:{"Content-Type":"application/json"},
-              body: JSON.stringify({ endpoint:`/pricebook/v2/tenant/${ST_TENANT}/equipment?`,
-                tenant:ST_TENANT, appKey:ST_APP_KEY, clientId:ST_CLIENT_ID, clientSecret:ST_CLIENT_SECRET, searchTerm }),
-            });
-            if (workerRes.ok) {
-              const workerData = await workerRes.json();
-              const pricebookItems = workerData.data || [];
-              let inventoryItems = [];
-              try {
-                const invController = new AbortController();
-                const invTimeoutId = setTimeout(() => invController.abort(), 8000);
-                const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(searchTerm)}`, { signal: invController.signal });
-                clearTimeout(invTimeoutId);
-                if (invRes.ok) {
-                  const invData = await invRes.json();
-                  inventoryItems = (invData.items||[]).flatMap(item =>
-                    (item.rawRows||[]).map(r=>({ name:r.name, code:r.code,
-                      onHand:r.quantityOnHand, available:r.quantityAvailable,
-                      onOrder:r.quantityOnOrder, location:r.location }))
-                  );
-                }
-              } catch {}
-              if (pricebookItems.length>0 || inventoryItems.length>0) {
-                stDataUsed=true; stResult=buildSTContext(pricebookItems,inventoryItems);
-              } else {
-                stResult=`No matching equipment found for "${searchTerm}" in ServiceTitan pricebook or inventory.`;
-              }
-            }
-          } catch {}
+
+          const parallelLookup = Promise.all([
+            Promise.all(lookupTerms.map(term =>
+              fetch("/api/st", { method:"POST", headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({ endpoint:`/pricebook/v2/tenant/${ST_TENANT}/equipment?`,
+                  tenant:ST_TENANT, appKey:ST_APP_KEY, clientId:ST_CLIENT_ID, clientSecret:ST_CLIENT_SECRET, searchTerm:term })
+              }).then(r => r.ok ? r.json() : {data:[]}).then(d => d.data||[]).catch(() => [])
+            )).then(results => results.flat()),
+            Promise.all(lookupTerms.map(term =>
+              fetch(`/api/inventory?q=${encodeURIComponent(term)}`)
+                .then(r => r.ok ? r.json() : {items:[]})
+                .then(d => (d.items||[]).flatMap(i => (i.rawRows||[]).map(r => ({
+                  name:r.name, code:r.code, onHand:r.quantityOnHand, available:r.quantityAvailable,
+                  onOrder:r.quantityOnOrder, location:r.location }))))
+                .catch(() => [])
+            )).then(results => results.flat())
+          ]);
+
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000));
+          const [allPricebookItems, allInventoryItems] = await Promise.race([parallelLookup, timeoutPromise])
+            .catch(() => [[], []]);
+
+          if (allPricebookItems.length > 0 || allInventoryItems.length > 0) {
+            stDataUsed=true; stResult=buildSTContext(allPricebookItems, allInventoryItems);
+          } else {
+            stResult=`No matching equipment found for "${lookupTerms.join(", ")}" in ServiceTitan pricebook or inventory.`;
+          }
 
           // FIX 1: wrap entire res2 block in try/catch; fall back to data1 text on any failure
           try {
