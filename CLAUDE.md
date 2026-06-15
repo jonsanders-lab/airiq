@@ -1,3 +1,16 @@
+## AUTO-UPDATE RULE (Claude Code must follow this)
+At the end of EVERY session, before the final git push:
+1. Update the "Last updated" date at the top of this file
+2. Move any completed items from NEXT PRIORITIES to KEY COMPLETED FEATURES
+3. Add any new features built this session to KEY COMPLETED FEATURES
+4. Add any new business rules discovered to KEY BUSINESS RULES
+5. Update NEXT PRIORITIES to reflect current state
+6. Commit CLAUDE.md in the same final commit as the session work
+
+This keeps the briefing current automatically. Never skip this step.
+
+---
+
 # AirIQ — Claude Code Project Briefing
 **Last updated: June 15, 2026**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
