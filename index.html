@@ -851,9 +851,7 @@ function AirIQ() {
         } else if (r.available < 0) {
           statusHtml = `<span style="color:#ef4444">⚠️ Over-reserved — confirm with ops</span>`;
         } else if (r.available === 0) {
-          statusHtml = `<span style="color:#f59e0b">⚠️ ${r.onHand} on hand — all reserved</span>`;
-        } else if (r.available < r.onHand) {
-          statusHtml = `<span style="color:#f59e0b">⚠️ ${r.onHand - r.available} reserved</span>`;
+          statusHtml = `<span style="color:#f59e0b">⚠️ All reserved — confirm with ops</span>`;
         } else {
           statusHtml = `<span style="color:#22c55e">✅ In Stock</span>`;
         }
