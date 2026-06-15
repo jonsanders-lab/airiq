@@ -973,7 +973,6 @@ function AirIQ() {
               method:"POST", headers:{"Content-Type":"application/json"},
               body: JSON.stringify({
                 model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+stInstruction,
-                // FIX 2: exact message structure required by Claude tool_result protocol
                 messages: [
                   ...newMsgs.map(m=>({ role:m.role, content:m.content })),
                   { role:"assistant", content:data1.content },
@@ -982,7 +981,13 @@ function AirIQ() {
                 tools:[{ type:"web_search_20250305", name:"web_search" }, stTool],
               }),
             });
+            if (!res2.ok) {
+              const errText = await res2.text();
+              console.error('res2 failed:', res2.status, errText);
+              throw new Error('Claude API call 2 failed: ' + res2.status);
+            }
             const data2 = await res2.json();
+            console.log('data2 full response:', JSON.stringify(data2).slice(0, 500));
             console.log('data2 content types:', (data2.content||[]).map(b=>b.type));
             console.log('data2 stop_reason:', data2.stop_reason);
             if (data2.error) throw new Error(`Claude res2 error: ${data2.error.message||JSON.stringify(data2.error)}`);
