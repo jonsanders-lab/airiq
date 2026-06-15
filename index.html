@@ -431,6 +431,57 @@ function formatMsg(text) {
     .replace(/\n/g, '<br/>');
 }
 
+function formatSTReply(text) {
+  const T_BG = '#1a1d27', T_HEAD = '#1e2535', T_BORDER = '#2a2d3a';
+  const isTableLine = l => /^\s*\|/.test(l);
+  const isSepLine   = l => /^\s*\|[-| :]+\|\s*$/.test(l);
+  const parseRow    = l => l.split('|').slice(1, -1).map(c => c.trim());
+  const styleCell   = c => c
+    .replace(/✅/g, '<span style="color:#22c55e">✅</span>')
+    .replace(/⚠️/g, '<span style="color:#f59e0b">⚠️</span>')
+    .replace(/❌/g, '<span style="color:#ef4444">❌</span>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+  const lines = text.split('\n');
+  const parts = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^\s*---+\s*$/.test(line)) {
+      parts.push(`<hr style="border:none;border-top:1px solid ${T_BORDER};margin:12px 0"/>`);
+      i++; continue;
+    }
+
+    if (isTableLine(line)) {
+      const tLines = [];
+      while (i < lines.length && isTableLine(lines[i])) { tLines.push(lines[i++]); }
+      const headers  = parseRow(tLines[0]);
+      const dataRows = tLines.slice(1).filter(l => !isSepLine(l));
+      const thHtml   = headers.map(h => `<th style="padding:6px 10px;text-align:left;white-space:nowrap">${h}</th>`).join('');
+      const trHtml   = dataRows.map(rl =>
+        `<tr style="border-bottom:1px solid ${T_BORDER}">${parseRow(rl).map(c => `<td style="padding:6px 10px">${styleCell(c)}</td>`).join('')}</tr>`
+      ).join('');
+      parts.push(`<table style="width:100%;border-collapse:collapse;font-size:12px;background:${T_BG};border:1px solid ${T_BORDER};border-radius:6px;overflow:hidden;margin:6px 0"><thead><tr style="background:${T_HEAD};color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:.05em">${thHtml}</tr></thead><tbody>${trHtml}</tbody></table>`);
+      continue;
+    }
+
+    const textLines = [];
+    while (i < lines.length && !isTableLine(lines[i]) && !/^\s*---+\s*$/.test(lines[i])) {
+      textLines.push(lines[i++]);
+    }
+    const block = textLines.join('\n').trim();
+    if (block) {
+      const processed = block.replace(/^\*\*(.+?)\*\*\s*$/gm,
+        `<p style="font-weight:700;color:#e87c2a;margin:12px 0 4px;font-size:13px">$1</p>`);
+      parts.push(formatMsg(processed));
+    }
+  }
+
+  return parts.join('');
+}
+
 const ST_TENANT = "898917283";
 const ST_APP_KEY = "ak1.jdzvjgo7e5m02rakwko7qkp0l";
 const ST_CLIENT_ID = "cid.99vu9fmb70y859oo3iqxtmprp";
@@ -1028,7 +1079,8 @@ function AirIQ() {
       }
 
       setStLookupActive(false);
-      setMessages([...newMsgs, { role:"assistant", content:finalReply, webSearched, stDataUsed }]);
+      const displayReply = stDataUsed && finalReply ? formatSTReply(finalReply) : finalReply;
+      setMessages([...newMsgs, { role:"assistant", content:displayReply, webSearched, stDataUsed, isHtml: !!(stDataUsed && finalReply) }]);
     } catch(err) {
       setStLookupActive(false);
       setMessages([...newMsgs, { role:"assistant", content:`⚠️ ${err.message}`, error:true }]);
