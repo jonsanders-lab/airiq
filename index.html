@@ -4389,7 +4389,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const [selected,     setSelected]     = React.useState(null);
   const [drawing,      setDrawing]      = React.useState(null);
   const [cursor,       setCursor]       = React.useState(null);
-  const [labelIn,      setLabelIn]      = React.useState({show:false,x:0,y:0,text:'',forId:null,isPipe:false});
+  const [labelIn,      setLabelIn]      = React.useState({show:false,x:0,y:0,text:'',forId:null,isPipe:false,elevNote:''});
   const [zoom,         setZoom]         = React.useState(1);
   const [pan,          setPan]          = React.useState({x:0,y:0});
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -4400,8 +4400,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const longPressRef   = React.useRef(null);
   const lastTapRef     = React.useRef({time:0,x:0,y:0});
   const lastDrawTool   = React.useRef('pipe');
-  const twoFingerRef   = React.useRef(null);
   const prevPipeRef    = React.useRef(null); // {x,y,angle} of last completed pipe
+  const [showBom,      setShowBom]      = React.useState(false);
 
   React.useEffect(()=>{ zoomRef.current=zoom; },[zoom]);
   React.useEffect(()=>{ panRef.current=pan; },[pan]);
@@ -4441,11 +4441,11 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   }
 
   function findSnapPoint(wx, wy, elsList) {
-    const threshold=25/zoomRef.current;
-    // Connector points take priority
+    const threshold=30/zoomRef.current;
+    // Connector points first (highest priority) — returns sourceEl for auto-fitting logic
     for(const el of elsList) {
       for(const pt of getConnectors(el)) {
-        if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y};
+        if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y,sourceEl:el};
       }
     }
     // Fallback: bbox edge centers of any symbol
@@ -4456,7 +4456,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       for(const p of [{x:hw,y:0},{x:-hw,y:0},{x:0,y:-hh},{x:0,y:hh}]) {
         const ex=el.x+p.x*Math.cos(rot)-p.y*Math.sin(rot);
         const ey=el.y+p.x*Math.sin(rot)+p.y*Math.cos(rot);
-        if(Math.hypot(wx-ex,wy-ey)<threshold) return {x:ex,y:ey};
+        if(Math.hypot(wx-ex,wy-ey)<threshold) return {x:ex,y:ey,sourceEl:el};
       }
     }
     return null;
@@ -4507,14 +4507,13 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
   function onDown(e) {
     e.preventDefault();
-    // Two-finger: pinch/pan setup + two-finger tap tracking
+    // Two-finger: pinch/pan
     if(e.touches&&e.touches.length===2) {
       clearTimeout(longPressRef.current);
       const [t0,t1]=[e.touches[0],e.touches[1]];
-      const dist=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
-      twoFingerRef.current={time:Date.now(),moved:false};
       pinchRef.current={
-        dist, cx:(t0.clientX+t1.clientX)/2, cy:(t0.clientY+t1.clientY)/2,
+        dist:Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY),
+        cx:(t0.clientX+t1.clientX)/2, cy:(t0.clientY+t1.clientY)/2,
         startZoom:zoomRef.current, startPan:{...panRef.current},
       };
       return;
@@ -4546,8 +4545,10 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         setSelected(h.id);
         const handle=hitHandle(raw.x,raw.y,h);
         if(handle==='rotate') {
+          const src=e.touches?e.touches[0]:e;
           dragRef.current={mode:'rotate',id:h.id,orig:{...h},
-            startAngle:Math.atan2(raw.y-h.y,raw.x-h.x),startX:raw.x,startY:raw.y};
+            startAngle:Math.atan2(raw.y-h.y,raw.x-h.x),startX:raw.x,startY:raw.y,
+            startCX:src?.clientX||0, startCY:src?.clientY||0};
         } else if(['tl','tr','br','bl'].includes(handle)) {
           dragRef.current={mode:'resize',id:h.id,orig:{...h},corner:handle};
         } else {
@@ -4577,7 +4578,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       const sp=findSnapPoint(raw.x,raw.y,els);
       const fx=sp?sp.x:snapped.x, fy=sp?sp.y:snapped.y;
       if(!drawing) {
-        setDrawing({x1:fx,y1:fy,x2:fx,y2:fy,isDim:tool==='dim'});
+        setDrawing({x1:fx,y1:fy,x2:fx,y2:fy,startSnap:sp,isDim:tool==='dim'});
       } else {
         const sp2=findSnapPoint(raw.x,raw.y,els);
         const ex=sp2?sp2.x:snapped.x, ey=sp2?sp2.y:snapped.y;
@@ -4589,30 +4590,54 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
                  x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize:null,pipeColor:null});
           setDrawing(null); setSnapPt(null);
         } else {
-          // Pipe: auto-place elbow symbol when direction changes >30°
+          // Pipe completion: auto-elbow, auto-NPT-adapter, auto-couplings
           const newAngle=Math.atan2(ey-drawing.y1,ex-drawing.x1);
-          const elbowEls=[];
+          const pipeLen=Math.hypot(ex-drawing.x1,ey-drawing.y1);
+          const ftLen=pipeLen/FD.G;
+          const sticks=Math.max(1,Math.ceil(ftLen/19));
+          const extraEls=[];
+
+          // Auto-elbow at direction change >30°
           if(prevPipeRef.current) {
             const {x:px,y:py,angle:prevAngle}=prevPipeRef.current;
             if(Math.hypot(drawing.x1-px,drawing.y1-py)<FD.G*0.6) {
               let diff=((newAngle-prevAngle)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);
               if(diff>Math.PI) diff=Math.PI*2-diff;
-              if(diff>Math.PI/6) {
-                elbowEls.push({
-                  id:(Date.now()+Math.random()+0.1).toString(36),
-                  type:'symbol',symbolId:'elbow90',
-                  x:drawing.x1,y:drawing.y1,
-                  rotation:((prevAngle*180/Math.PI)%360+360)%360,
-                  scale:0.7,label:'',
-                });
-              }
+              if(diff>Math.PI/6) extraEls.push({
+                id:(Date.now()+Math.random()+0.01).toString(36),
+                type:'symbol',symbolId:'elbow90',
+                x:drawing.x1,y:drawing.y1,
+                rotation:((prevAngle*180/Math.PI)%360+360)%360,scale:0.7,label:'',
+              });
             }
           }
           prevPipeRef.current={x:ex,y:ey,angle:newAngle};
+
+          // FIX 3: Auto NPT adapter at equipment connections
+          const EQ=['compressor','dryer','tank','filter','ows'];
+          if(drawing.startSnap?.sourceEl&&EQ.includes(drawing.startSnap.sourceEl.symbolId))
+            extraEls.push({id:(Date.now()+Math.random()+0.02).toString(36),
+              type:'symbol',symbolId:'nptadapt',x:drawing.x1,y:drawing.y1,
+              rotation:((newAngle*180/Math.PI+180)%360+360)%360,scale:0.7,label:`${pipeSize} NPT`});
+          if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
+            extraEls.push({id:(Date.now()+Math.random()+0.03).toString(36),
+              type:'symbol',symbolId:'nptadapt',x:ex,y:ey,
+              rotation:((newAngle*180/Math.PI)%360+360)%360,scale:0.7,label:`${pipeSize} NPT`});
+
+          // FIX 4: Auto couplings at each 19 ft interval
+          for(let i=1;i<sticks;i++) {
+            const t=(i*19*FD.G)/pipeLen;
+            extraEls.push({id:(Date.now()+Math.random()+i*0.1+0.04).toString(36),
+              type:'symbol',symbolId:'coupling',
+              x:Math.round(drawing.x1+(ex-drawing.x1)*t),
+              y:Math.round(drawing.y1+(ey-drawing.y1)*t),
+              rotation:((newAngle*180/Math.PI)%360+360)%360,scale:0.8,label:pipeSize});
+          }
+
           mutate(p=>[...p,
             {id:(Date.now()+Math.random()).toString(36),type:'pipe',
-             x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize,pipeColor},
-            ...elbowEls,
+             x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize,pipeColor,sticks},
+            ...extraEls,
           ]);
           setDrawing(null); setSnapPt(null);
         }
@@ -4639,7 +4664,6 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       const pcx=(cx-r.left)*(FD.W/r.width), pcy=(cy-r.top)*(FD.H/r.height);
       const newZoom=clampZoom(startZoom*(dist/d0));
       const wx=(pcx-startPan.x)/startZoom, wy=(pcy-startPan.y)/startZoom;
-      if(twoFingerRef.current&&Math.abs(dist-d0)>15) twoFingerRef.current.moved=true;
       setZoom(newZoom);
       setPan({x:pcx-wx*newZoom, y:pcy-wy*newZoom});
       return;
@@ -4697,18 +4721,11 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
   function onUp(e) {
     clearTimeout(longPressRef.current);
-
-    // Two-finger tap → undo (short two-touch with no significant pinch movement)
-    if(twoFingerRef.current&&(!e.touches||e.touches.length===0)) {
-      if(!twoFingerRef.current.moved&&Date.now()-twoFingerRef.current.time<350) undo();
-      twoFingerRef.current=null;
-    }
-
     const dr=dragRef.current;
-    // Rotation click-cycle: if barely moved, snap to next 90° (threshold tightened to 3 world units)
+    // Rotation click: within 20 screen pixels of mousedown → snap to next 90°
     if(dr?.mode==='rotate'&&e) {
-      const final=getPos(e,false);
-      if(Math.hypot(final.x-dr.startX,final.y-dr.startY)<3/zoomRef.current) {
+      const src=e.changedTouches?e.changedTouches[0]:(e.touches&&e.touches.length?e.touches[0]:e);
+      if(src&&Math.hypot((src.clientX||0)-dr.startCX,(src.clientY||0)-dr.startCY)<20) {
         const cur=Math.round((dr.orig.rotation||0)/90)*90;
         updEl(dr.id,{rotation:(cur+90)%360});
       }
@@ -4721,19 +4738,63 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     const h=hitTest(raw.x,raw.y);
     if(h&&h.type==='pipe') {
       const mx=(h.x1+h.x2)/2, my=(h.y1+h.y2)/2;
-      setLabelIn({show:true,x:mx,y:my,text:h.customLabel||'',forId:h.id,isPipe:true});
+      setLabelIn({show:true,x:mx,y:my,text:h.customLabel||'',forId:h.id,isPipe:true,elevNote:h.elevNote||''});
     }
   }
 
   function commitLabel() {
-    const {forId,text,x,y,isPipe}=labelIn;
+    const {forId,text,x,y,isPipe,elevNote}=labelIn;
     if(forId) {
-      if(isPipe) updEl(forId,{customLabel:text||null});
+      if(isPipe) updEl(forId,{customLabel:text||null,elevNote:elevNote||null});
       else updEl(forId,{label:text});
     } else if(text.trim()) {
       addEl({id:(Date.now()+Math.random()).toString(36),type:'label',x,y,text});
     }
-    setLabelIn({show:false,x:0,y:0,text:'',forId:null,isPipe:false});
+    setLabelIn({show:false,x:0,y:0,text:'',forId:null,isPipe:false,elevNote:''});
+  }
+
+  function computeBom() {
+    const FITTING_SFX = {elbow90:'003',elbow45:'004',tee:'005',union:'002',endcap:'006',flexhose:'055'};
+    // Pipe footage by size+color
+    const pMap = {};
+    for(const el of els.filter(e=>e.type==='pipe')) {
+      const ft=Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G;
+      const k=`${el.pipeSize}|${el.pipeColor}`;
+      if(!pMap[k]) pMap[k]={size:el.pipeSize,color:el.pipeColor,footage:0};
+      pMap[k].footage+=ft;
+    }
+    const pipeRows=Object.values(pMap).map(p=>{
+      const col=p.color.charAt(0).toUpperCase()+p.color.slice(1);
+      const footage=Math.round(p.footage*10)/10;
+      const sticks=Math.ceil(footage/19);
+      return {desc:`${p.size} AIRpipe — ${col}`,pn:apipePN(p.size,col),qty:sticks,notes:`${footage}ft total · ${sticks} stick${sticks!==1?'s':''}`};
+    });
+    // Symbols by type (fittings & drops only)
+    const symMap={};
+    for(const el of els.filter(e=>e.type==='symbol')) {
+      const sym=FD_SYMBOLS.find(s=>s.id===el.symbolId);
+      if(!sym||sym.sec==='EQUIPMENT'||sym.sec==='FACILITY') continue;
+      if(!symMap[el.symbolId]) symMap[el.symbolId]={label:sym.label,count:0,sampleLabel:el.label};
+      symMap[el.symbolId].count++;
+    }
+    const symRows=Object.entries(symMap).map(([id,{label,count,sampleLabel}])=>{
+      const pfx=sampleLabel?PIPE_PFX[sampleLabel.replace(/ NPT/,'').replace(/ Coupling/,'')]||null:null;
+      const sfx=FITTING_SFX[id];
+      const pn=(pfx&&sfx)?pfx+sfx:'—';
+      return {desc:label+(sampleLabel?` (${sampleLabel})`:''),pn,qty:count,notes:''};
+    });
+    // Equipment count
+    const eqRows=[];
+    const eqMap={};
+    for(const el of els.filter(e=>e.type==='symbol')) {
+      const sym=FD_SYMBOLS.find(s=>s.id===el.symbolId);
+      if(!sym||sym.sec!=='EQUIPMENT') continue;
+      if(!eqMap[el.symbolId]) eqMap[el.symbolId]={label:sym.label,count:0};
+      eqMap[el.symbolId].count++;
+    }
+    for(const [,{label,count}] of Object.entries(eqMap))
+      eqRows.push({desc:label+(els.find(e=>e.type==='symbol'&&FD_SYMBOLS.find(s=>s.id===e.symbolId)?.sec==='EQUIPMENT'&&e.label)?` (${els.find(e=>e.type==='symbol'&&FD_SYMBOLS.find(s=>s.id===e.symbolId)?.sec==='EQUIPMENT'&&e.label)?.label})`:''),pn:'—',qty:count,notes:'Qty to verify'});
+    return [...eqRows,...pipeRows,...symRows];
   }
 
   // Wheel zoom (non-passive so we can preventDefault)
@@ -4816,13 +4877,30 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         const ftRaw=Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G;
         const ft=Math.round(ftRaw*2)/2;
         const colorName=el.pipeColor?(el.pipeColor.charAt(0).toUpperCase()+el.pipeColor.slice(1)):'Blue';
-        const lbl=el.customLabel||(ft>0?`${el.pipeSize} ${colorName} — ${ft} ft`:`${el.pipeSize}`);
+        const sticks=el.sticks||Math.ceil(Math.max(1,ftRaw)/19);
+        let lbl;
+        if(el.customLabel) {
+          lbl=el.customLabel;
+        } else if(ftRaw>19) {
+          const c=sticks-1;
+          lbl=`${el.pipeSize} — ${ft}ft · ${sticks} sticks${c>0?` · ${c} coupling${c>1?'s':''}`:''} ⚠`;
+        } else {
+          lbl=ft>0?`${el.pipeSize} ${colorName} — ${ft} ft`:`${el.pipeSize}`;
+        }
         ctx.font="bold 12px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
         const lblW=ctx.measureText(lbl).width;
         ctx.fillStyle='rgba(8,10,20,0.78)';
         ctx.fillRect(mx-lblW/2-5,my-19,lblW+10,16);
         ctx.fillStyle='#fff';
         ctx.fillText(lbl,mx,my-7);
+        // Elevation note tag (FIX 6)
+        if(el.elevNote) {
+          ctx.font="11px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
+          const etw=ctx.measureText(el.elevNote).width;
+          ctx.fillStyle='rgba(30,80,200,0.85)';
+          ctx.fillRect(mx-etw/2-4,my+3,etw+8,14);
+          ctx.fillStyle='#fff'; ctx.fillText(el.elevNote,mx,my+13);
+        }
       } else if(el.type==='dim') {
         const {x1,y1,x2,y2}=el;
         const mx=(x1+x2)/2, my=(y1+y2)/2;
@@ -5134,13 +5212,40 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           />
           {labelIn.show&&(()=>{
             const pos=worldToPct(labelIn.x,labelIn.y);
+            if(labelIn.isPipe) return (
+              <div onClick={e=>e.stopPropagation()}
+                style={{position:'absolute',left:pos.left,top:pos.top,zIndex:10,transform:'translateY(-115%)',
+                        background:'rgba(8,10,20,0.97)',border:`1px solid ${C.copper}`,borderRadius:6,
+                        padding:'8px',display:'flex',flexDirection:'column',gap:5,minWidth:180}}>
+                <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:1,marginBottom:2}}>PIPE LABEL &amp; ELEVATION</div>
+                <input autoFocus value={labelIn.text}
+                  onChange={e=>setLabelIn(l=>({...l,text:e.target.value}))}
+                  onKeyDown={e=>{if(e.key==='Escape')commitLabel();}}
+                  placeholder='Custom label (leave blank for auto)…'
+                  style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:4,
+                         padding:'4px 8px',fontFamily:F.mono,fontSize:11,color:'#fff',outline:'none',width:'100%',boxSizing:'border-box'}}
+                />
+                <input value={labelIn.elevNote||''}
+                  onChange={e=>setLabelIn(l=>({...l,elevNote:e.target.value}))}
+                  onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape')commitLabel();}}
+                  placeholder='Elevation (e.g. 14ft ceiling, drop 6ft)…'
+                  style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:4,
+                         padding:'4px 8px',fontFamily:F.mono,fontSize:10,color:'#6B9FE8',outline:'none',width:'100%',boxSizing:'border-box'}}
+                />
+                <button onClick={commitLabel}
+                  style={{background:C.copper,border:'none',borderRadius:4,color:'#fff',fontFamily:F.body,
+                         fontSize:11,padding:'4px 10px',cursor:'pointer',alignSelf:'flex-end',touchAction:'manipulation'}}>
+                  Apply
+                </button>
+              </div>
+            );
             return (
               <div style={{position:'absolute',left:pos.left,top:pos.top,zIndex:10,transform:'translateY(-110%)'}}>
                 <input autoFocus value={labelIn.text}
                   onChange={e=>setLabelIn(l=>({...l,text:e.target.value}))}
                   onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape')commitLabel();}}
                   onBlur={commitLabel}
-                  placeholder={labelIn.isPipe?'Custom pipe label…':labelIn.forId?'Label (e.g. HD50)…':'Text…'}
+                  placeholder={labelIn.forId?'Label (e.g. HD50)…':'Text…'}
                   style={{background:'rgba(0,0,0,0.92)',border:`1px solid ${C.copper}`,borderRadius:4,
                          padding:'4px 8px',fontFamily:F.mono,fontSize:11,color:'#fff',outline:'none',width:160}}
                 />
@@ -5160,6 +5265,69 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         {drawing&&<span style={{color:C.copper}}>click endpoint · ESC cancels{snapPt?' · snapping to connector':''}</span>}
         {tool==='select'&&!selected&&!drawing&&<span style={{color:C.dim}}>drag empty space to pan · scroll to zoom · F to fit</span>}
       </div>
+
+      {/* BOM panel (non-fullscreen only) */}
+      {!isFullscreen&&(
+        <div style={{borderTop:`1px solid ${C.border}`,background:'#0A0A0A',padding:'8px 10px',flexShrink:0}}>
+          <button onClick={()=>setShowBom(b=>!b)}
+            style={{...btnBase,background:showBom?`linear-gradient(135deg,${C.orange},#C2540A)`:C.surface2,
+                   color:showBom?'#fff':C.mid,border:`1px solid ${showBom?C.orange:C.border}`,
+                   fontFamily:F.mono,fontSize:10,letterSpacing:1}}>
+            {showBom?'▲ HIDE BOM':'▼ GENERATE BOM FROM DRAWING'}
+          </button>
+          {showBom&&(()=>{
+            const rows=computeBom();
+            const copyBom=()=>{
+              const text=rows.map(r=>`${r.desc}\t${r.pn}\t${r.qty}\t${r.notes}`).join('\n');
+              navigator.clipboard?.writeText(`Description\tPart #\tQty\tNotes\n${text}`);
+            };
+            const sendToEng=()=>{
+              const bomData={rows,timestamp:new Date().toISOString()};
+              try{localStorage.setItem('airiq_bom_draft',JSON.stringify(bomData));}catch{}
+              alert('BOM saved to draft. Open the System Eng / Estimator tab to import it.');
+            };
+            return (
+              <div style={{marginTop:8}}>
+                <div style={{display:'flex',gap:6,marginBottom:6}}>
+                  <button onClick={copyBom}
+                    style={{...btnBase,fontFamily:F.mono,fontSize:9,letterSpacing:1,minHeight:30}}>
+                    COPY BOM
+                  </button>
+                  <button onClick={sendToEng}
+                    style={{...btnBase,background:'rgba(30,80,200,0.2)',border:'1px solid rgba(30,80,200,0.5)',
+                           color:'#6B9FE8',fontFamily:F.mono,fontSize:9,letterSpacing:1,minHeight:30}}>
+                    SEND TO SYSTEM ENG
+                  </button>
+                </div>
+                <table style={{width:'100%',borderCollapse:'collapse',fontFamily:F.mono,fontSize:10}}>
+                  <thead>
+                    <tr style={{color:C.copper,borderBottom:`1px solid ${C.border}`}}>
+                      {['Description','Part #','Qty','Notes'].map(h=>(
+                        <th key={h} style={{textAlign:'left',padding:'3px 6px',fontWeight:'bold',letterSpacing:1}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length===0?(
+                      <tr><td colSpan={4} style={{color:C.dim,padding:'6px'}}>No elements on canvas yet.</td></tr>
+                    ):rows.map((r,i)=>(
+                      <tr key={i} style={{borderBottom:`1px solid rgba(30,45,71,0.5)`,color:i%2===0?C.text:C.mid}}>
+                        <td style={{padding:'3px 6px'}}>{r.desc}</td>
+                        <td style={{padding:'3px 6px',color:C.copper}}>{r.pn}</td>
+                        <td style={{padding:'3px 6px'}}>{r.qty}</td>
+                        <td style={{padding:'3px 6px',color:C.dim,fontSize:9}}>{r.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{marginTop:4,fontFamily:F.mono,fontSize:8,color:C.dim}}>
+                  * Fitting PNs shown where size is auto-detected. Verify quantities on site. Part numbers use confirmed AIRpipe prefix table only.
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Context menu (long-press on symbol) */}
       {ctxMenu.show&&(
