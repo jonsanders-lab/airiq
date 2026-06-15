@@ -851,53 +851,76 @@ function AirIQ() {
       let finalReply="", stDataUsed=false;
       let webSearched = (data1.content||[]).some(b=>b.type==="tool_use"&&b.name==="web_search");
 
-      if (toolUseBlock) {
-        const searchTerm = toolUseBlock.input.search_term || searchTerms[0] || "";
-        let stResult = "No data found.";
-        try {
-          const workerRes = await fetch("/api/st", {
-            method:"POST", headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ endpoint:`/pricebook/v2/tenant/${ST_TENANT}/equipment?`,
-              tenant:ST_TENANT, appKey:ST_APP_KEY, clientId:ST_CLIENT_ID, clientSecret:ST_CLIENT_SECRET, searchTerm }),
-          });
-          if (workerRes.ok) {
-            const workerData = await workerRes.json();
-            const pricebookItems = workerData.data || [];
-            let inventoryItems = [];
-            try {
-              const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(searchTerm)}`);
-              if (invRes.ok) {
-                const invData = await invRes.json();
-                inventoryItems = (invData.items||[]).flatMap(item =>
-                  (item.rawRows||[]).map(r=>({ name:r.name, code:r.code,
-                    onHand:r.quantityOnHand, available:r.quantityAvailable,
-                    onOrder:r.quantityOnOrder, location:r.location }))
-                );
+      // FIX 7: if stop_reason is tool_use but our ST toolUseBlock wasn't found, fall through to text extraction
+      // FIX 4: also guard against toolUseBlock.id being undefined (would cause invalid API call)
+      if (toolUseBlock && toolUseBlock.id) {
+        // FIX 3: guard against null/empty data1.content before attempting res2
+        if (!data1.content || !Array.isArray(data1.content) || data1.content.length === 0) {
+          finalReply = "";
+        } else {
+          const searchTerm = toolUseBlock.input.search_term || searchTerms[0] || "";
+          let stResult = "No data found.";
+          try {
+            const workerRes = await fetch("/api/st", {
+              method:"POST", headers:{"Content-Type":"application/json"},
+              body: JSON.stringify({ endpoint:`/pricebook/v2/tenant/${ST_TENANT}/equipment?`,
+                tenant:ST_TENANT, appKey:ST_APP_KEY, clientId:ST_CLIENT_ID, clientSecret:ST_CLIENT_SECRET, searchTerm }),
+            });
+            if (workerRes.ok) {
+              const workerData = await workerRes.json();
+              const pricebookItems = workerData.data || [];
+              let inventoryItems = [];
+              try {
+                const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(searchTerm)}`);
+                if (invRes.ok) {
+                  const invData = await invRes.json();
+                  inventoryItems = (invData.items||[]).flatMap(item =>
+                    (item.rawRows||[]).map(r=>({ name:r.name, code:r.code,
+                      onHand:r.quantityOnHand, available:r.quantityAvailable,
+                      onOrder:r.quantityOnOrder, location:r.location }))
+                  );
+                }
+              } catch {}
+              if (pricebookItems.length>0 || inventoryItems.length>0) {
+                stDataUsed=true; stResult=buildSTContext(pricebookItems,inventoryItems);
+              } else {
+                stResult=`No matching equipment found for "${searchTerm}" in ServiceTitan pricebook or inventory.`;
               }
-            } catch {}
-            if (pricebookItems.length>0 || inventoryItems.length>0) {
-              stDataUsed=true; stResult=buildSTContext(pricebookItems,inventoryItems);
-            } else {
-              stResult=`No matching equipment found for "${searchTerm}" in ServiceTitan pricebook or inventory.`;
             }
-          }
-        } catch {}
+          } catch {}
 
-        const res2 = await fetch("/api/claude", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({
-            model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+stInstruction,
-            messages:[ ...newMsgs.map(m=>({ role:m.role, content:m.content })),
-              { role:"assistant", content:data1.content },
-              { role:"user", content:[{ type:"tool_result", tool_use_id:toolUseBlock.id, content:stResult }] } ],
-            tools:[{ type:"web_search_20250305", name:"web_search" }, stTool],
-          }),
-        });
-        const data2 = await res2.json();
-        if (data2.error) throw new Error(data2.error.message);
-        finalReply = (data2.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
-        webSearched = webSearched || (data2.content||[]).some(b=>b.type==="tool_use"&&b.name==="web_search");
+          // FIX 1: wrap entire res2 block in try/catch; fall back to data1 text on any failure
+          try {
+            const res2 = await fetch("/api/claude", {
+              method:"POST", headers:{"Content-Type":"application/json"},
+              body: JSON.stringify({
+                model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+stInstruction,
+                // FIX 2: exact message structure required by Claude tool_result protocol
+                messages: [
+                  ...newMsgs.map(m=>({ role:m.role, content:m.content })),
+                  { role:"assistant", content:data1.content },
+                  { role:"user", content:[{ type:"tool_result", tool_use_id:toolUseBlock.id, content:stResult }] }
+                ],
+                tools:[{ type:"web_search_20250305", name:"web_search" }, stTool],
+              }),
+            });
+            const data2 = await res2.json();
+            // FIX 5: descriptive error if data2.error present
+            if (data2.error) throw new Error(`Claude res2 error: ${data2.error.message||JSON.stringify(data2.error)}`);
+            finalReply = (data2.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+            webSearched = webSearched || (data2.content||[]).some(b=>b.type==="tool_use"&&b.name==="web_search");
+            // FIX 6: if res2 returned no text, fall back to any text in data1
+            if (!finalReply) {
+              finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+            }
+          } catch(res2Err) {
+            // FIX 1 fallback: res2 failed — use whatever text data1 already has
+            finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+          }
+        }
       } else {
+        // No ST toolUseBlock (or id missing) — extract text directly from data1
+        // This also handles FIX 7: stop_reason=tool_use for a different tool (e.g. web_search only)
         finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
       }
 
