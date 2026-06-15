@@ -824,6 +824,7 @@ function AirIQ() {
   };
 
   const fetchSeriesStock = async (series, newMsgs) => {
+    const MODEL_NAME_MAP = { "HTM7":"HTM7.5", "HTM7(1PH)":"HTM7.5 (1-Phase)", "HTM7.5(1PH)":"HTM7.5 (1-Phase)" };
     try {
       const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(series)}`);
       if (!invRes.ok) throw new Error("Inventory fetch failed");
@@ -836,17 +837,50 @@ function AirIQ() {
       items.sort((a, b) => (a.code || "").localeCompare(b.code || "", undefined, { numeric: true }));
 
       if (items.length === 0) {
-        setMessages([...newMsgs, { role:"assistant", content:`📦 No inventory items found for **${series}** series.`, stDataUsed:true }]);
+        setMessages([...newMsgs, { role:"assistant", content:`📦 No inventory items found for <strong>${series}</strong> series.`, stDataUsed:true, isHtml:true }]);
         return;
       }
 
-      const rows = items.map(r => {
-        const icon = r.onHand === 0 ? "❌" : r.available < r.onHand ? "⚠️" : "✅";
-        return `| ${icon} ${r.code} | ${r.onHand} | ${r.available} |`;
-      }).join("\n");
+      const inStockCount = items.filter(r => r.available > 0).length;
 
-      const reply = `📦 **${series} SERIES — LIVE STOCK**\n\n| Model | On Hand | Available |\n|-------|---------|----------|\n${rows}\n\n✅ = in stock  ⚠️ = reserved units  ❌ = out of stock\n_Last updated from ServiceTitan inventory report_`;
-      setMessages([...newMsgs, { role:"assistant", content:reply, stDataUsed:true }]);
+      const rowsHtml = items.map(r => {
+        const displayCode = MODEL_NAME_MAP[r.code] || r.code;
+        let statusHtml;
+        if (r.onHand === 0) {
+          statusHtml = `<span style="color:#ef4444">❌ Out of Stock</span>`;
+        } else if (r.available < 0) {
+          statusHtml = `<span style="color:#ef4444">⚠️ Over-reserved — confirm with ops</span>`;
+        } else if (r.available < r.onHand) {
+          statusHtml = `<span style="color:#f59e0b">⚠️ ${r.onHand - r.available} reserved</span>`;
+        } else {
+          statusHtml = `<span style="color:#22c55e">✅ In Stock</span>`;
+        }
+        const availDisplay = r.available < 0 ? `<span style="color:#ef4444">${r.available}</span>` : r.available;
+        return `<tr style="border-bottom:1px solid #2a2d3a">
+          <td style="padding:6px 10px">${displayCode}</td>
+          <td style="padding:6px 10px;text-align:center">${r.onHand}</td>
+          <td style="padding:6px 10px;text-align:center">${availDisplay}</td>
+          <td style="padding:6px 10px">${statusHtml}</td>
+        </tr>`;
+      }).join("");
+
+      const html = `<div>
+        <p style="font-weight:600;margin:0 0 8px;color:#e2e6f0">📦 ${series} SERIES — LIVE STOCK</p>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;background:#1a1d27;border:1px solid #2a2d3a;border-radius:6px;overflow:hidden">
+          <thead>
+            <tr style="background:#1e2535;color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:.05em">
+              <th style="padding:6px 10px;text-align:left">Model</th>
+              <th style="padding:6px 10px;text-align:center">On Hand</th>
+              <th style="padding:6px 10px;text-align:center">Available</th>
+              <th style="padding:6px 10px;text-align:left">Status</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <p style="font-size:11px;color:#64748b;margin:6px 0 0">${inStockCount} of ${items.length} models in stock · Last updated from ServiceTitan inventory report</p>
+      </div>`;
+
+      setMessages([...newMsgs, { role:"assistant", content:html, stDataUsed:true, isHtml:true }]);
     } catch(err) {
       setMessages([...newMsgs, { role:"assistant", content:`⚠️ Could not fetch ${series} series inventory: ${err.message}`, error:true }]);
     }
@@ -1035,7 +1069,7 @@ function AirIQ() {
                   background:isUser?"#e87c2a":"#1a1d27",
                   color:isUser?"#fff":"#e2e6f0",
                   border:isUser?"none":"1px solid #2a2d3a", maxWidth:"100%" }}>
-                  {isUser ? m.content : <span dangerouslySetInnerHTML={{ __html:formatMsg(m.content) }}/>}
+                  {isUser ? m.content : <span dangerouslySetInnerHTML={{ __html: m.isHtml ? m.content : formatMsg(m.content) }}/>}
                 </div>
               </div>
               {!isUser && (m.webSearched||m.stDataUsed) && (
