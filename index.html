@@ -814,6 +814,44 @@ function AirIQ() {
     s.replace(/\b(HTM|HTV|HAD|HD|HV|HT|HB)\s+(\d+[A-Z]?)\b/gi,
               (_, prefix, num) => prefix.toUpperCase() + num.toUpperCase());
 
+  const detectSeriesStockQuery = (msg) => {
+    const seriesAlt = 'HTM|HTV|HAD|HD|HV|HT|HB';
+    const m1 = msg.match(new RegExp(`\\b(${seriesAlt})(?!\\d)\\b[\\s\\w]*?(?:stock|units?|availability|inventory)`, 'i'));
+    if (m1) return m1[1].toUpperCase();
+    const m2 = msg.match(new RegExp(`\\ball\\s+(${seriesAlt})\\b`, 'i'));
+    if (m2) return m2[1].toUpperCase();
+    return null;
+  };
+
+  const fetchSeriesStock = async (series, newMsgs) => {
+    try {
+      const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(series)}`);
+      if (!invRes.ok) throw new Error("Inventory fetch failed");
+      const invData = await invRes.json();
+      const items = (invData.items || [])
+        .flatMap(item => (item.rawRows || []).map(r => ({
+          code: r.code, onHand: r.quantityOnHand, available: r.quantityAvailable
+        })))
+        .filter(r => r.code && r.code.toUpperCase().startsWith(series.toUpperCase()));
+      items.sort((a, b) => (a.code || "").localeCompare(b.code || "", undefined, { numeric: true }));
+
+      if (items.length === 0) {
+        setMessages([...newMsgs, { role:"assistant", content:`📦 No inventory items found for **${series}** series.`, stDataUsed:true }]);
+        return;
+      }
+
+      const rows = items.map(r => {
+        const icon = r.onHand === 0 ? "❌" : r.available < r.onHand ? "⚠️" : "✅";
+        return `| ${icon} ${r.code} | ${r.onHand} | ${r.available} |`;
+      }).join("\n");
+
+      const reply = `📦 **${series} SERIES — LIVE STOCK**\n\n| Model | On Hand | Available |\n|-------|---------|----------|\n${rows}\n\n✅ = in stock  ⚠️ = reserved units  ❌ = out of stock\n_Last updated from ServiceTitan inventory report_`;
+      setMessages([...newMsgs, { role:"assistant", content:reply, stDataUsed:true }]);
+    } catch(err) {
+      setMessages([...newMsgs, { role:"assistant", content:`⚠️ Could not fetch ${series} series inventory: ${err.message}`, error:true }]);
+    }
+  };
+
   const submit = async (text) => {
     const msg = normalizeModelNumber(text || input.trim());
     if (!msg || loading) return;
@@ -821,6 +859,13 @@ function AirIQ() {
     if (textareaRef.current) textareaRef.current.style.height="40px";
     const newMsgs = [...messages, { role:"user", content:msg }];
     setMessages(newMsgs); setLoading(true); setStLookupActive(false);
+
+    const seriesPrefix = detectSeriesStockQuery(msg);
+    if (seriesPrefix) {
+      await fetchSeriesStock(seriesPrefix, newMsgs);
+      setLoading(false);
+      return;
+    }
 
     const modelMatches = msg.match(MODEL_REGEX);
     const hasIntent    = INTENT_REGEX.test(msg);
@@ -871,7 +916,10 @@ function AirIQ() {
               const pricebookItems = workerData.data || [];
               let inventoryItems = [];
               try {
-                const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(searchTerm)}`);
+                const invController = new AbortController();
+                const invTimeoutId = setTimeout(() => invController.abort(), 8000);
+                const invRes = await fetch(`/api/inventory?q=${encodeURIComponent(searchTerm)}`, { signal: invController.signal });
+                clearTimeout(invTimeoutId);
                 if (invRes.ok) {
                   const invData = await invRes.json();
                   inventoryItems = (invData.items||[]).flatMap(item =>
