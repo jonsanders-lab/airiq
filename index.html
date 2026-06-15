@@ -68,6 +68,8 @@
     }
     .pm-pillars{display:flex;gap:10px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;-ms-overflow-style:none;padding-bottom:4px;}
     .pm-pillars::-webkit-scrollbar{display:none;}
+    .tab-bar-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
+    .tab-bar-scroll::-webkit-scrollbar{display:none;}
     @media (max-width:640px){
       .pm-pillars{flex-wrap:wrap!important;overflow-x:visible!important;}
       .pm-pillars>div{flex:0 0 calc(50% - 5px)!important;min-width:0!important;}
@@ -721,40 +723,51 @@ function App() {
       {/* Bottom Tab Bar */}
       <div style={{
         background:C.surface, borderTop:`1px solid ${C.border}`,
-        display:"flex", flexShrink:0, gap:8, padding:"8px 10px",
-        paddingBottom:`calc(8px + env(safe-area-inset-bottom, 0px))`,
+        flexShrink:0, position:"relative",
       }}>
-        {[
-          { id:"airiq",       icon:"💨", label:"AirIQ"       },
-          { id:"wingman",     icon:"🎯", label:"Wingman"     },
-          { id:"estimator",   icon:null,  label:"System Eng" },
-          { id:"site-design", icon:"📋", label:"Site Design" },
-          { id:"market-intel", icon:"📊", label:"Mkt Intel"  },
-          { id:"field-log",    icon:"📍", label:"Field Log"  },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex:1,
-            background: tab===t.id ? C.orange : C.surface2,
-            border: `1.5px solid ${tab===t.id ? C.orange : C.border}`,
-            borderRadius:8, padding:"10px 8px 9px", minHeight:64,
-            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5,
-            cursor:"pointer", transition:"all 0.15s",
-          }}>
-            {t.id === "estimator" ? (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                style={{ color: tab===t.id ? "#fff" : C.mid, flexShrink:0 }}>
-                <path d="M3 20L12 4L21 20H3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-                <path d="M12 4L12 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <path d="M7 14L17 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            ) : (
-              <span style={{ fontSize:20, lineHeight:1 }}>{t.icon}</span>
-            )}
-            <span style={{ fontFamily:F.mono, fontSize:13, letterSpacing:1,
-              color: tab===t.id ? "#fff" : C.text,
-              fontWeight: tab===t.id ? 700 : 400 }}>{t.label}</span>
-          </button>
-        ))}
+        <div className="tab-bar-scroll" style={{
+          display:"flex", gap:6, padding:"8px 10px",
+          paddingBottom:`calc(8px + env(safe-area-inset-bottom, 0px))`,
+        }}>
+          {[
+            { id:"airiq",        icon:"💨", label:"AirIQ"      },
+            { id:"wingman",      icon:"🎯", label:"Wingman"    },
+            { id:"estimator",    icon:null,  label:"Sys Eng"   },
+            { id:"site-design",  icon:"📋", label:"Site"       },
+            { id:"market-intel", icon:"📊", label:"Mkt Intel"  },
+            { id:"field-log",    icon:"📍", label:"Field Log"  },
+          ].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              flexShrink:0, minWidth:58,
+              background: tab===t.id ? C.orange : C.surface2,
+              border: `1.5px solid ${tab===t.id ? C.orange : C.border}`,
+              borderRadius:8, padding:"10px 6px 9px", minHeight:62,
+              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4,
+              cursor:"pointer", transition:"all 0.15s",
+            }}>
+              {t.id === "estimator" ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                  style={{ color: tab===t.id ? "#fff" : C.mid, flexShrink:0 }}>
+                  <path d="M3 20L12 4L21 20H3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+                  <path d="M12 4L12 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <path d="M7 14L17 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <span style={{ fontSize:18, lineHeight:1 }}>{t.icon}</span>
+              )}
+              <span style={{ fontFamily:F.mono, fontSize:11, letterSpacing:0,
+                color: tab===t.id ? "#fff" : C.text,
+                fontWeight: tab===t.id ? 700 : 400,
+                whiteSpace:"nowrap" }}>{t.label}</span>
+            </button>
+          ))}
+        </div>
+        {/* Right-edge scroll hint */}
+        <div style={{
+          position:"absolute", right:0, top:0, bottom:0, width:24,
+          background:`linear-gradient(90deg, transparent, ${C.surface})`,
+          pointerEvents:"none",
+        }}/>
       </div>
     </div>
   );
