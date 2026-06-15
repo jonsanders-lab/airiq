@@ -967,46 +967,55 @@ function AirIQ() {
             stResult=`No matching equipment found for "${lookupTerms.join(", ")}" in ServiceTitan pricebook or inventory.`;
           }
 
-          // FIX 1: wrap entire res2 block in try/catch; fall back to data1 text on any failure
-          try {
-            const res2 = await fetch("/api/claude", {
-              method:"POST", headers:{"Content-Type":"application/json"},
-              body: JSON.stringify({
-                model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+stInstruction,
-                messages: [
-                  ...newMsgs.map(m=>({ role:m.role, content:m.content })),
-                  { role:"assistant", content:data1.content },
-                  { role:"user", content:[{ type:"tool_result", tool_use_id:toolUseBlock.id, content:stResult }] }
-                ],
-                tools:[{ type:"web_search_20250305", name:"web_search" }, stTool],
-              }),
-            });
-            if (!res2.ok) {
-              const errText = await res2.text();
-              console.error('res2 failed:', res2.status, errText);
-              throw new Error('Claude API call 2 failed: ' + res2.status);
-            }
-            const data2 = await res2.json();
-            console.log('data2 full response:', JSON.stringify(data2).slice(0, 500));
-            console.log('data2 content types:', (data2.content||[]).map(b=>b.type));
-            console.log('data2 stop_reason:', data2.stop_reason);
-            if (data2.error) throw new Error(`Claude res2 error: ${data2.error.message||JSON.stringify(data2.error)}`);
-            webSearched = webSearched || (data2.content||[]).some(b=>b.type==="tool_use"&&b.name==="web_search");
-            const textBlocks = (data2.content||[]).filter(b=>b.type==="text");
-            if (textBlocks.length > 0) {
-              finalReply = textBlocks.map(b=>b.text).join("\n");
-            } else if (data2.stop_reason === "tool_use") {
-              finalReply = (data2.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n") ||
-                           (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n") ||
-                           "Checking ServiceTitan... please try again.";
-            } else {
+          const allToolUseBlocks = (data1.content||[]).filter(b => b.type === "tool_use");
+          if (allToolUseBlocks.length === 0) {
+            finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+          } else {
+            const toolResults = allToolUseBlocks.map(block =>
+              block.name === "lookup_servicetitan_pricing"
+                ? { type:"tool_result", tool_use_id:block.id, content:stResult }
+                : { type:"tool_result", tool_use_id:block.id, content:"No result available" }
+            );
+            try {
+              const res2 = await fetch("/api/claude", {
+                method:"POST", headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({
+                  model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+stInstruction,
+                  messages: [
+                    ...newMsgs.map(m=>({ role:m.role, content:m.content })),
+                    { role:"assistant", content:data1.content },
+                    { role:"user", content:toolResults }
+                  ],
+                  tools:[{ type:"web_search_20250305", name:"web_search" }, stTool],
+                }),
+              });
+              if (!res2.ok) {
+                const errText = await res2.text();
+                console.error('res2 failed:', res2.status, errText);
+                throw new Error('Claude API call 2 failed: ' + res2.status);
+              }
+              const data2 = await res2.json();
+              console.log('data2 full response:', JSON.stringify(data2).slice(0, 500));
+              console.log('data2 content types:', (data2.content||[]).map(b=>b.type));
+              console.log('data2 stop_reason:', data2.stop_reason);
+              if (data2.error) throw new Error(`Claude res2 error: ${data2.error.message||JSON.stringify(data2.error)}`);
+              webSearched = webSearched || (data2.content||[]).some(b=>b.type==="tool_use"&&b.name==="web_search");
+              const textBlocks = (data2.content||[]).filter(b=>b.type==="text");
+              if (textBlocks.length > 0) {
+                finalReply = textBlocks.map(b=>b.text).join("\n");
+              } else if (data2.stop_reason === "tool_use") {
+                finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n") ||
+                             "Checking ServiceTitan... please try again.";
+              } else {
+                finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+              }
+              if (!finalReply) {
+                finalReply = "I found data in ServiceTitan but had trouble formatting the response. Please try asking again.";
+              }
+            } catch(res2Err) {
+              console.error('res2Err:', res2Err.message);
               finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
             }
-            if (!finalReply) {
-              finalReply = "I found data in ServiceTitan but had trouble formatting the response. Please try asking again.";
-            }
-          } catch(res2Err) {
-            finalReply = (data1.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
           }
         }
       } else {
