@@ -6132,14 +6132,27 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       }
       ctx.restore();
     }
-    // Footer bar
+    // Footer bar — pull branch + location from localStorage if available
+    let _pdfBranch='', _pdfLocation='';
+    try {
+      const _draft=JSON.parse(localStorage.getItem('airiq_site_survey_draft')||'{}');
+      _pdfLocation=(_draft.equipLocation||'').trim();
+      _pdfBranch=(_draft.branch||'').trim();
+    } catch(e) {}
+    if(!_pdfBranch) _pdfBranch=(localStorage.getItem('wingman_branch')||'').trim();
+    const _metaParts=[];
+    if(customerName) _metaParts.push(`Customer: ${customerName}`);
+    if(_pdfLocation) _metaParts.push(`Location: ${_pdfLocation}`);
+    if(_pdfBranch)   _metaParts.push(`Branch: ${_pdfBranch}`);
+    if(repName)      _metaParts.push(`Rep: ${repName}`);
+    _metaParts.push(new Date().toLocaleDateString());
     const fy=cH-FTR;
     ctx.fillStyle='#1E3A8A';ctx.fillRect(0,fy,cW,FTR);
     if(logoRef.current)ctx.drawImage(logoRef.current,10,fy+8,36,36);
     ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='left';
     ctx.fillText('HODGE INDUSTRIAL TECHNOLOGIES — AirIQ Site Drawing',54,fy+22);
     ctx.font='10px sans-serif';
-    ctx.fillText(`${customerName?`Customer: ${customerName}  ·  `:''}Rep: ${repName||''}  ·  ${new Date().toLocaleDateString()}`,54,fy+40);
+    ctx.fillText(_metaParts.join('  ·  '),54,fy+40);
     ctx.font='9px sans-serif';ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,0.55)';
     ctx.fillText('1 sq = 1 ft  ·  Scale drawing',cW-10,fy+40);
     return ec;
