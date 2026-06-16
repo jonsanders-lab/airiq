@@ -89,6 +89,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
@@ -4592,6 +4593,7 @@ const FD_PIPE_MATS = {
 // Legacy alias for any old saved drawings that stored 'black' key
 const FD_PIPE_MATS_FALLBACK = '#3B82F6';
 const FD_PIPE_W    = { '3/4"':2,'1"':3,'1.5"':4,'2"':5,'2.5"':6,'3"':8,'4"':10 };
+const PIPE_SIZE_ORDER = ['3/4"','1"','1.5"','2"','2.5"','3"','4"'];
 const FD_DRAIN_HEX   = '#F59E0B';
 const FD_DRAIN_SIZES = ['1/4"','3/8"','1/2"','6mm','8mm','10mm'];
 const FD_DRAIN_W     = {'1/4"':2,'3/8"':2,'1/2"':3,'6mm':2,'8mm':2,'10mm':3};
@@ -4611,6 +4613,7 @@ const FD_SYMBOLS   = [
   {id:'flexhose',  label:'Flex Hose', sec:'FITTINGS'},
   {id:'quickconn', label:'Quick Conn',sec:'FITTINGS'},
   {id:'nptadapt',  label:'NPT Adapt', sec:'FITTINGS'},
+  {id:'reducer',   label:'Reducer',   sec:'FITTINGS'},
   {id:'drop',      label:'Drop',      sec:'DROPS'},
   {id:'termblock', label:'Term Block',sec:'DROPS'},
   {id:'ptlelbow',  label:'PTL Elbow', sec:'DRAIN FITTINGS'},
@@ -4745,39 +4748,40 @@ const FD_TEMPLATES = {
 };
 
 // fdSym draws a symbol centered at (0,0) inside a translate/scale/rotate transform
-function fdSym(ctx, sym, x, y, scale=1, rotation=0) {
+function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
   ctx.save();
   ctx.translate(x,y);
   if(rotation) ctx.rotate(rotation*Math.PI/180);
   if(scale!==1) ctx.scale(scale,scale);
-  ctx.strokeStyle='#C17A35'; ctx.fillStyle='#111A2E'; ctx.lineWidth=2.5;
+  const _bg=pm?'#f8f8f8':'#111A2E',_fg=pm?'#1a1a1a':'#ffffff',_bd=pm?'#1E3A8A':'#C17A35';
+  ctx.strokeStyle=_bd; ctx.fillStyle=_bg; ctx.lineWidth=2.5;
   const SYM_FONT = "bold 12px 'Barlow Semi Condensed',sans-serif";
   switch(sym) {
     case 'compressor':
       ctx.fillRect(-32,-20,64,40); ctx.strokeRect(-32,-20,64,40);
       ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.stroke();
-      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
+      ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('COMP',0,4); break;
     case 'dryer':
       ctx.fillRect(-28,-18,56,36); ctx.strokeRect(-28,-18,56,36);
       ctx.beginPath();
       for(let i=0;i<3;i++){const wx=-14+i*14;ctx.moveTo(wx,5);ctx.quadraticCurveTo(wx+4,-3,wx+8,5);}
       ctx.stroke();
-      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
+      ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('DRY',0,-5); break;
     case 'tank':
       ctx.beginPath(); ctx.ellipse(0,-24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.fillRect(-14,-24,28,48); ctx.strokeRect(-14,-24,28,48);
       ctx.beginPath(); ctx.ellipse(0,24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
+      ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('TANK',0,4); break;
     case 'filter':
       ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle='#fff'; ctx.font="bold 16px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
+      ctx.fillStyle=_fg; ctx.font="bold 16px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
       ctx.fillText('F',0,5); break;
     case 'ows':
       ctx.fillRect(-28,-18,56,36); ctx.strokeRect(-28,-18,56,36);
-      ctx.fillStyle='#fff'; ctx.font=SYM_FONT; ctx.textAlign='center';
+      ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('OWS',0,4); break;
     case 'ballvalve':
       ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
@@ -4830,6 +4834,15 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0) {
     case 'dimnarrow':
       ctx.beginPath(); ctx.moveTo(-28,0); ctx.lineTo(28,0);
       ctx.moveTo(-28,-6); ctx.lineTo(-28,6); ctx.moveTo(28,-6); ctx.lineTo(28,6);
+      ctx.stroke(); break;
+    case 'reducer':
+      ctx.beginPath();
+      ctx.moveTo(-20,0); ctx.lineTo(-8,0);
+      ctx.moveTo(-8,-9); ctx.lineTo(-8,9);
+      ctx.moveTo(-8,-9); ctx.lineTo(8,-5);
+      ctx.moveTo(-8,9); ctx.lineTo(8,5);
+      ctx.moveTo(8,-5); ctx.lineTo(8,5);
+      ctx.moveTo(8,0); ctx.lineTo(20,0);
       ctx.stroke(); break;
     case 'ptlelbow':
       ctx.strokeStyle=FD_DRAIN_HEX; ctx.lineWidth=2;
@@ -5030,7 +5043,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
     setZoom(nz); setPan({x:FD.W/2-cx*nz,y:FD.H/2-cy*nz});
   };
-  const changeTool = t => { if(t!=='select'&&t!=='erase') lastDrawTool.current=t; setTool(t); setPipeSnap(null); };
+  const changeTool = t => { if(t!=='select'&&t!=='erase') lastDrawTool.current=t; setTool(t); setPipeSnap(null); setDrainMode(false); };
 
   function getCanvasPos(e) {
     const cv=canvasRef.current; if(!cv) return {x:0,y:0};
@@ -5062,7 +5075,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     for(const el of elsList) {
       if(el.type!=='pipe') continue;
       for(const pt of [{x:el.x1,y:el.y1},{x:el.x2,y:el.y2}]) {
-        if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y};
+        if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y,sourceEl:el};
       }
     }
     // 3. Fallback: bbox edge centers of any symbol
@@ -5273,6 +5286,9 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',x:ex,y:ey,
                 rotation:rotDeg,scale:0.7,label:`${pipeSize} NPT`});
+            // Auto-reducing fitting when connecting to a different-size air pipe
+            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rotDeg+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}
+            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rotDeg,scale:0.8,label:`${_lg}×${_sm}`});}}}
             for(let i=1;i<sticks;i++){
               const t=i*19*FD.G/pipeLen;
               extraEls.push({id:idg(),type:'symbol',symbolId:'coupling',
@@ -5307,6 +5323,9 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',
                 x:ex,y:ey,rotation:rot2,scale:0.7,label:`${pipeSize} NPT`});
+            // Auto-reducing fittings for L-shape endpoints connecting to different-size air pipes
+            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}
+            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rot2,scale:0.8,label:`${_lg}×${_sm}`});}}}
             // Couplings on seg1
             for(let i=1;i<sticks1;i++){
               const t=i*19*FD.G/len1;
@@ -6064,6 +6083,78 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     },80);
   }
 
+  function buildPDFCanvas() {
+    const tgts=els.filter(e=>['symbol','pipe','wall','dim'].includes(e.type));
+    if(!tgts.length){alert('Nothing to export.');return null;}
+    let mnX=Infinity,mnY=Infinity,mxX=-Infinity,mxY=-Infinity;
+    for(const el of tgts){
+      if(el.type==='pipe'||el.type==='wall'||el.type==='dim'){mnX=Math.min(mnX,el.x1,el.x2);mxX=Math.max(mxX,el.x1,el.x2);mnY=Math.min(mnY,el.y1,el.y2);mxY=Math.max(mxY,el.y1,el.y2);}
+      else{const p=70*(el.scale||1);mnX=Math.min(mnX,el.x-p);mxX=Math.max(mxX,el.x+p);mnY=Math.min(mnY,el.y-p);mxY=Math.max(mxY,el.y+p);}
+    }
+    const PAD=FD.G*4,FTR=56; mnX-=PAD;mnY-=PAD;mxX+=PAD;mxY+=PAD;
+    const cW=Math.max(600,Math.ceil(mxX-mnX)), cH=Math.max(400,Math.ceil(mxY-mnY))+FTR;
+    const ec=document.createElement('canvas'); ec.width=cW; ec.height=cH;
+    const ctx=ec.getContext('2d');
+    ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cW,cH);
+    // Light gray grid
+    ctx.strokeStyle='#EEEEEE'; ctx.lineWidth=0.5;
+    for(let gx=Math.floor(mnX/FD.G)*FD.G;gx<=mxX;gx+=FD.G){const sx=gx-mnX;ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,cH-FTR);ctx.stroke();}
+    for(let gy=Math.floor(mnY/FD.G)*FD.G;gy<=mxY;gy+=FD.G){const sy=gy-mnY;ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(cW,sy);ctx.stroke();}
+    const wx=x=>x-mnX, wy=y=>y-mnY;
+    // Elements
+    for(const el of tgts){
+      ctx.save();
+      if(el.type==='wall'){
+        ctx.strokeStyle='#888';ctx.lineWidth=3;ctx.lineCap='round';
+        ctx.beginPath();ctx.moveTo(wx(el.x1),wy(el.y1));ctx.lineTo(wx(el.x2),wy(el.y2));ctx.stroke();
+      }else if(el.type==='pipe'){
+        if(el.isDrain){
+          ctx.strokeStyle=FD_DRAIN_HEX;ctx.lineWidth=FD_DRAIN_W[el.drainSize]||2;ctx.lineCap='round';ctx.setLineDash([6,5]);
+          ctx.beginPath();ctx.moveTo(wx(el.x1),wy(el.y1));ctx.lineTo(wx(el.x2),wy(el.y2));ctx.stroke();ctx.setLineDash([]);
+        }else{
+          const mat=FD_PIPE_MATS[el.pipeColor]||FD_PIPE_MATS.blue;
+          const col=el.pipeColor==='pvc'?'#888':el.pipeColor==='blackiron'?'#333':mat.hex;
+          ctx.strokeStyle=col;ctx.lineWidth=(FD_PIPE_W[el.pipeSize]||3);ctx.lineCap='round';
+          ctx.beginPath();ctx.moveTo(wx(el.x1),wy(el.y1));ctx.lineTo(wx(el.x2),wy(el.y2));ctx.stroke();
+          const mx=(wx(el.x1)+wx(el.x2))/2,my=(wy(el.y1)+wy(el.y2))/2;
+          const ft=Math.round(Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G*2)/2;
+          if(ft>0){ctx.font="bold 10px 'Barlow Semi Condensed',sans-serif";ctx.textAlign='center';ctx.fillStyle='#1a1a1a';ctx.fillText(`${el.pipeSize} · ${ft}ft`,mx,my-6);}
+        }
+      }else if(el.type==='dim'){
+        ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+        ctx.beginPath();ctx.moveTo(wx(el.x1),wy(el.y1));ctx.lineTo(wx(el.x2),wy(el.y2));ctx.stroke();ctx.setLineDash([]);
+        const mx=(wx(el.x1)+wx(el.x2))/2,my=(wy(el.y1)+wy(el.y2))/2;
+        const ft=Math.round(Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G*2)/2;
+        ctx.font="10px sans-serif";ctx.textAlign='center';ctx.fillStyle='#555';ctx.fillText(`${ft} ft`,mx,my-5);
+      }else if(el.type==='symbol'){
+        fdSym(ctx,el.symbolId,wx(el.x),wy(el.y),el.scale||1,el.rotation||0,true);
+        if(el.label){ctx.font="bold 11px 'Barlow Semi Condensed',sans-serif";ctx.textAlign='center';ctx.fillStyle='#1a1a1a';ctx.fillText(el.label,wx(el.x),wy(el.y)+48*(el.scale||1));}
+      }
+      ctx.restore();
+    }
+    // Footer bar
+    const fy=cH-FTR;
+    ctx.fillStyle='#1E3A8A';ctx.fillRect(0,fy,cW,FTR);
+    if(logoRef.current)ctx.drawImage(logoRef.current,10,fy+8,36,36);
+    ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='left';
+    ctx.fillText('HODGE INDUSTRIAL TECHNOLOGIES — AirIQ Site Drawing',54,fy+22);
+    ctx.font='10px sans-serif';
+    ctx.fillText(`${customerName?`Customer: ${customerName}  ·  `:''}Rep: ${repName||''}  ·  ${new Date().toLocaleDateString()}`,54,fy+40);
+    ctx.font='9px sans-serif';ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,0.55)';
+    ctx.fillText('1 sq = 1 ft  ·  Scale drawing',cW-10,fy+40);
+    return ec;
+  }
+
+  function doExportPDF() {
+    const ec=buildPDFCanvas(); if(!ec) return;
+    if(!window.jspdf){alert('PDF library not loaded — please check your connection.');return;}
+    const imgData=ec.toDataURL('image/jpeg',0.92);
+    const mmW=Math.round(ec.width*25.4/96),mmH=Math.round(ec.height*25.4/96);
+    const doc=new window.jspdf.jsPDF({orientation:mmW>mmH?'l':'p',unit:'mm',format:[mmW,mmH]});
+    doc.addImage(imgData,'JPEG',0,0,mmW,mmH);
+    doc.save(`site-drawing-${(customerName||'site').replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.pdf`);
+  }
+
   function applyTemplate(key) {
     if(els.length>0&&!window.confirm('This will replace your current drawing. Continue?')) return;
     mutate(()=>FD_TEMPLATES[key]());
@@ -6199,7 +6290,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         {/* Drain mode toggle */}
         <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
         <button
-          onClick={()=>setDrainMode(m=>{const next=!m;if(next)changeTool('pipe');return next;})}
+          onClick={()=>setDrainMode(m=>{const next=!m;if(next){lastDrawTool.current='pipe';setTool('pipe');setPipeSnap(null);}return next;})}
           title="Draw condensate drain lines — dashed amber, orthogonal routing, push-to-lock fittings"
           style={{...btnBase,...(drainMode?{background:'rgba(245,158,11,0.18)',border:'1px solid #F59E0B',color:'#F59E0B'}:{})}}>
           ⋯ DRAIN
@@ -6224,8 +6315,10 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         <button onClick={clearAll} style={btnBase} title="Clear entire drawing">✕ CLEAR</button>
         <button onClick={()=>setShowTemplates(true)} title="Start from a pre-built layout"
           style={{...btnBase,color:C.copper,borderColor:C.copper}}>⊞ TEMPLATE</button>
-        <button onClick={doExport} title="Export drawing as PNG"
-          style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:6,padding:'6px 13px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:'#fff',cursor:'pointer',minHeight:34}}>⬇ PNG</button>
+        <button onClick={doExportPDF} title="Export drawing as PDF (white background, print-ready)"
+          style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:6,padding:'6px 13px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:'#fff',cursor:'pointer',minHeight:34}}>⬇ PDF</button>
+        <button onClick={doExport} title="Export drawing as PNG (dark background)"
+          style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:C.mid,cursor:'pointer',minHeight:34}}>⬇ PNG</button>
         <button onClick={()=>setIsFullscreen(f=>!f)}
           style={{...btnBase, marginLeft:'auto', color:isFullscreen?C.copper:C.mid, borderColor:isFullscreen?C.copper:C.border}}
           title={isFullscreen?'Exit fullscreen (Esc)':'Expand to fullscreen'}>
