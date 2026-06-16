@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 16, 2026**
+**Last updated: June 16, 2026 (session 2)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -59,6 +59,11 @@ Railway volume mounted at /app/data for persistent storage
 - FD_CONNECTORS given 4-directional (not just left/right) connector points for compressor/dryer/tank/filter/ows so pipes approaching from any side get a precise snap — fixes inconsistent NPT-adapter generation and tank diagonal-pipe artifacts
 - Ortho-lock on pipe snap: if a pipe endpoint snaps within 1 grid cell on one axis, the pipe is forced perfectly horizontal/vertical instead of diagonal
 - Right-click (PC) now opens the same symbol context menu (Edit Label/Rotate/Duplicate/Delete) as long-press on iPad — `onContextMenu` handler added to the drawing canvas
+- 8-material pipe selector in drawing tool: AIRpipe group (Blue/Green/Gray) + Other Materials (Copper, Stainless, PVC, CPVC, Black Iron); stainless renders shimmer gradient, PVC/CPVC show ⚠️ warning borders, black iron double-strokes for visibility on dark canvas
+- Field Log: GRAPH VIEW — bar chart toggle (LIST|GRAPH) in leader view with pace-colored bars, 20-stop dashed goal line, rep name labels; secondary weekly trend SVG mini-chart (Mon–today) with area fill, data points, day labels
+- Field Log: CSV EXPORT (leader only) — EXPORT button opens date-range modal (Today/Week/Month/Year/Custom) → auto-downloads CSV with all 13 activity columns
+- Field Log: LEADER AUTO-DASHBOARD — LEADERS const (Jon Sanders, Tony, Kyle); view state auto-inits to leader view when rep name matches
+- server.js: GET /api/field-log/week (Mon–today team stop totals by day) and GET /api/field-log/export (per-rep-per-day aggregate, all columns, date-range params)
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock
