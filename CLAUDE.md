@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 15, 2026 (updated end-of-session)**
+**Last updated: June 15, 2026 (session 2 update)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -45,6 +45,10 @@ Railway volume mounted at /app/data for persistent storage
 - HB belt drive equivalent output hallucination fixed in system prompt
 - Tab order updated: AirIQ → Wingman → Field Log → Site/IQF → Sys Eng → Mkt Intel
 - CLAUDE.md auto-update rule added (runs end of every session)
+- BETA badge (neon green #39FF14, CSS glow) added to Site/IQF and Sys Eng tab headers
+- FeedbackModal component: rep name (prefilled from localStorage), branch dropdown, type selector (Bug/Feature/General), textarea → POST /api/slack-feedback
+- server.js /api/slack-feedback endpoint: proxies to SLACK_WEBHOOK_URL env var, formats structured Slack message
+- Canvas leader lines: copper line + dot from symbol bottom to label, only renders when gap > 20px screen (high zoom or large scale)
 - Pipe stick length: 19 ft (corrected from 13.12 ft)
 - Lugging tool auto-check when pipe size >= 2.5"
 - Facility Drawing Tool: fullscreen, zoom/pan, rotation, snap, auto-fittings, auto-couplings at 19ft, elevation notes, BOM from drawing
