@@ -4854,6 +4854,42 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0) {
   ctx.restore();
 }
 
+// Elbow rotation for ortho L-shape routing. Returns degrees (0/90/180/270).
+// 0°=W↔N, 90°=N↔E, 180°=E↔S, 270°=S↔W
+function orthoElbowRot(dx, dy, flip) {
+  if(!flip) { // H-V: horizontal first, corner at (x2,y1)
+    if(dx>=0 && dy>0)  return 270;
+    if(dx>=0)          return 0;
+    if(dy>0)           return 180;
+    return 90;
+  } else {    // V-H: vertical first, corner at (x1,y2)
+    if(dy>0  && dx>=0) return 90;
+    if(dy<=0 && dx>=0) return 180;
+    if(dy>0)           return 0;
+    return 270;
+  }
+}
+
+// Splits any diagonal pipe elements into two ortho segments with an elbow (H-V routing).
+function straightenPipes(els) {
+  const result=[];
+  for(const el of els) {
+    if(el.type==='pipe'&&!el.isDrain&&Math.abs(el.x1-el.x2)>1&&Math.abs(el.y1-el.y2)>1) {
+      const cx=el.x2, cy=el.y1;
+      const dx=el.x2-el.x1, dy=el.y2-el.y1;
+      const id1=(Date.now()+Math.random()).toString(36);
+      const id2=(Date.now()+Math.random()).toString(36);
+      const id3=(Date.now()+Math.random()).toString(36);
+      result.push({...el,id:id1,x2:cx,y2:cy});
+      result.push({id:id2,type:'symbol',symbolId:'elbow90',x:cx,y:cy,rotation:orthoElbowRot(dx,dy,false),scale:0.7,label:''});
+      result.push({...el,id:id3,x1:cx,y1:cy});
+    } else {
+      result.push(el);
+    }
+  }
+  return result;
+}
+
 const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName, repName, proposedEquipment, drawingMode, setDrawingMode }, fdRef) {
   const canvasRef   = React.useRef(null);
   const dragRef     = React.useRef(null);
@@ -4867,8 +4903,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const isProposed  = drawingMode === 'proposed';
   const currentLSKey = isProposed ? FD_PR_LS : FD_AS_LS;
 
-  const [asisEls,     setAsisEls]     = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(FD_AS_LS)||'[]');}catch{return[];} });
-  const [proposedEls, setProposedEls] = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(FD_PR_LS)||'[]');}catch{return[];} });
+  const [asisEls,     setAsisEls]     = React.useState(()=>{ try{return straightenPipes(JSON.parse(localStorage.getItem(FD_AS_LS)||'[]'));}catch{return[];} });
+  const [proposedEls, setProposedEls] = React.useState(()=>{ try{return straightenPipes(JSON.parse(localStorage.getItem(FD_PR_LS)||'[]'));}catch{return[];} });
   const els    = isProposed ? proposedEls : asisEls;
   const setEls = isProposed ? setProposedEls : setAsisEls;
   const [tool,         setTool]         = React.useState('wall');
@@ -4890,6 +4926,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const lastTapRef     = React.useRef({time:0,x:0,y:0});
   const lastDrawTool   = React.useRef('pipe');
   const prevPipeRef    = React.useRef(null); // {x,y,angle} of last completed pipe
+  const [orthoFlip,    setOrthoFlip]    = React.useState(false); // false=H-V, true=V-H
+  const orthoFlipRef   = React.useRef(false);
   const [showBom,      setShowBom]      = React.useState(false);
   const [pipeSnap,     setPipeSnap]     = React.useState(null); // inline fitting snap preview
   const [hoverSym,     setHoverSym]     = React.useState(null); // id of symbol under cursor for rotate handle
@@ -5210,62 +5248,85 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
                  x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize:null,pipeColor:null});
           setDrawing(null); setSnapPt(null);
         } else {
-          // Pipe completion: auto-elbow, auto-NPT-adapter, auto-couplings
-          if(sp2) { const lk=orthoLock(drawing.x1,drawing.y1,ex,ey); ex=lk.x; ey=lk.y; }
-          // Drain lines: no NPT/elbow/coupling auto-extras — just the pipe segment
+          // Pipe completion: ortho L-shape routing, auto-NPT, auto-couplings
+          // Drain lines: single segment, no extras
           if(drainMode) {
             mutate(p=>[...p,{id:(Date.now()+Math.random()).toString(36),type:'pipe',
               x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,isDrain:true,drainSize}]);
             setDrawing(null); setSnapPt(null); return;
           }
-          const newAngle=Math.atan2(ey-drawing.y1,ex-drawing.x1);
-          const pipeLen=Math.hypot(ex-drawing.x1,ey-drawing.y1);
-          const ftLen=pipeLen/FD.G;
-          const sticks=Math.max(1,Math.ceil(ftLen/19));
-          const extraEls=[];
-
-          // Auto-elbow at direction change >30°
-          if(prevPipeRef.current) {
-            const {x:px,y:py,angle:prevAngle}=prevPipeRef.current;
-            if(Math.hypot(drawing.x1-px,drawing.y1-py)<FD.G*0.6) {
-              let diff=((newAngle-prevAngle)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);
-              if(diff>Math.PI) diff=Math.PI*2-diff;
-              if(diff>Math.PI/6) extraEls.push({
-                id:(Date.now()+Math.random()+0.01).toString(36),
-                type:'symbol',symbolId:'elbow90',
-                x:drawing.x1,y:drawing.y1,
-                rotation:((prevAngle*180/Math.PI)%360+360)%360,scale:0.7,label:'',
-              });
-            }
-          }
-          prevPipeRef.current={x:ex,y:ey,angle:newAngle};
-
-          // FIX 3: Auto NPT adapter at equipment connections
+          const flip=orthoFlipRef.current;
+          const dx=ex-drawing.x1, dy=ey-drawing.y1;
           const EQ=['compressor','dryer','tank','filter','ows'];
-          if(drawing.startSnap?.sourceEl&&EQ.includes(drawing.startSnap.sourceEl.symbolId))
-            extraEls.push({id:(Date.now()+Math.random()+0.02).toString(36),
-              type:'symbol',symbolId:'nptadapt',x:drawing.x1,y:drawing.y1,
-              rotation:((newAngle*180/Math.PI+180)%360+360)%360,scale:0.7,label:`${pipeSize} NPT`});
-          if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
-            extraEls.push({id:(Date.now()+Math.random()+0.03).toString(36),
-              type:'symbol',symbolId:'nptadapt',x:ex,y:ey,
-              rotation:((newAngle*180/Math.PI)%360+360)%360,scale:0.7,label:`${pipeSize} NPT`});
+          const extraEls=[];
+          const idg=()=>(Date.now()+Math.random()).toString(36);
 
-          // FIX 4: Auto couplings at each 19 ft interval
-          for(let i=1;i<sticks;i++) {
-            const t=(i*19*FD.G)/pipeLen;
-            extraEls.push({id:(Date.now()+Math.random()+i*0.1+0.04).toString(36),
-              type:'symbol',symbolId:'coupling',
-              x:Math.round(drawing.x1+(ex-drawing.x1)*t),
-              y:Math.round(drawing.y1+(ey-drawing.y1)*t),
-              rotation:((newAngle*180/Math.PI)%360+360)%360,scale:0.8,label:pipeSize});
+          if(Math.abs(dx)<1||Math.abs(dy)<1) {
+            // Already perfectly ortho — single segment
+            const pipeLen=Math.hypot(dx,dy);
+            const sticks=Math.max(1,Math.ceil(pipeLen/FD.G/19));
+            const angle=Math.atan2(dy,dx);
+            const rotDeg=((angle*180/Math.PI)%360+360)%360;
+            if(drawing.startSnap?.sourceEl&&EQ.includes(drawing.startSnap.sourceEl.symbolId))
+              extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',x:drawing.x1,y:drawing.y1,
+                rotation:((rotDeg+180)%360),scale:0.7,label:`${pipeSize} NPT`});
+            if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
+              extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',x:ex,y:ey,
+                rotation:rotDeg,scale:0.7,label:`${pipeSize} NPT`});
+            for(let i=1;i<sticks;i++){
+              const t=i*19*FD.G/pipeLen;
+              extraEls.push({id:idg(),type:'symbol',symbolId:'coupling',
+                x:Math.round(drawing.x1+dx*t),y:Math.round(drawing.y1+dy*t),
+                rotation:rotDeg,scale:0.8,label:pipeSize});
+            }
+            prevPipeRef.current={x:ex,y:ey,angle};
+            mutate(p=>[...p,
+              {id:idg(),type:'pipe',x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize,pipeColor,sticks},
+              ...extraEls]);
+          } else {
+            // Diagonal → L-shape: two ortho segments + auto-elbow at corner
+            const cx=flip?drawing.x1:ex, cy=flip?ey:drawing.y1;
+            const d1x=cx-drawing.x1, d1y=cy-drawing.y1;
+            const len1=Math.hypot(d1x,d1y);
+            const ang1=Math.atan2(d1y,d1x);
+            const rot1=((ang1*180/Math.PI)%360+360)%360;
+            const sticks1=Math.max(1,Math.ceil(len1/FD.G/19));
+            const d2x=ex-cx, d2y=ey-cy;
+            const len2=Math.hypot(d2x,d2y);
+            const ang2=Math.atan2(d2y,d2x);
+            const rot2=((ang2*180/Math.PI)%360+360)%360;
+            const sticks2=Math.max(1,Math.ceil(len2/FD.G/19));
+            // Auto-elbow at corner
+            extraEls.push({id:idg(),type:'symbol',symbolId:'elbow90',
+              x:cx,y:cy,rotation:orthoElbowRot(dx,dy,flip),scale:0.7,label:''});
+            // NPT at start connection
+            if(drawing.startSnap?.sourceEl&&EQ.includes(drawing.startSnap.sourceEl.symbolId))
+              extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',
+                x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.7,label:`${pipeSize} NPT`});
+            // NPT at end connection
+            if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
+              extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',
+                x:ex,y:ey,rotation:rot2,scale:0.7,label:`${pipeSize} NPT`});
+            // Couplings on seg1
+            for(let i=1;i<sticks1;i++){
+              const t=i*19*FD.G/len1;
+              extraEls.push({id:idg(),type:'symbol',symbolId:'coupling',
+                x:Math.round(drawing.x1+d1x*t),y:Math.round(drawing.y1+d1y*t),
+                rotation:rot1,scale:0.8,label:pipeSize});
+            }
+            // Couplings on seg2
+            for(let i=1;i<sticks2;i++){
+              const t=i*19*FD.G/len2;
+              extraEls.push({id:idg(),type:'symbol',symbolId:'coupling',
+                x:Math.round(cx+d2x*t),y:Math.round(cy+d2y*t),
+                rotation:rot2,scale:0.8,label:pipeSize});
+            }
+            prevPipeRef.current={x:ex,y:ey,angle:ang2};
+            mutate(p=>[...p,
+              {id:idg(),type:'pipe',x1:drawing.x1,y1:drawing.y1,x2:cx,y2:cy,pipeSize,pipeColor,sticks:sticks1},
+              {id:idg(),type:'pipe',x1:cx,y1:cy,x2:ex,y2:ey,pipeSize,pipeColor,sticks:sticks2},
+              ...extraEls]);
           }
-
-          mutate(p=>[...p,
-            {id:(Date.now()+Math.random()).toString(36),type:'pipe',
-             x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey,pipeSize,pipeColor,sticks},
-            ...extraEls,
-          ]);
           setDrawing(null); setSnapPt(null);
         }
       }
@@ -5343,7 +5404,10 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       const sp=findSnapPoint(raw.x,raw.y,els);
       setSnapPt(sp);
       let nx2=sp?sp.x:snapped.x, ny2=sp?sp.y:snapped.y;
-      if(sp&&tool==='pipe') { const lk=orthoLock(drawing.x1,drawing.y1,nx2,ny2); nx2=lk.x; ny2=lk.y; }
+      if(tool==='pipe'&&!drainMode) {
+        const flip=!!e.shiftKey;
+        if(flip!==orthoFlipRef.current){orthoFlipRef.current=flip;setOrthoFlip(flip);}
+      }
       setDrawing(d=>({...d, x2:nx2, y2:ny2}));
       return;
     }
@@ -5573,8 +5637,12 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       if((e.key==='Delete'||e.key==='Backspace')&&selected&&!labelIn.show){rmEl(selected);}
       if(e.key==='Escape'){setDrawing(null);setSnapPt(null);setLabelIn({show:false,x:0,y:0,text:'',forId:null,isPipe:false});}
       if(e.key==='f'||e.key==='F'){fitView();}
+      if(e.key==='Shift'){orthoFlipRef.current=true; setOrthoFlip(true);}
     };
-    window.addEventListener('keydown',fn); return()=>window.removeEventListener('keydown',fn);
+    const fnUp=e=>{if(e.key==='Shift'){orthoFlipRef.current=false; setOrthoFlip(false);}};
+    window.addEventListener('keydown',fn);
+    window.addEventListener('keyup',fnUp);
+    return()=>{window.removeEventListener('keydown',fn);window.removeEventListener('keyup',fnUp);};
   },[selected,labelIn.show,els]);
 
   // Canvas draw
@@ -5848,13 +5916,35 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       ctx.save(); ctx.setLineDash([6,4]);
       if(drawing.isDim) {
         ctx.strokeStyle='#E5E7EB'; ctx.lineWidth=1.5; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
       } else if(drainMode && tool==='pipe') {
         ctx.strokeStyle=FD_DRAIN_HEX; ctx.lineWidth=FD_DRAIN_W[drainSize]||2; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
+      } else if(tool==='pipe') {
+        const col=(FD_PIPE_MATS[pipeColor]||FD_PIPE_MATS.blue).hex;
+        ctx.strokeStyle=col; ctx.lineWidth=FD_PIPE_W[pipeSize]||3; ctx.lineCap='round';
+        const pdx=drawing.x2-drawing.x1, pdy=drawing.y2-drawing.y1;
+        if(Math.abs(pdx)<1||Math.abs(pdy)<1) {
+          // Already ortho — single segment preview
+          ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
+        } else {
+          // L-shape ghost: two segments meeting at corner
+          const pcx=orthoFlip?drawing.x1:drawing.x2, pcy=orthoFlip?drawing.y2:drawing.y1;
+          ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(pcx,pcy); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
+          // Corner marker dot
+          ctx.setLineDash([]);
+          ctx.beginPath(); ctx.arc(pcx,pcy,5,0,Math.PI*2);
+          ctx.fillStyle=col; ctx.fill();
+          // Routing mode label near corner
+          ctx.fillStyle='rgba(255,255,255,0.8)';
+          ctx.font=`bold ${Math.round(8/zoom)}px 'Barlow Semi Condensed',sans-serif`;
+          ctx.textAlign='center';
+          ctx.fillText(orthoFlip?'V-H':'H-V',pcx,pcy-Math.round(12/zoom));
+        }
       } else {
-        ctx.strokeStyle=tool==='pipe'?((FD_PIPE_MATS[pipeColor]||FD_PIPE_MATS.blue).hex):'#9CA3AF';
-        ctx.lineWidth=tool==='pipe'?(FD_PIPE_W[pipeSize]||3):4; ctx.lineCap='round';
+        ctx.strokeStyle='#9CA3AF'; ctx.lineWidth=4; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
       }
-      ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
       ctx.setLineDash([]); ctx.restore();
     }
 
@@ -5941,7 +6031,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     ctx.fillText(`${sbFt} ft`,sbX+sbPx/2,sbY2-6);
     ctx.restore();
 
-  },[els,drawing,selected,hoverSym,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym,drainMode,drainSize]);
+  },[els,drawing,selected,hoverSym,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym,drainMode,drainSize,orthoFlip]);
 
   function buildExportCanvas() {
     const src=canvasRef.current; if(!src) return null;
@@ -6251,7 +6341,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         <span>{els.filter(e=>e.type==='dim').length} dims</span>
         <span>{els.filter(e=>e.type==='symbol').length} symbols</span>
         {selected&&<span style={{color:C.copper}}>selected — DEL removes · drag handle to rotate/resize · ESC cancels</span>}
-        {drawing&&<span style={{color:C.copper}}>click endpoint · ESC cancels{snapPt?' · snapping to connector':''}</span>}
+        {drawing&&tool==='pipe'&&!drainMode&&<span style={{color:C.copper}}>click endpoint · ESC cancels{snapPt?' · snapping':''} · SHIFT={orthoFlip?'V-H (active)':'flip to V-H'}</span>}
+        {drawing&&(tool!=='pipe'||drainMode)&&<span style={{color:C.copper}}>click endpoint · ESC cancels{snapPt?' · snapping to connector':''}</span>}
         {tool==='select'&&!selected&&!drawing&&<span style={{color:C.dim}}>drag empty space to pan · scroll to zoom · F to fit</span>}
       </div>
 
