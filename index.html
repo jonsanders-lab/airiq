@@ -728,6 +728,7 @@ function App() {
   const [tab, setTab]                       = React.useState("airiq");
   const [proposedEquipment, setProposedEquipment] = React.useState(null);
   const [drawingMode, setDrawingMode]       = React.useState('asis');
+  const [drawingReset, setDrawingReset]     = React.useState(0);
 
   React.useEffect(() => {
     if (localStorage.getItem(AUTH_KEY) === PASSWORD) setAuthed(true);
@@ -784,11 +785,11 @@ function App() {
         </div>
         <div style={{ display: tab==="estimator" ? "block" : "none",
           height:"100%", overflowY:"auto" }}>
-          <Estimator setTab={setTab} setProposedEquipment={setProposedEquipment} setDrawingMode={setDrawingMode}/>
+          <Estimator setTab={setTab} setProposedEquipment={setProposedEquipment} setDrawingMode={setDrawingMode} proposedEquipment={proposedEquipment} setDrawingReset={setDrawingReset}/>
         </div>
         <div style={{ display: tab==="site-design" ? "block" : "none",
           height:"100%", overflowY:"auto" }}>
-          <SiteSurvey proposedEquipment={proposedEquipment} drawingMode={drawingMode} setDrawingMode={setDrawingMode}/>
+          <SiteSurvey proposedEquipment={proposedEquipment} setProposedEquipment={setProposedEquipment} drawingMode={drawingMode} setDrawingMode={setDrawingMode} drawingReset={drawingReset} setDrawingReset={setDrawingReset}/>
         </div>
         <div style={{ display: tab==="market-intel" ? "block" : "none",
           height:"100%", overflowY:"auto" }}>
@@ -2612,7 +2613,7 @@ function EnergyCalculator() {
   );
 }
 
-function Estimator({ setTab, setProposedEquipment, setDrawingMode }) {
+function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquipment, setDrawingReset }) {
   const [job, setJob]         = React.useState({customer:"",address:"",pipeSize:"1\"",pipeColor:"Blue",totalRun:"",dropSize:"3/4\""});
   const [comps, setComps]     = React.useState([]);
   const [dryers, setDryers]   = React.useState([]);
@@ -3509,6 +3510,21 @@ No fabricated prices.`;
         </div>{/* end padding div */}
       </div>
 
+      {/* ── Active site drawing tier banner ── */}
+      {proposedEquipment && sysRec && !sysRec.error && (
+        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',
+          background:'rgba(34,197,94,0.07)',border:'1px solid rgba(34,197,94,0.3)',
+          borderRadius:8,padding:'10px 14px',marginBottom:10,
+        }}>
+          <span style={{fontFamily:F.mono,fontSize:10,color:C.green,letterSpacing:2,flexShrink:0}}>📐 SITE DRAWING</span>
+          <span style={{fontFamily:F.body,fontSize:13,color:C.text,flex:1,minWidth:120}}>{proposedEquipment.model}{proposedEquipment.dual?' (×2)':''}</span>
+          <button onClick={()=>setTab&&setTab('site-design')} style={{
+            padding:'5px 12px',fontFamily:F.mono,fontSize:9,letterSpacing:1,
+            background:'none',border:`1px solid ${C.green}`,borderRadius:5,color:C.green,cursor:'pointer',flexShrink:0,
+          }}>VIEW DRAWING →</button>
+        </div>
+      )}
+
       {/* ── Good / Better / Best Output ── */}
       {sysRec && !sysRec.error && (() => {
         const tiers = [
@@ -3605,16 +3621,29 @@ No fabricated prices.`;
                     }}>
                       LOAD INTO ESTIMATOR ↓
                     </button>
-                    {/* Send to Site Drawing button */}
-                    {setTab && (
-                      <button onClick={()=>{ setProposedEquipment(rec); setDrawingMode('proposed'); setTab('site-design'); }} style={{
-                        padding:"8px 0", borderRadius:7, border:`1px solid ${C.green}`,
-                        background:"none", color:C.green, fontSize:11, letterSpacing:2,
-                        fontFamily:F.head, cursor:"pointer", transition:"all 0.15s",
-                      }}>
-                        SEND TO SITE DRAWING ↗
-                      </button>
-                    )}
+                    {/* Send to / Change tier in Site Drawing */}
+                    {setTab && (() => {
+                      const isActive = proposedEquipment && proposedEquipment.model === rec.model && !!proposedEquipment.dual === !!rec.dual;
+                      const hasDifferent = proposedEquipment && !isActive;
+                      return (
+                        <button onClick={()=>{
+                          if(hasDifferent) {
+                            if(!window.confirm(`Replace proposed drawing?\n\nCurrent: ${proposedEquipment.model}\nNew: ${rec.model}`)) return;
+                            try{localStorage.removeItem('airiq_facility_drawing_proposed');}catch{}
+                            setDrawingReset(n=>n+1);
+                          }
+                          setProposedEquipment(rec); setDrawingMode('proposed'); setTab('site-design');
+                        }} style={{
+                          padding:"8px 0", borderRadius:7,
+                          border:`1px solid ${isActive?C.copper:C.green}`,
+                          background: isActive?'rgba(193,122,53,0.12)':'none',
+                          color: isActive?C.copper:C.green, fontSize:11, letterSpacing:2,
+                          fontFamily:F.head, cursor:"pointer", transition:"all 0.15s",
+                        }}>
+                          {isActive ? '✓ IN SITE DRAWING' : hasDifferent ? 'CHANGE TIER ↗' : 'SEND TO SITE DRAWING ↗'}
+                        </button>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -4418,10 +4447,11 @@ const FD_SYMBOLS   = [
 ];
 
 // Connection points per symbol (relative to center 0,0, before rotation/scale)
+// Tank uses ±20 (multiple of grid G=20) so connectors land on the 20px grid from any grid-aligned position
 const FD_CONNECTORS = {
   compressor:[{x:-32,y:0},{x:32,y:0}],
   dryer:     [{x:-28,y:0},{x:28,y:0}],
-  tank:      [{x:0,y:-24},{x:0,y:24}],
+  tank:      [{x:0,y:-20},{x:0,y:20}],
   filter:    [{x:-16,y:0},{x:16,y:0}],
   ows:       [{x:-28,y:0},{x:28,y:0}],
   ballvalve: [{x:-20,y:0},{x:20,y:0}],
@@ -4442,52 +4472,59 @@ function getConnectors(el) {
 const FD_TEMPLATES = {
   single(){
     const id=()=>(Date.now()+Math.random()).toString(36);
+    // Tank at y=380 → bottom connector at y=400 (aligns with horizontal pipe train)
+    // Tank at y=380 → top connector at y=360 (drop pipe runs at y=360)
+    // Drops at y=380 → top connector at y=360 (aligns with top pipe)
     return [
       {id:id(),type:'symbol',symbolId:'compressor',x:200,y:400,label:'Compressor',rotation:0,scale:1},
       {id:id(),type:'symbol',symbolId:'dryer',     x:380,y:400,label:'Air Dryer', rotation:0,scale:1},
       {id:id(),type:'symbol',symbolId:'filter',    x:540,y:400,label:'Filter',    rotation:0,scale:1},
-      {id:id(),type:'symbol',symbolId:'tank',      x:700,y:360,label:'Rcvr Tank', rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'tank',      x:700,y:380,label:'Rcvr Tank', rotation:0,scale:1},
       {id:id(),type:'pipe',x1:232,y1:400,x2:352,y2:400,pipeSize:'1"',pipeColor:'blue'},
       {id:id(),type:'pipe',x1:408,y1:400,x2:524,y2:400,pipeSize:'1"',pipeColor:'blue'},
-      {id:id(),type:'pipe',x1:556,y1:400,x2:700,y2:384,pipeSize:'1"',pipeColor:'blue'},
-      {id:id(),type:'pipe',x1:700,y1:336,x2:920,y2:336,pipeSize:'1"',pipeColor:'blue'},
-      {id:id(),type:'symbol',symbolId:'drop',x:780,y:340,label:'Drop 1',rotation:0,scale:1},
-      {id:id(),type:'symbol',symbolId:'drop',x:900,y:340,label:'Drop 2',rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:556,y1:400,x2:700,y2:400,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:700,y1:360,x2:940,y2:360,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'drop',x:780,y:380,label:'Drop 1',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:900,y:380,label:'Drop 2',rotation:0,scale:1},
     ];
   },
   loop(){
     const id=()=>(Date.now()+Math.random()).toString(36);
+    // Tank at y=380 → bottom=400 (aligns with dryer output), top=360 (feeds loop at y=360→y=180)
+    // Drops at y=200 → top connectors at y=180 (aligns with top loop pipe)
     return [
       {id:id(),type:'symbol',symbolId:'compressor',x:160,y:400,label:'Compressor',rotation:0,scale:1},
       {id:id(),type:'symbol',symbolId:'dryer',     x:340,y:400,label:'Air Dryer', rotation:0,scale:1},
-      {id:id(),type:'symbol',symbolId:'tank',      x:500,y:360,label:'Rcvr Tank', rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'tank',      x:500,y:380,label:'Rcvr Tank', rotation:0,scale:1},
       {id:id(),type:'pipe',x1:192,y1:400,x2:312,y2:400,pipeSize:'1"',pipeColor:'blue'},
-      {id:id(),type:'pipe',x1:368,y1:400,x2:500,y2:384,pipeSize:'1"',pipeColor:'blue'},
-      {id:id(),type:'pipe',x1:500,y1:336,x2:500,y2:180,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:368,y1:400,x2:500,y2:400,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:500,y1:360,x2:500,y2:180,pipeSize:'1"',pipeColor:'blue'},
       {id:id(),type:'pipe',x1:500,y1:180,x2:1000,y2:180,pipeSize:'1"',pipeColor:'blue'},
       {id:id(),type:'pipe',x1:1000,y1:180,x2:1000,y2:620,pipeSize:'1"',pipeColor:'blue'},
       {id:id(),type:'pipe',x1:1000,y1:620,x2:500,y2:620,pipeSize:'1"',pipeColor:'blue'},
-      {id:id(),type:'pipe',x1:500,y1:620,x2:500,y2:384,pipeSize:'1"',pipeColor:'blue'},
-      {id:id(),type:'symbol',symbolId:'drop',x:620,y:200,label:'Drop 1',rotation:0,scale:1},
-      {id:id(),type:'symbol',symbolId:'drop',x:760,y:200,label:'Drop 2',rotation:0,scale:1},
-      {id:id(),type:'symbol',symbolId:'drop',x:900,y:200,label:'Drop 3',rotation:0,scale:1},
-      {id:id(),type:'symbol',symbolId:'drop',x:760,y:600,label:'Drop 4',rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:500,y1:620,x2:500,y2:400,pipeSize:'1"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'drop',x:600,y:200,label:'Drop 1',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:720,y:200,label:'Drop 2',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:840,y:200,label:'Drop 3',rotation:0,scale:1},
+      {id:id(),type:'symbol',symbolId:'drop',x:960,y:200,label:'Drop 4',rotation:0,scale:1},
     ];
   },
   dual(){
     const id=()=>(Date.now()+Math.random()).toString(36);
+    // Dryer at 540: left=512, right=568. Filter at 700: left=684, right=716.
+    // Tank at (860,380): bottom=400 aligns with pipe train, top=360.
     return [
       {id:id(),type:'symbol',symbolId:'compressor',x:160,y:300,label:'Compressor 1',rotation:0,scale:1},
       {id:id(),type:'symbol',symbolId:'compressor',x:160,y:500,label:'Compressor 2',rotation:0,scale:1},
       {id:id(),type:'pipe',x1:192,y1:300,x2:360,y2:300,pipeSize:'1.5"',pipeColor:'blue'},
       {id:id(),type:'pipe',x1:192,y1:500,x2:360,y2:500,pipeSize:'1.5"',pipeColor:'blue'},
       {id:id(),type:'pipe',x1:360,y1:300,x2:360,y2:500,pipeSize:'1.5"',pipeColor:'blue'},
-      {id:id(),type:'pipe',x1:360,y1:400,x2:480,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:360,y1:400,x2:512,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
       {id:id(),type:'symbol',symbolId:'dryer',x:540,y:400,label:'Air Dryer',rotation:0,scale:1},
-      {id:id(),type:'pipe',x1:568,y1:400,x2:680,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'pipe',x1:568,y1:400,x2:684,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
       {id:id(),type:'symbol',symbolId:'filter',x:700,y:400,label:'Filter',rotation:0,scale:1},
-      {id:id(),type:'pipe',x1:716,y1:400,x2:820,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
-      {id:id(),type:'symbol',symbolId:'tank',x:860,y:360,label:'Rcvr Tank',rotation:0,scale:1},
+      {id:id(),type:'pipe',x1:716,y1:400,x2:860,y2:400,pipeSize:'1.5"',pipeColor:'blue'},
+      {id:id(),type:'symbol',symbolId:'tank',x:860,y:380,label:'Rcvr Tank',rotation:0,scale:1},
     ];
   },
 };
@@ -4622,6 +4659,27 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const lastDrawTool   = React.useRef('pipe');
   const prevPipeRef    = React.useRef(null); // {x,y,angle} of last completed pipe
   const [showBom,      setShowBom]      = React.useState(false);
+  const [pipeSnap,     setPipeSnap]     = React.useState(null); // inline fitting snap preview
+
+  // Fittings that can be inserted inline into an existing pipe segment
+  const INLINE_FITTINGS = ['ballvalve','elbow90','elbow45','tee','filter','ows'];
+
+  function findPipeSnap(wx, wy) {
+    if(!INLINE_FITTINGS.includes(activeSym)) return null;
+    const threshold = 18/zoomRef.current;
+    for(const el of els) {
+      if(el.type !== 'pipe') continue;
+      const {x1,y1,x2,y2} = el;
+      const dx=x2-x1, dy=y2-y1, len2=dx*dx+dy*dy;
+      if(!len2) continue;
+      const t = Math.max(0.08, Math.min(0.92, ((wx-x1)*dx+(wy-y1)*dy)/len2));
+      const cx=x1+t*dx, cy=y1+t*dy;
+      if(Math.hypot(wx-cx,wy-cy)<threshold) {
+        return { pipe:el, t, sx:snap(cx), sy:snap(cy), angle:Math.atan2(dy,dx) };
+      }
+    }
+    return null;
+  }
 
   React.useEffect(()=>{ zoomRef.current=zoom; },[zoom]);
   React.useEffect(()=>{ panRef.current=pan; },[pan]);
@@ -4634,15 +4692,16 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       if(prev.length>0) return prev; // don't overwrite if rep already has a proposed drawing
       const id=()=>(Date.now()+Math.random()).toString(36);
       const items=[];
+      // Tank at y=380 so its bottom connector (y+20=400) aligns with the horizontal pipe train
       if(proposedEquipment.dual){
-        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:280,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
-        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:460,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
-        if(proposedEquipment.dryer)  items.push({id:id(),type:'symbol',symbolId:'dryer', x:380,y:370,label:'Air Dryer',rotation:0,scale:1});
-        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:560,y:340,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1});
+        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:300,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
+        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:500,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
+        if(proposedEquipment.dryer)  items.push({id:id(),type:'symbol',symbolId:'dryer', x:400,y:400,label:'Air Dryer',rotation:0,scale:1});
+        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:580,y:380,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1});
       } else {
         items.push({id:id(),type:'symbol',symbolId:'compressor',x:200,y:400,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
         if(proposedEquipment.dryer)  items.push({id:id(),type:'symbol',symbolId:'dryer', x:380,y:400,label:'Air Dryer',rotation:0,scale:1});
-        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:560,y:360,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1});
+        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:560,y:380,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1});
       }
       try{localStorage.setItem(FD_PR_LS,JSON.stringify(items));}catch{}
       return items;
@@ -4662,7 +4721,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const undo     = ()  => { const p=undoRef.current.pop(); if(p!=null){setEls(p);persist(p);} };
   const clearAll = ()  => { if(!window.confirm('Clear entire drawing?'))return; mutate(()=>[]); setSelected(null); };
   const fitView  = ()  => { setZoom(1); setPan({x:0,y:0}); };
-  const changeTool = t => { if(t!=='select'&&t!=='erase') lastDrawTool.current=t; setTool(t); };
+  const changeTool = t => { if(t!=='select'&&t!=='erase') lastDrawTool.current=t; setTool(t); setPipeSnap(null); };
 
   function getCanvasPos(e) {
     const cv=canvasRef.current; if(!cv) return {x:0,y:0};
@@ -4888,6 +4947,28 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     }
 
     if(tool==='symbol') {
+      // Inline fitting insertion: snap to existing pipe, split it, insert fitting
+      if(pipeSnap && INLINE_FITTINGS.includes(activeSym)) {
+        const {pipe, sx, sy, angle} = pipeSnap;
+        const fitAngle = ((angle*180/Math.PI)%360+360)%360;
+        const fid  = (Date.now()+Math.random()).toString(36);
+        const pid1 = (Date.now()+Math.random()+0.1).toString(36);
+        const pid2 = (Date.now()+Math.random()+0.2).toString(36);
+        const newFitting = {id:fid, type:'symbol', symbolId:activeSym, x:sx, y:sy, label:'', rotation:fitAngle, scale:1};
+        const newPipe1   = {...pipe, id:pid1, x2:sx, y2:sy};
+        const newPipe2   = {...pipe, id:pid2, x1:sx, y1:sy};
+        const extraEls   = [newFitting, newPipe1, newPipe2];
+        if(activeSym === 'tee') {
+          // Perpendicular stub for tee
+          const perpAngle = angle + Math.PI/2;
+          extraEls.push({id:(Date.now()+Math.random()+0.3).toString(36), type:'pipe',
+            x1:sx, y1:sy, x2:snap(sx+Math.cos(perpAngle)*FD.G*3), y2:snap(sy+Math.sin(perpAngle)*FD.G*3),
+            pipeSize:pipe.pipeSize, pipeColor:pipe.pipeColor});
+        }
+        mutate(p=>[...p.filter(e=>e.id!==pipe.id), ...extraEls]);
+        setSelected(fid); setPipeSnap(null); return;
+      }
+      // Default: place symbol at cursor
       const id=(Date.now()+Math.random()).toString(36);
       addEl({id,type:'symbol',symbolId:activeSym,x:snapped.x,y:snapped.y,label:'',rotation:0,scale:1.2});
       setLabelIn({show:true,x:snapped.x,y:snapped.y-44,text:'',forId:id,isPipe:false});
@@ -4937,6 +5018,13 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     // Connector snap preview even before drawing starts
     if(tool==='pipe'||tool==='dim') {
       setSnapPt(findSnapPoint(raw.x,raw.y,els));
+    }
+
+    // Pipe inline-insertion snap preview for eligible fittings
+    if(tool==='symbol' && INLINE_FITTINGS.includes(activeSym)) {
+      setPipeSnap(findPipeSnap(raw.x,raw.y));
+    } else if(tool!=='symbol') {
+      if(pipeSnap) setPipeSnap(null);
     }
 
     // SELECT mode element manipulation
@@ -5267,6 +5355,33 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       ctx.stroke(); ctx.restore();
     }
 
+    // Pipe inline-insertion snap preview
+    if(pipeSnap && tool==='symbol') {
+      const {sx,sy,angle} = pipeSnap;
+      ctx.save();
+      // Green ring at snap point
+      ctx.beginPath(); ctx.arc(sx,sy,14,0,Math.PI*2);
+      ctx.strokeStyle='#22C55E'; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle='rgba(34,197,94,0.18)'; ctx.fill();
+      // Ghost direction line for elbow90
+      if(activeSym==='elbow90') {
+        const turn = angle + Math.PI/2;
+        ctx.beginPath(); ctx.moveTo(sx,sy);
+        ctx.lineTo(sx+Math.cos(turn)*FD.G*4, sy+Math.sin(turn)*FD.G*4);
+        ctx.strokeStyle='rgba(34,197,94,0.6)'; ctx.lineWidth=2; ctx.setLineDash([4,4]); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Ghost stub for tee
+      if(activeSym==='tee') {
+        const perp = angle + Math.PI/2;
+        ctx.beginPath(); ctx.moveTo(sx,sy);
+        ctx.lineTo(sx+Math.cos(perp)*FD.G*3, sy+Math.sin(perp)*FD.G*3);
+        ctx.strokeStyle='rgba(34,197,94,0.6)'; ctx.lineWidth=2; ctx.setLineDash([4,4]); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
+
     ctx.restore(); // end zoom/pan transform
 
     // Screen-space overlays (fixed size regardless of zoom)
@@ -5275,7 +5390,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     ctx.fillText('1 sq = 1 ft',8,FD.H-8);
     ctx.restore();
 
-  },[els,drawing,selected,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt]);
+  },[els,drawing,selected,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym]);
 
   function buildExportCanvas() {
     const src=canvasRef.current; if(!src) return null;
@@ -5678,7 +5793,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 });
 
 // ─── SITE SURVEY COMPONENT ────────────────────────────────────────────────────
-function SiteSurvey({ proposedEquipment, drawingMode, setDrawingMode }) {
+function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setDrawingMode, drawingReset, setDrawingReset }) {
   const LS_KEY = "airiq_site_survey_draft";
   const today = new Date().toISOString().slice(0,10);
   const BLANK_FORM = {
@@ -5729,6 +5844,9 @@ function SiteSurvey({ proposedEquipment, drawingMode, setDrawingMode }) {
   const [savedData, setSavedData]       = React.useState(null);
   const [drawingOpen, setDrawingOpen]   = React.useState(false);
   const drawingRef                      = React.useRef(null);
+  const SESSIONS_KEY = 'airiq_sessions';
+  const [sessions, setSessions]         = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(SESSIONS_KEY)||'[]');}catch{return[];} });
+  const [showSessions, setShowSessions] = React.useState(false);
   const [repEmail, setRepEmail]   = React.useState(() => {
     try { return localStorage.getItem("airiq_rep_email")||""; } catch { return ""; }
   });
@@ -5746,6 +5864,64 @@ function SiteSurvey({ proposedEquipment, drawingMode, setDrawingMode }) {
   }
 
   function f(field, val) { setForm({[field]:val}); }
+
+  function persistSessions(list) {
+    setSessions(list);
+    try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(list)); } catch(e) {}
+  }
+
+  function saveSession() {
+    const defaultName = [form.customer, new Date().toLocaleDateString('en-US',{month:'numeric',day:'numeric'})].filter(Boolean).join(' — ');
+    const name = window.prompt('Session name:', defaultName);
+    if (!name) return;
+    let asIsDrawing = [], proposedDrawing = [];
+    try { asIsDrawing = JSON.parse(localStorage.getItem('airiq_facility_drawing_draft')||'[]'); } catch(e) {}
+    try { proposedDrawing = JSON.parse(localStorage.getItem('airiq_facility_drawing_proposed')||'[]'); } catch(e) {}
+    const session = {
+      id: Date.now().toString(36),
+      name: name.trim(),
+      date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
+      tier: proposedEquipment || null,
+      asIsDrawing,
+      proposedDrawing,
+    };
+    persistSessions([session, ...sessions]);
+  }
+
+  function loadSession(s) {
+    try { localStorage.setItem('airiq_facility_drawing_draft', JSON.stringify(s.asIsDrawing||[])); } catch(e) {}
+    try { localStorage.setItem('airiq_facility_drawing_proposed', JSON.stringify(s.proposedDrawing||[])); } catch(e) {}
+    if (setProposedEquipment) setProposedEquipment(s.tier||null);
+    const mode = (s.proposedDrawing||[]).length > 0 ? 'proposed' : 'asis';
+    if (setDrawingMode) setDrawingMode(mode);
+    if (setDrawingReset) setDrawingReset(n=>n+1);
+    setDrawingOpen(true);
+    setShowSessions(false);
+  }
+
+  function deleteSession(id) {
+    if (!window.confirm('Delete this session? This cannot be undone.')) return;
+    persistSessions(sessions.filter(s=>s.id!==id));
+  }
+
+  function newSession() {
+    const hasContent = (() => {
+      try {
+        const a = JSON.parse(localStorage.getItem('airiq_facility_drawing_draft')||'[]');
+        const p = JSON.parse(localStorage.getItem('airiq_facility_drawing_proposed')||'[]');
+        return a.length > 0 || p.length > 0;
+      } catch { return false; }
+    })();
+    if (hasContent) {
+      const choice = window.confirm('Save current session before starting fresh?\n\nOK = Save first\nCancel = Discard and start fresh');
+      if (choice) { saveSession(); }
+    }
+    try { localStorage.removeItem('airiq_facility_drawing_draft'); } catch(e) {}
+    try { localStorage.removeItem('airiq_facility_drawing_proposed'); } catch(e) {}
+    if (setProposedEquipment) setProposedEquipment(null);
+    if (setDrawingMode) setDrawingMode('asis');
+    if (setDrawingReset) setDrawingReset(n=>n+1);
+  }
 
   React.useEffect(() => {
     if (LUGGING_SIZES.includes(form.pipeSize) && !form.rentalLugging) {
@@ -5982,6 +6158,81 @@ function SiteSurvey({ proposedEquipment, drawingMode, setDrawingMode }) {
         )}
       </div>
 
+      {/* Sessions Panel */}
+      <div style={{marginBottom:16}}>
+        <div style={{display:"flex", gap:8}}>
+          <button onClick={()=>setShowSessions(p=>!p)} style={{
+            flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10,
+            padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center",
+            cursor:"pointer", fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:2,
+          }}>
+            <span>📐 SESSIONS{sessions.length>0?` (${sessions.length})`:''}</span>
+            <span style={{fontSize:14, transform:showSessions?"rotate(180deg)":"rotate(0deg)", transition:"transform 0.2s"}}>▾</span>
+          </button>
+          <button onClick={saveSession} style={{
+            background:"none", border:`1px solid ${C.green}`, borderRadius:10,
+            padding:"10px 12px", fontFamily:F.mono, fontSize:10, letterSpacing:1,
+            color:C.green, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
+          }}>💾 SAVE</button>
+          <button onClick={newSession} style={{
+            background:"none", border:`1px solid ${C.border}`, borderRadius:10,
+            padding:"10px 12px", fontFamily:F.mono, fontSize:10, letterSpacing:1,
+            color:C.dim, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0,
+          }}>✚ NEW</button>
+        </div>
+
+        {showSessions && (
+          <div style={{background:C.surface, border:`1px solid ${C.border}`, borderTopWidth:0,
+            borderRadius:"0 0 10px 10px", padding:"0 12px 12px"}}>
+            {sessions.length===0 && (
+              <div style={{color:C.dim, fontSize:12, fontFamily:F.mono, padding:"12px 0", letterSpacing:1}}>No sessions saved yet. Use 💾 SAVE to create one.</div>
+            )}
+            {sessions.map(s => (
+              <div key={s.id} style={{background:C.surface2, border:`1px solid ${C.border}`,
+                borderRadius:8, padding:"10px 12px", marginTop:8,
+                display:"flex", flexDirection:"column", gap:6}}>
+                <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8}}>
+                  <div>
+                    <div style={{fontFamily:F.body, fontSize:14, color:C.text, fontWeight:600, lineHeight:1.2}}>{s.name}</div>
+                    <div style={{fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginTop:3}}>{s.date}</div>
+                  </div>
+                  <div style={{display:"flex", gap:6, flexShrink:0}}>
+                    <button onClick={()=>loadSession(s)} style={{
+                      background:`linear-gradient(135deg,${C.copper} 0%,#A0632A 100%)`,
+                      border:"none", borderRadius:6, padding:"6px 11px",
+                      fontFamily:F.mono, fontSize:9, letterSpacing:1, color:"#fff",
+                      cursor:"pointer", whiteSpace:"nowrap"
+                    }}>LOAD →</button>
+                    <button onClick={()=>deleteSession(s.id)} style={{
+                      background:"none", border:`1px solid ${C.red}`, borderRadius:6,
+                      padding:"6px 9px", fontFamily:F.mono, fontSize:9, letterSpacing:1,
+                      color:C.red, cursor:"pointer", whiteSpace:"nowrap"
+                    }}>DEL</button>
+                  </div>
+                </div>
+                <div style={{display:"flex", flexWrap:"wrap", gap:6}}>
+                  {s.tier && (
+                    <div style={{background:C.surface3, borderRadius:4, padding:"3px 8px"}}>
+                      <span style={{fontFamily:F.mono, fontSize:8, color:C.dim, letterSpacing:1}}>SYS ENG: </span>
+                      <span style={{fontFamily:F.body, fontSize:11, color:C.copper}}>{s.tier.model}{s.tier.dual?' (×2)':''}</span>
+                    </div>
+                  )}
+                  {[
+                    ['AS-IS', `${(s.asIsDrawing||[]).length} elements`],
+                    ['PROPOSED', `${(s.proposedDrawing||[]).length} elements`],
+                  ].map(([lbl,val])=>(
+                    <div key={lbl} style={{background:C.surface3, borderRadius:4, padding:"3px 8px"}}>
+                      <span style={{fontFamily:F.mono, fontSize:8, color:C.dim, letterSpacing:1}}>{lbl}: </span>
+                      <span style={{fontFamily:F.body, fontSize:11, color:C.mid}}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Header + completion bar */}
       <div style={{marginBottom:16}}>
         <div style={{fontFamily:F.head, fontSize:26, letterSpacing:4, color:C.text, marginBottom:8}}>
@@ -6022,7 +6273,7 @@ function SiteSurvey({ proposedEquipment, drawingMode, setDrawingMode }) {
           <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0}}>{drawingOpen?'▲':'▼'}</span>
         </div>
         <div style={{overflow:'hidden',maxHeight:drawingOpen?'9999px':'0',transition:'max-height 0.3s ease'}}>
-          <FacilityDrawing ref={drawingRef} customerName={form.customer} repName={form.rep}
+          <FacilityDrawing key={drawingReset} ref={drawingRef} customerName={form.customer} repName={form.rep}
             proposedEquipment={proposedEquipment} drawingMode={drawingMode} setDrawingMode={setDrawingMode}/>
         </div>
       </div>
