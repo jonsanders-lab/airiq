@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 15, 2026**
+**Last updated: June 15, 2026 (updated end-of-session)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -27,8 +27,8 @@ Railway volume mounted at /app/data for persistent storage
 - Tab 1: AirIQ — AI sales assistant with live ST pricing and inventory
 - Tab 2: Wingman — Mission Brief, Field Intel, Log a Win
 - Tab 3: Field Log — daily stop tracker
-- Tab 4: Sys Eng — 7-step system engineering tool with Design Advisor, Energy Calculator, BOM generator
-- Tab 5: Site Design — IQF Site Survey form + Facility Drawing Tool
+- Tab 4: Site / IQF — IQF Site Survey form + Facility Drawing Tool
+- Tab 5: Sys Eng — 7-step system engineering tool with Design Advisor, Energy Calculator, BOM generator
 - Tab 6: Mkt Intel — placeholder
 
 ## KEY COMPLETED FEATURES
@@ -38,7 +38,13 @@ Railway volume mounted at /app/data for persistent storage
 - Google Sheets integration — Site Survey saves to "IQF - AirIQ Site Surveys" (Sheet ID: 1Zrzr_PgEMmMmclJ2W1Dere-JEKYmaB4xa-N4MMUIUuI)
 - Gmail OAuth refresh token covers both Gmail + Sheets scopes
 - Voice input model number normalization (HD 30 → HD30)
-- Series stock queries (HTM stock, HD stock) bypass Claude and hit inventory directly
+- Series stock queries render as clean HTML tables (HTM stock, HD stock, HB stock etc) — bypass Claude, hit inventory directly
+- Single model ST lookup renders as clean styled card with variant table (formatSTReply)
+- Multi-model parallel ST lookup with 6s timeout and proper tool_use/tool_result handling for all tool blocks
+- Pressure variant stocking rules in system prompt (HD/HT/HTV/HV stock 116psi only; HB stocks 116/145/181; HTM stocks 145psi only)
+- HB belt drive equivalent output hallucination fixed in system prompt
+- Tab order updated: AirIQ → Wingman → Field Log → Site/IQF → Sys Eng → Mkt Intel
+- CLAUDE.md auto-update rule added (runs end of every session)
 - Pipe stick length: 19 ft (corrected from 13.12 ft)
 - Lugging tool auto-check when pipe size >= 2.5"
 - Facility Drawing Tool: fullscreen, zoom/pan, rotation, snap, auto-fittings, auto-couplings at 19ft, elevation notes, BOM from drawing
@@ -62,8 +68,8 @@ Blue=x000, Gray=x062, Green=x061
 Union=x002, 90 Elbow=x003, Equal Tee=x005, End Cap=x006, Flex Hose=x055
 
 ## NEXT PRIORITIES (in order)
-1. Drawing tool polish — auto-label fittings with AIRpipe part numbers + size
-2. Drawing workflow — Site Design=as-is layout, Sys Eng=proposed system with auto-placed equipment
+1. Drawing workflow — Site/IQF tab=as-is facility layout, Sys Eng tab=proposed system with auto-placed equipment
+2. Drawing tool polish — auto-label fittings with AIRpipe part numbers + size
 3. Live ST inventory lookup (replace daily Gmail report) — report ID 1823
 4. Lead time display for out-of-stock units + Trello board link for ETA
 5. ST customer lookup + autofill contact and address
