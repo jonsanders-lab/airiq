@@ -4578,7 +4578,19 @@ function SurveyCard({ title, done, open, onToggle, children }) {
 
 // ─── FACILITY DRAWING TOOL ────────────────────────────────────────────────────
 const FD = { W:1200, H:800, G:20 };
-const FD_PIPE_COLS = { blue:'#3B82F6', black:'#D1D5DB', gray:'#9CA3AF' };
+// Pipe materials — ordered: AIRpipe Aluminum group first, then Other Materials
+const FD_PIPE_MATS = {
+  blue:      { hex:'#3B82F6', group:'airpipe', short:'Blue',      label:'AIRpipe Blue — Compressed Air' },
+  green:     { hex:'#22C55E', group:'airpipe', short:'Green',     label:'AIRpipe Green — Nitrogen' },
+  gray:      { hex:'#9CA3AF', group:'airpipe', short:'Gray',      label:'AIRpipe Gray — Vacuum / General Purpose' },
+  copper:    { hex:'#B87333', group:'other',   short:'Copper',    label:'Copper — Medical Applications' },
+  stainless: { hex:'#C0C0C0', group:'other',   short:'Stainless', label:'Stainless Steel — Food & Beverage', shimmer:true },
+  pvc:       { hex:'#E8E8E8', group:'other',   short:'PVC',       label:'PVC — Vacuum Pump Inlet Only ⚠️', warn:true },
+  cpvc:      { hex:'#7A7A8C', group:'other',   short:'CPVC',      label:'CPVC — Vacuum Pump Inlet or Outlet ⚠️', warn:true },
+  blackiron: { hex:'#2C2C2C', group:'other',   short:'Black Iron',label:'Black Iron / Carbon Steel — Existing or New' },
+};
+// Legacy alias for any old saved drawings that stored 'black' key
+const FD_PIPE_MATS_FALLBACK = '#3B82F6';
 const FD_PIPE_W    = { '3/4"':2,'1"':3,'1.5"':4,'2"':5,'2.5"':6,'3"':8,'4"':10 };
 const FD_SYMBOLS   = [
   {id:'compressor',label:'Compressor',sec:'EQUIPMENT'},
@@ -5421,10 +5433,13 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       pMap[k].footage+=ft;
     }
     const pipeRows=Object.values(pMap).map(p=>{
-      const col=p.color.charAt(0).toUpperCase()+p.color.slice(1);
+      const mat=FD_PIPE_MATS[p.color]||FD_PIPE_MATS.blue;
       const footage=Math.round(p.footage*10)/10;
       const sticks=Math.ceil(footage/19);
-      return {desc:`${p.size} AIRpipe — ${col}`,pn:apipePN(p.size,col),qty:sticks,notes:`${footage}ft total · ${sticks} stick${sticks!==1?'s':''}`};
+      const isAirpipe=mat.group==='airpipe';
+      const desc=isAirpipe?`${p.size} AIRpipe ${mat.short}`:`${p.size} ${mat.short} Pipe`;
+      const pn=isAirpipe?apipePN(p.size,mat.short):'—';
+      return {desc,pn,qty:sticks,notes:`${footage}ft total · ${sticks} stick${sticks!==1?'s':''}`};
     });
     // Symbols by type (fittings & drops only)
     const symMap={};
@@ -5543,13 +5558,36 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         ctx.strokeStyle='#9CA3AF'; ctx.lineWidth=4; ctx.lineCap='round';
         ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
       } else if(el.type==='pipe') {
-        const col=FD_PIPE_COLS[el.pipeColor]||FD_PIPE_COLS.blue;
-        ctx.strokeStyle=col; ctx.lineWidth=FD_PIPE_W[el.pipeSize]||3; ctx.lineCap='round';
-        ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+        const mat=FD_PIPE_MATS[el.pipeColor]||FD_PIPE_MATS.blue;
+        const lw=FD_PIPE_W[el.pipeSize]||3;
+        ctx.lineCap='round';
+        if(mat.shimmer) {
+          // Stainless Steel: gradient shimmer along pipe axis
+          const grd=ctx.createLinearGradient(el.x1,el.y1,el.x2,el.y2);
+          grd.addColorStop(0,'#C0C0C0'); grd.addColorStop(0.33,'#E8E8E8');
+          grd.addColorStop(0.66,'#A0A0A0'); grd.addColorStop(1,'#C0C0C0');
+          ctx.strokeStyle=grd; ctx.lineWidth=lw;
+          ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+        } else if(el.pipeColor==='blackiron') {
+          // Black Iron: gray outline so visible on dark canvas, dark fill on top
+          ctx.strokeStyle='#555555'; ctx.lineWidth=lw+2;
+          ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+          ctx.strokeStyle='#2C2C2C'; ctx.lineWidth=lw;
+          ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+        } else if(el.pipeColor==='pvc') {
+          // PVC (white): dark outline so visible on dark canvas
+          ctx.strokeStyle='#444444'; ctx.lineWidth=lw+2;
+          ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+          ctx.strokeStyle=mat.hex; ctx.lineWidth=lw;
+          ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+        } else {
+          ctx.strokeStyle=mat.hex; ctx.lineWidth=lw;
+          ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
+        }
         const mx=(el.x1+el.x2)/2, my=(el.y1+el.y2)/2;
         const ftRaw=Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G;
         const ft=Math.round(ftRaw*2)/2;
-        const colorName=el.pipeColor?(el.pipeColor.charAt(0).toUpperCase()+el.pipeColor.slice(1)):'Blue';
+        const colorName=(FD_PIPE_MATS[el.pipeColor]||FD_PIPE_MATS.blue).short;
         const sticks=el.sticks||Math.ceil(Math.max(1,ftRaw)/19);
         let lbl;
         if(el.customLabel) {
@@ -5671,7 +5709,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       if(drawing.isDim) {
         ctx.strokeStyle='#E5E7EB'; ctx.lineWidth=1.5; ctx.lineCap='round';
       } else {
-        ctx.strokeStyle=tool==='pipe'?(FD_PIPE_COLS[pipeColor]||'#3B82F6'):'#9CA3AF';
+        ctx.strokeStyle=tool==='pipe'?((FD_PIPE_MATS[pipeColor]||FD_PIPE_MATS.blue).hex):'#9CA3AF';
         ctx.lineWidth=tool==='pipe'?(FD_PIPE_W[pipeSize]||3):4; ctx.lineCap='round';
       }
       ctx.beginPath(); ctx.moveTo(drawing.x1,drawing.y1); ctx.lineTo(drawing.x2,drawing.y2); ctx.stroke();
@@ -5895,10 +5933,22 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,fontFamily:F.body,fontSize:12,color:C.mid,padding:'5px 6px',minHeight:34}}>
           {Object.keys(FD_PIPE_W).map(s=><option key={s}>{s}</option>)}
         </select>
-        {Object.entries(FD_PIPE_COLS).map(([n,hex])=>(
-          <button key={n} onClick={()=>setPipeColor(n)} title={`${n} pipe`} style={{
-            width:24,height:24,borderRadius:'50%',background:hex,cursor:'pointer',flexShrink:0,
+        {/* AIRpipe Aluminum group */}
+        {Object.entries(FD_PIPE_MATS).filter(([,m])=>m.group==='airpipe').map(([n,m])=>(
+          <button key={n} onClick={()=>setPipeColor(n)} title={m.label} style={{
+            width:24,height:24,borderRadius:'50%',background:m.hex,cursor:'pointer',flexShrink:0,
             border:pipeColor===n?`2.5px solid ${C.copper}`:'2.5px solid transparent',
+          }}/>
+        ))}
+        {/* Divider between AIRpipe and Other Materials */}
+        <span style={{width:1,height:20,background:'rgba(255,255,255,0.18)',margin:'0 3px',flexShrink:0}}/>
+        {/* Other Pipe Materials group */}
+        {Object.entries(FD_PIPE_MATS).filter(([,m])=>m.group==='other').map(([n,m])=>(
+          <button key={n} onClick={()=>setPipeColor(n)} title={m.label} style={{
+            width:24,height:24,borderRadius:'50%',cursor:'pointer',flexShrink:0,
+            background:n==='stainless'?'linear-gradient(135deg,#C0C0C0,#E8E8E8,#A0A0A0)':m.hex,
+            border:pipeColor===n?`2.5px solid ${C.copper}`:m.warn?'2.5px solid #EAB308':'2.5px solid transparent',
+            boxShadow:n==='pvc'?'0 0 0 1px #555 inset':undefined,
           }}/>
         ))}
         <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
