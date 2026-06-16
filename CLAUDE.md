@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 16, 2026 (session 2)**
+**Last updated: June 16, 2026 (session 3)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -64,6 +64,9 @@ Railway volume mounted at /app/data for persistent storage
 - Field Log: CSV EXPORT (leader only) — EXPORT button opens date-range modal (Today/Week/Month/Year/Custom) → auto-downloads CSV with all 13 activity columns
 - Field Log: LEADER AUTO-DASHBOARD — LEADERS const (Jon Sanders, Tony, Kyle); view state auto-inits to leader view when rep name matches
 - server.js: GET /api/field-log/week (Mon–today team stop totals by day) and GET /api/field-log/export (per-rep-per-day aggregate, all columns, date-range params)
+- Condensate drain lines in drawing tool: DRAIN toggle in toolbar, drain size selector (1/4"–10mm metric), dashed amber (#F59E0B) rendering with endpoint dots, orthogonal-only routing, no auto-NPT/coupling
+- DRAIN FITTINGS palette section: PTL Elbow, PTL Tee, PTL Straight — amber symbols that inline-snap to drain pipes only (PTL_FITTINGS filter in findPipeSnap)
+- BOM: split into COMPRESSED AIR and CONDENSATE DRAIN sections; drain rows show footage and PTL fitting counts
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock
