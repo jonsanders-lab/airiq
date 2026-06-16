@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 16, 2026 (session 5)**
+**Last updated: June 16, 2026 (session 6)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -73,6 +73,9 @@ Railway volume mounted at /app/data for persistent storage
 - Zoom range: 10%–400% (clampZoom changed from 0.25 min to 0.1)
 - Scale bar: bottom-right screen-space overlay shows current real-world scale (e.g. "├──┤ 50 ft"), updates live with zoom
 - Ortho pipe routing: all air pipe draws route as two ortho segments (H-V default, Shift key flips to V-H); live L-shape ghost preview with corner dot and mode label; auto-elbow (elbow90 at correct orientation) placed at corner; NPT adapters and couplings distributed across both segments; existing diagonal pipes in saved drawings auto-converted to H-V on load via straightenPipes(); status bar shows SHIFT hint during drawing; drain lines unchanged
+- DRAIN/PIPE mutual exclusion: changeTool() clears drain mode; DRAIN button sets tool state directly to avoid self-clearing; clicking PIPE always returns to regular pipe mode
+- PDF export (white background, print-ready): jsPDF CDN loaded; doExportPDF() renders drawing on white canvas with light-gray grid (#EEEEEE), equipment symbols white-fill/dark-border (fdSym pm=true), dark pipe labels (#1a1a1a), Hodge footer bar; PDF button is primary, PNG kept as secondary
+- Auto-reducing fittings: PIPE_SIZE_ORDER size index ['3/4"'…'4"']; 'reducer' symbol (tapered inline symbol) added to FITTINGS palette; findSnapPoint() returns sourceEl for pipe endpoint snaps; pipe completion detects end-to-end size mismatch and auto-inserts labeled reducer (e.g. "2×1") at connection point; works on both single-segment and L-shape routing paths
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock
