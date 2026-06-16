@@ -2656,6 +2656,7 @@ function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquip
   const [compAnnualMaint, setCompAnnualMaint] = React.useState("");
   const [selectedTier, setSelectedTier] = React.useState(null);
   const [openSections, setOpenSections] = React.useState({buildSystem:true,saveexport:false,valueJustification:false});
+  const [tierModal,    setTierModal]    = React.useState(null);
   const toggleSection = k => setOpenSections(p=>({...p,[k]:!p[k]}));
   const secOpen       = k => !!openSections[k];
   const secHdr = (key, label, badge, step, subtitle) => (
@@ -3627,12 +3628,13 @@ No fabricated prices.`;
                       const hasDifferent = proposedEquipment && !isActive;
                       return (
                         <button onClick={()=>{
-                          if(hasDifferent) {
-                            if(!window.confirm(`Replace proposed drawing?\n\nCurrent: ${proposedEquipment.model}\nNew: ${rec.model}`)) return;
+                          if(isActive){setDrawingMode('proposed');setTab('site-design');return;}
+                          const hasProposed=(()=>{try{return JSON.parse(localStorage.getItem('airiq_facility_drawing_proposed')||'[]').length>0;}catch{return false;}})();
+                          if(!proposedEquipment||!hasProposed){
                             try{localStorage.removeItem('airiq_facility_drawing_proposed');}catch{}
-                            setDrawingReset(n=>n+1);
+                            setProposedEquipment(rec);setDrawingMode('proposed');setDrawingReset(n=>n+1);setTab('site-design');return;
                           }
-                          setProposedEquipment(rec); setDrawingMode('proposed'); setTab('site-design');
+                          setTierModal({rec});
                         }} style={{
                           padding:"8px 0", borderRadius:7,
                           border:`1px solid ${isActive?C.copper:C.green}`,
@@ -4371,6 +4373,71 @@ No fabricated prices.`;
           bomText={bomText} saveRep={saveRep}/>,
         document.getElementById("print-portal")
       )}
+
+      {/* Tier-change modal: KEEP PIPING / START FRESH */}
+      {tierModal && (
+        <div onClick={()=>setTierModal(null)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',zIndex:10050,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:'#141414',border:`1.5px solid ${C.copper}`,borderRadius:12,padding:28,maxWidth:400,width:'92%'}}>
+            <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper,marginBottom:8}}>CHANGE TIER ↗</div>
+            <div style={{fontFamily:F.body,fontSize:14,color:C.text,marginBottom:6}}>
+              Switching to <strong style={{color:C.copper}}>{tierModal.rec.model}{tierModal.rec.dual?' (×2)':''}</strong>
+            </div>
+            <div style={{fontFamily:F.body,fontSize:12,color:C.mid,marginBottom:20,lineHeight:1.5}}>
+              You have an existing proposed drawing. What would you like to do with the piping?
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <button onClick={()=>{
+                // KEEP PIPING: swap equipment symbols in-place, keep pipes/fittings
+                const {rec} = tierModal;
+                const proposed=(()=>{try{return JSON.parse(localStorage.getItem('airiq_facility_drawing_proposed')||'[]');}catch{return[];}})();
+                const EQUIP_IDS=['compressor','dryer','tank','filter','ows'];
+                const equipEls=proposed.filter(e=>e.type==='symbol'&&EQUIP_IDS.includes(e.symbolId));
+                const nonEquip=proposed.filter(e=>!(e.type==='symbol'&&EQUIP_IDS.includes(e.symbolId)));
+                const idg=()=>(Date.now()+Math.random()).toString(36);
+                const newEquip=[];
+                const oldComps=equipEls.filter(e=>e.symbolId==='compressor');
+                const oldDryer=equipEls.find(e=>e.symbolId==='dryer');
+                const oldTank=equipEls.find(e=>e.symbolId==='tank');
+                if(rec.dual){
+                  const p1=oldComps[0]||{x:160,y:300,rotation:0,scale:1};
+                  const p2=oldComps[1]||{x:160,y:500,rotation:0,scale:1};
+                  newEquip.push({...p1,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor'});
+                  newEquip.push({...p2,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor'});
+                } else {
+                  const p=oldComps[0]||{x:200,y:400,rotation:0,scale:1};
+                  newEquip.push({...p,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor'});
+                }
+                if(rec.dryer){const p=oldDryer||{x:380,y:400,rotation:0,scale:1};newEquip.push({...p,id:idg(),type:'symbol',symbolId:'dryer',label:'Air Dryer'});}
+                if(rec.tankGal){const p=oldTank||{x:560,y:380,rotation:0,scale:1};newEquip.push({...p,id:idg(),type:'symbol',symbolId:'tank',label:`${rec.tankGal}G Tank`});}
+                try{localStorage.setItem('airiq_facility_drawing_proposed',JSON.stringify([...nonEquip,...newEquip]));}catch{}
+                setDrawingReset(n=>n+1);
+                setProposedEquipment(rec);setDrawingMode('proposed');setTab('site-design');setTierModal(null);
+              }} style={{
+                background:`linear-gradient(135deg,${C.copper},#A0632A)`,border:'none',borderRadius:8,
+                padding:'13px 18px',fontFamily:F.head,fontSize:14,letterSpacing:2,color:'#fff',cursor:'pointer',textAlign:'left',
+              }}>
+                KEEP PIPING — swap equipment only
+              </button>
+              <button onClick={()=>{
+                try{localStorage.removeItem('airiq_facility_drawing_proposed');}catch{}
+                setDrawingReset(n=>n+1);
+                setProposedEquipment(tierModal.rec);setDrawingMode('proposed');setTab('site-design');setTierModal(null);
+              }} style={{
+                background:'none',border:`1px solid ${C.border}`,borderRadius:8,
+                padding:'13px 18px',fontFamily:F.head,fontSize:14,letterSpacing:2,color:C.mid,cursor:'pointer',textAlign:'left',
+              }}>
+                START FRESH — clear proposed drawing
+              </button>
+              <button onClick={()=>setTierModal(null)}
+                style={{background:'transparent',border:'none',fontFamily:F.mono,fontSize:9,color:C.dim,cursor:'pointer',marginTop:4,letterSpacing:1}}>
+                ✕ cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4660,6 +4727,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const prevPipeRef    = React.useRef(null); // {x,y,angle} of last completed pipe
   const [showBom,      setShowBom]      = React.useState(false);
   const [pipeSnap,     setPipeSnap]     = React.useState(null); // inline fitting snap preview
+  const [hoverSym,     setHoverSym]     = React.useState(null); // id of symbol under cursor for rotate handle
 
   // Fittings that can be inserted inline into an existing pipe segment
   const INLINE_FITTINGS = ['ballvalve','elbow90','elbow45','tee','filter','ows'];
@@ -4667,18 +4735,25 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   function findPipeSnap(wx, wy) {
     if(!INLINE_FITTINGS.includes(activeSym)) return null;
     const threshold = 18/zoomRef.current;
+    let best = null, bestDist = threshold;
     for(const el of els) {
       if(el.type !== 'pipe') continue;
       const {x1,y1,x2,y2} = el;
       const dx=x2-x1, dy=y2-y1, len2=dx*dx+dy*dy;
       if(!len2) continue;
-      const t = Math.max(0.08, Math.min(0.92, ((wx-x1)*dx+(wy-y1)*dy)/len2));
-      const cx=x1+t*dx, cy=y1+t*dy;
-      if(Math.hypot(wx-cx,wy-cy)<threshold) {
-        return { pipe:el, t, sx:snap(cx), sy:snap(cy), angle:Math.atan2(dy,dx) };
+      const tRaw = ((wx-x1)*dx+(wy-y1)*dy)/len2;
+      const tc   = Math.max(0, Math.min(1, tRaw));
+      const cx=x1+tc*dx, cy=y1+tc*dy;
+      const dist = Math.hypot(wx-cx, wy-cy);
+      if(dist < bestDist) {
+        bestDist = dist;
+        const angle = Math.atan2(dy, dx);
+        const isEndpoint = tc <= 0.05 || tc >= 0.95;
+        const tClamped = isEndpoint ? (tc<=0.05?0:1) : Math.max(0.08, Math.min(0.92, tRaw));
+        best = { pipe:el, t:tClamped, sx:snap(cx), sy:snap(cy), angle, isEndpoint };
       }
     }
-    return null;
+    return best;
   }
 
   React.useEffect(()=>{ zoomRef.current=zoom; },[zoom]);
@@ -4689,7 +4764,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   React.useEffect(()=>{
     if(!isProposed||!proposedEquipment) return;
     setProposedEls(prev=>{
-      if(prev.length>0) return prev; // don't overwrite if rep already has a proposed drawing
+      const hasEquip=prev.some(e=>e.type==='symbol'&&['compressor','dryer','tank'].includes(e.symbolId));
+      if(hasEquip) return prev; // equipment already placed — don't overwrite
       const id=()=>(Date.now()+Math.random()).toString(36);
       const items=[];
       // Tank at y=380 so its bottom connector (y+20=400) aligns with the horizontal pipe train
@@ -4743,13 +4819,20 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
   function findSnapPoint(wx, wy, elsList) {
     const threshold=30/zoomRef.current;
-    // Connector points first (highest priority) — returns sourceEl for auto-fitting logic
+    // 1. Symbol connector points (highest priority)
     for(const el of elsList) {
       for(const pt of getConnectors(el)) {
         if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y,sourceEl:el};
       }
     }
-    // Fallback: bbox edge centers of any symbol
+    // 2. Pipe endpoints
+    for(const el of elsList) {
+      if(el.type!=='pipe') continue;
+      for(const pt of [{x:el.x1,y:el.y1},{x:el.x2,y:el.y2}]) {
+        if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y};
+      }
+    }
+    // 3. Fallback: bbox edge centers of any symbol
     for(const el of elsList) {
       if(el.type!=='symbol') continue;
       const sc=el.scale||1, rot=(el.rotation||0)*Math.PI/180;
@@ -4837,6 +4920,23 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       lastTapRef.current={time:now,x:raw.x,y:raw.y};
     }
 
+    // Rotate handle works in any tool mode — intercept before tool dispatch
+    if(hoverSym) {
+      const hEl=els.find(e=>e.id===hoverSym);
+      if(hEl&&hEl.type==='symbol') {
+        const rot=(hEl.rotation||0)*Math.PI/180, sc=hEl.scale||1;
+        const rhx=hEl.x+Math.sin(rot)*50*sc, rhy=hEl.y-Math.cos(rot)*50*sc;
+        if(Math.hypot(raw.x-rhx,raw.y-rhy)<16/zoomRef.current) {
+          const src=e.touches?e.touches[0]:e;
+          setSelected(hEl.id);
+          dragRef.current={mode:'rotate',id:hEl.id,orig:{...hEl},
+            startAngle:Math.atan2(raw.y-hEl.y,raw.x-hEl.x),startX:raw.x,startY:raw.y,
+            startCX:src?.clientX||0,startCY:src?.clientY||0};
+          return;
+        }
+      }
+    }
+
     if(tool==='erase') { const h=hitTest(raw.x,raw.y); if(h)rmEl(h.id); return; }
     if(tool==='label') { setLabelIn({show:true,x:snapped.x,y:snapped.y,text:'',forId:null,isPipe:false}); return; }
 
@@ -4858,6 +4958,20 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             dragRef.current={mode:'endpoint',id:h.id,orig:{...h},ep};
           } else {
             dragRef.current={mode:'move',id:h.id,sx:snapped.x,sy:snapped.y,orig:{...h}};
+            if(h.type==='symbol') {
+              const origConns=getConnectors(h);
+              const connPipes=[];
+              for(const pipe of els.filter(e=>e.type==='pipe')) {
+                for(let ci=0;ci<origConns.length;ci++) {
+                  const c=origConns[ci];
+                  if(Math.hypot(pipe.x1-c.x,pipe.y1-c.y)<8)
+                    connPipes.push({pipeId:pipe.id,ep:'p1',connIdx:ci});
+                  else if(Math.hypot(pipe.x2-c.x,pipe.y2-c.y)<8)
+                    connPipes.push({pipeId:pipe.id,ep:'p2',connIdx:ci});
+                }
+              }
+              dragRef.current.connPipes=connPipes;
+            }
           }
         }
         // Long press on symbol (touch only) → context menu
@@ -4947,10 +5061,16 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     }
 
     if(tool==='symbol') {
-      // Inline fitting insertion: snap to existing pipe, split it, insert fitting
+      // Inline/endpoint fitting insertion: snap to existing pipe
       if(pipeSnap && INLINE_FITTINGS.includes(activeSym)) {
-        const {pipe, sx, sy, angle} = pipeSnap;
+        const {pipe, sx, sy, angle, isEndpoint} = pipeSnap;
         const fitAngle = ((angle*180/Math.PI)%360+360)%360;
+        if(isEndpoint) {
+          // Endpoint snap — place fitting at endpoint, no pipe split
+          const fid=(Date.now()+Math.random()).toString(36);
+          addEl({id:fid,type:'symbol',symbolId:activeSym,x:sx,y:sy,label:'',rotation:fitAngle,scale:1});
+          setSelected(fid); setPipeSnap(null); return;
+        }
         const fid  = (Date.now()+Math.random()).toString(36);
         const pid1 = (Date.now()+Math.random()+0.1).toString(36);
         const pid2 = (Date.now()+Math.random()+0.2).toString(36);
@@ -5027,18 +5147,48 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       if(pipeSnap) setPipeSnap(null);
     }
 
+    // Hover symbol detection — enables rotate handle in any tool mode
+    {
+      let hid=null;
+      for(let i=els.length-1;i>=0;i--) {
+        const el=els[i];
+        if(el.type!=='symbol') continue;
+        const sc=el.scale||1;
+        if(Math.abs(raw.x-el.x)<44*sc&&Math.abs(raw.y-el.y)<38*sc){hid=el.id;break;}
+      }
+      if(hid!==hoverSym) setHoverSym(hid);
+    }
+
     // SELECT mode element manipulation
     if(tool==='select'&&dragRef.current) {
       const dr=dragRef.current;
       if(dr.mode==='move') {
         const dx=snapped.x-dr.sx, dy=snapped.y-dr.sy;
-        if(dr.orig.type==='wall'||dr.orig.type==='pipe'||dr.orig.type==='dim')
+        if(dr.orig.type==='wall'||dr.orig.type==='pipe'||dr.orig.type==='dim') {
           updEl(dr.id,{x1:snap(dr.orig.x1+dx),y1:snap(dr.orig.y1+dy),x2:snap(dr.orig.x2+dx),y2:snap(dr.orig.y2+dy)});
-        else updEl(dr.id,{x:snap(dr.orig.x+dx),y:snap(dr.orig.y+dy)});
+        } else {
+          const nx=snap(dr.orig.x+dx), ny=snap(dr.orig.y+dy);
+          if((dr.connPipes||[]).length>0) {
+            const newConns=getConnectors({...dr.orig,x:nx,y:ny});
+            setEls(p=>{
+              const n=p.map(e=>{
+                if(e.id===dr.id) return {...e,x:nx,y:ny};
+                const cp=(dr.connPipes||[]).find(c=>c.pipeId===e.id);
+                if(cp){const nc=newConns[cp.connIdx];if(nc)return cp.ep==='p1'?{...e,x1:nc.x,y1:nc.y}:{...e,x2:nc.x,y2:nc.y};}
+                return e;
+              });
+              persist(n); return n;
+            });
+          } else {
+            updEl(dr.id,{x:nx,y:ny});
+          }
+        }
       } else if(dr.mode==='rotate') {
         const angle=Math.atan2(raw.y-dr.orig.y,raw.x-dr.orig.x);
         const delta=(angle-dr.startAngle)*180/Math.PI;
-        updEl(dr.id,{rotation:((dr.orig.rotation||0)+delta+360)%360});
+        const raw360=((dr.orig.rotation||0)+delta+360)%360;
+        const snap45=Math.round(raw360/45)*45;
+        updEl(dr.id,{rotation:snap45%360});
       } else if(dr.mode==='resize') {
         const dist=Math.hypot(raw.x-dr.orig.x,raw.y-dr.orig.y);
         updEl(dr.id,{scale:Math.max(0.5,Math.min(3,dist/50))});
@@ -5059,6 +5209,23 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         const cur=Math.round((dr.orig.rotation||0)/90)*90;
         updEl(dr.id,{rotation:(cur+90)%360});
       }
+    }
+    // Symbol move: fix diagonal pipes → ortho L-route
+    if(dr?.mode==='move'&&dr.orig.type==='symbol'&&(dr.connPipes||[]).length>0) {
+      mutate(prev=>{
+        let next=prev, changed=false;
+        for(const cp of dr.connPipes) {
+          const pipe=next.find(e=>e.id===cp.pipeId);
+          if(!pipe||pipe.x1===pipe.x2||pipe.y1===pipe.y2) continue;
+          const corner={x:pipe.x2,y:pipe.y1};
+          const p1={...pipe,id:(Date.now()+Math.random()).toString(36),x2:corner.x,y2:corner.y};
+          const p2={...pipe,id:(Date.now()+Math.random()).toString(36),x1:corner.x,y1:corner.y};
+          if(!changed){next=[...next];changed=true;}
+          const idx=next.findIndex(e=>e.id===pipe.id);
+          if(idx>=0) next.splice(idx,1,p1,p2);
+        }
+        return changed?next:prev;
+      });
     }
     dragRef.current=null; pinchRef.current=null;
   }
@@ -5382,6 +5549,21 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       ctx.restore();
     }
 
+    // Hover rotate handle — shows in any tool mode when hovering a symbol
+    if(hoverSym && hoverSym!==selected) {
+      const hEl=els.find(e=>e.id===hoverSym);
+      if(hEl&&hEl.type==='symbol') {
+        const rot=(hEl.rotation||0)*Math.PI/180, sc=hEl.scale||1;
+        const rhx=hEl.x+Math.sin(rot)*50*sc, rhy=hEl.y-Math.cos(rot)*50*sc;
+        ctx.save();
+        ctx.fillStyle='rgba(193,122,53,0.55)';
+        ctx.beginPath(); ctx.arc(rhx,rhy,9,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('↻',rhx,rhy+4);
+        ctx.restore();
+      }
+    }
+
     ctx.restore(); // end zoom/pan transform
 
     // Screen-space overlays (fixed size regardless of zoom)
@@ -5390,7 +5572,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     ctx.fillText('1 sq = 1 ft',8,FD.H-8);
     ctx.restore();
 
-  },[els,drawing,selected,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym]);
+  },[els,drawing,selected,hoverSym,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym]);
 
   function buildExportCanvas() {
     const src=canvasRef.current; if(!src) return null;
@@ -5847,6 +6029,8 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
   const SESSIONS_KEY = 'airiq_sessions';
   const [sessions, setSessions]         = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(SESSIONS_KEY)||'[]');}catch{return[];} });
   const [showSessions, setShowSessions] = React.useState(false);
+  const [sessionSearch, setSessionSearch] = React.useState('');
+  const [sessionBranch, setSessionBranch] = React.useState('All');
   const [repEmail, setRepEmail]   = React.useState(() => {
     try { return localStorage.getItem("airiq_rep_email")||""; } catch { return ""; }
   });
@@ -5881,10 +6065,13 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
       id: Date.now().toString(36),
       name: name.trim(),
       date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
+      rep: form.rep || '',
+      branch: form.branch || '',
       tier: proposedEquipment || null,
       asIsDrawing,
       proposedDrawing,
     };
+    try{ localStorage.setItem('airiq_rep_name', form.rep||''); }catch(e){}
     persistSessions([session, ...sessions]);
   }
 
@@ -6184,17 +6371,35 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
         {showSessions && (
           <div style={{background:C.surface, border:`1px solid ${C.border}`, borderTopWidth:0,
             borderRadius:"0 0 10px 10px", padding:"0 12px 12px"}}>
+            {/* Search + branch filter */}
+            <div style={{display:"flex", gap:6, padding:"10px 0 4px"}}>
+              <input value={sessionSearch} onChange={e=>setSessionSearch(e.target.value)}
+                placeholder="Search sessions…"
+                style={{flex:1,background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,
+                  padding:"6px 10px",fontFamily:F.mono,fontSize:11,color:C.text,outline:"none"}}/>
+              <select value={sessionBranch} onChange={e=>setSessionBranch(e.target.value)}
+                style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,
+                  fontFamily:F.body,fontSize:11,color:C.mid,padding:"6px 8px"}}>
+                {['All',...BRANCHES].map(b=><option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
             {sessions.length===0 && (
               <div style={{color:C.dim, fontSize:12, fontFamily:F.mono, padding:"12px 0", letterSpacing:1}}>No sessions saved yet. Use 💾 SAVE to create one.</div>
             )}
-            {sessions.map(s => (
+            {sessions.filter(s=>{
+              const matchSearch=!sessionSearch||(s.name||'').toLowerCase().includes(sessionSearch.toLowerCase())||(s.rep||'').toLowerCase().includes(sessionSearch.toLowerCase());
+              const matchBranch=sessionBranch==='All'||s.branch===sessionBranch;
+              return matchSearch&&matchBranch;
+            }).map(s => (
               <div key={s.id} style={{background:C.surface2, border:`1px solid ${C.border}`,
                 borderRadius:8, padding:"10px 12px", marginTop:8,
                 display:"flex", flexDirection:"column", gap:6}}>
                 <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8}}>
                   <div>
                     <div style={{fontFamily:F.body, fontSize:14, color:C.text, fontWeight:600, lineHeight:1.2}}>{s.name}</div>
-                    <div style={{fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginTop:3}}>{s.date}</div>
+                    <div style={{fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginTop:3}}>
+                      {[s.rep, s.branch, s.date].filter(Boolean).join(' · ')}
+                    </div>
                   </div>
                   <div style={{display:"flex", gap:6, flexShrink:0}}>
                     <button onClick={()=>loadSession(s)} style={{

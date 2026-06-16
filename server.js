@@ -73,7 +73,7 @@ const SHEET_HEADERS = [
   'Unions','Pipe Clips','Unistrut','Quick Branch','Bypasses','Drops','Drop Length/Size',
   'Termination Blocks','Quick Connects','Obstructions','Beams/Workarounds','Piping Notes',
   'Diesel Compressor','Scissor Lift','Forklift Rental','Lugging Tool','Other Rental',
-  'Drawing Checklist Complete','Manager Approval','Notes','Submitted At',
+  'Drawing Checklist Complete','Manager Approval','Notes','Submitted At','Site Drawing',
 ];
 
 // In-memory inventory cache
@@ -154,6 +154,7 @@ function buildSheetRow(body) {
     d.rentalOther || '',
     drawDone, yn(d.managerApproval), d.approvalNotes || '',
     body.savedAt || new Date().toISOString(),
+    d.drawingDataURL ? 'Yes (see record)' : '',
   ];
 }
 
