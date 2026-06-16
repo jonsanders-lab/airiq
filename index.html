@@ -7538,7 +7538,12 @@ function FieldLog() {
     { id:"nothing",     label:"Nothing"          },
   ];
 
-  const [view,       setView]       = React.useState("rep");
+  const LEADERS = ["Jon Sanders", "Tony", "Kyle"];
+
+  const [view,       setView]       = React.useState(() => {
+    const n = localStorage.getItem("fieldlog_rep") || localStorage.getItem("airiq_rep_name") || "";
+    return LEADERS.some(l => l.toLowerCase() === n.toLowerCase()) ? "leader" : "rep";
+  });
   const [repName,    setRepName]    = React.useState(() => localStorage.getItem("fieldlog_rep") || "");
   const [selected,   setSelected]   = React.useState({});
   const [location,   setLocation]   = React.useState("");
@@ -7549,6 +7554,13 @@ function FieldLog() {
   const [dashboard,  setDashboard]  = React.useState([]);
   const [dashLoad,   setDashLoad]   = React.useState(false);
   const [feedbackOpen, setFeedbackOpen] = React.useState(false);
+  const [leaderSubView, setLeaderSubView] = React.useState("list");
+  const [showExport,   setShowExport]  = React.useState(false);
+  const [exportRange,  setExportRange] = React.useState("today");
+  const [exportStart,  setExportStart] = React.useState(() => new Date().toISOString().slice(0,10));
+  const [exportEnd,    setExportEnd]   = React.useState(() => new Date().toISOString().slice(0,10));
+  const [exporting,    setExporting]   = React.useState(false);
+  const [weekData,     setWeekData]    = React.useState([]);
   const dashTimer = React.useRef(null);
 
   React.useEffect(() => {
@@ -7558,6 +7570,7 @@ function FieldLog() {
   React.useEffect(() => {
     if (view === "leader") {
       fetchDashboard();
+      fetchWeekData();
       dashTimer.current = setInterval(fetchDashboard, 60000);
     } else {
       clearInterval(dashTimer.current);
@@ -7581,6 +7594,59 @@ function FieldLog() {
       setDashboard(Array.isArray(d) ? d : []);
     } catch {}
     setDashLoad(false);
+  }
+
+  async function fetchWeekData() {
+    try {
+      const r = await fetch('/api/field-log/week');
+      const d = await r.json();
+      setWeekData(Array.isArray(d) ? d : []);
+    } catch {}
+  }
+
+  async function exportCSV() {
+    setExporting(true);
+    try {
+      const today = new Date().toISOString().slice(0,10);
+      let start = today, end = today, label = 'Today';
+      if (exportRange === 'week') {
+        const d = new Date(); const dow = d.getDay() || 7;
+        d.setDate(d.getDate() - dow + 1);
+        start = d.toISOString().slice(0,10); label = 'Week';
+      } else if (exportRange === 'month') {
+        start = today.slice(0,7) + '-01'; label = 'Month';
+      } else if (exportRange === 'year') {
+        start = today.slice(0,4) + '-01-01'; label = 'Year';
+      } else if (exportRange === 'custom') {
+        start = exportStart; end = exportEnd;
+        label = `${exportStart}_to_${exportEnd}`;
+      }
+      const r = await fetch(`/api/field-log/export?start=${start}&end=${end}`);
+      const rows = await r.json();
+      if (!Array.isArray(rows)) throw new Error(rows.error || 'Export failed');
+      const headers = ['Rep Name','Date','Total Stops','PM Opps','Equipment Opps','Service Leads','Piping/Install','Stickers Placed','VR Presentations','Appointments Set','Nothing','Area/Location','Notable Moment'];
+      const csv = [
+        headers.join(','),
+        ...rows.map(row => [
+          `"${(row.rep_name||'').replace(/"/g,'""')}"`,
+          row.date||'',
+          row.total_stops||0,
+          row.pm_opps||0, row.equip_opps||0, row.service_leads||0,
+          row.piping_opps||0, row.stickers||0, row.vr_pres||0,
+          row.appt_set||0, row.nothing||0,
+          `"${(row.locations||'').replace(/"/g,'""')}"`,
+          `"${(row.notable_moments||'').replace(/"/g,'""')}"`,
+        ].join(','))
+      ].join('\n');
+      const filename = `FieldLog_${label}_${today}.csv`;
+      const blob = new Blob([csv], { type:'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+      setShowExport(false);
+    } catch (e) { alert('Export failed: ' + e.message); }
+    setExporting(false);
   }
 
   function toggleActivity(id) {
@@ -7773,15 +7839,34 @@ function FieldLog() {
       {/* ── LEADER VIEW ── */}
       {view === "leader" && (
         <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.text }}>FIELD ACTIVITY — TODAY</div>
-            <div style={{ fontFamily:F.mono, fontSize:9, color:dashLoad ? C.orange : C.mid, letterSpacing:1 }}>
+
+          {/* Header row */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.text, flex:1, minWidth:0 }}>FIELD ACTIVITY — TODAY</div>
+            {/* LIST / GRAPH toggle */}
+            <div style={{ display:"flex", background:C.surface2, borderRadius:6, padding:2, border:`1px solid ${C.border}`, flexShrink:0 }}>
+              {[["list","LIST"],["graph","GRAPH"]].map(([v,lbl]) => (
+                <button key={v} onClick={() => setLeaderSubView(v)} style={{
+                  padding:"5px 11px", borderRadius:4, border:"none",
+                  background: leaderSubView===v ? C.blue : "transparent",
+                  color: leaderSubView===v ? "#fff" : C.mid,
+                  fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer",
+                }}>{lbl}</button>
+              ))}
+            </div>
+            {/* Export button */}
+            <button onClick={() => setShowExport(true)} style={{
+              flexShrink:0, background:"rgba(193,122,53,0.18)", border:`1px solid rgba(193,122,53,0.5)`,
+              borderRadius:8, padding:"6px 12px", color:C.copper,
+              fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer",
+            }}>↓ EXPORT</button>
+            <div style={{ fontFamily:F.mono, fontSize:9, color:dashLoad ? C.orange : C.mid, letterSpacing:1, flexShrink:0 }}>
               {dashLoad ? "REFRESHING..." : "AUTO-REFRESH 60s"}
             </div>
           </div>
 
           {/* Pace legend */}
-          <div style={{ display:"flex", gap:14, marginBottom:14 }}>
+          <div style={{ display:"flex", gap:14, marginBottom:12 }}>
             {[[C.green,"20+ on pace"],["#F59E0B","10–19 behind"],[C.red,"<10 low"]].map(([color,label]) => (
               <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
                 <div style={{ width:8, height:8, borderRadius:"50%", background:color, flexShrink:0 }}/>
@@ -7790,36 +7875,181 @@ function FieldLog() {
             ))}
           </div>
 
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {repRows.map(row => {
-              const stops = Number(row.stops);
-              const pace  = paceColor(stops);
-              return (
-                <div key={row.rep_name} style={{
-                  background:C.surface, border:`1px solid ${C.border}`,
-                  borderLeft:`3px solid ${pace}`, borderRadius:8, padding:"11px 14px",
-                }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                    <div style={{ fontFamily:F.body, fontSize:16, fontWeight:700, color:C.text }}>{row.rep_name}</div>
-                    <div style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{timeSince(row.last_logged)}</div>
+          {/* ── LIST VIEW ── */}
+          {leaderSubView === "list" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {repRows.map(row => {
+                const stops = Number(row.stops);
+                const pace  = paceColor(stops);
+                return (
+                  <div key={row.rep_name} style={{
+                    background:C.surface, border:`1px solid ${C.border}`,
+                    borderLeft:`3px solid ${pace}`, borderRadius:8, padding:"11px 14px",
+                  }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                      <div style={{ fontFamily:F.body, fontSize:16, fontWeight:700, color:C.text }}>{row.rep_name}</div>
+                      <div style={{ fontFamily:F.mono, fontSize:10, color:C.mid }}>{timeSince(row.last_logged)}</div>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:4 }}>
+                      {[
+                        ["STOPS",  stops,           pace],
+                        ["PM OPP", row.pm_opps,     C.blueLight],
+                        ["EQ OPP", row.equip_opps,  C.blueLight],
+                        ["APPT",   row.appt_set,    C.green],
+                      ].map(([lbl, val, color]) => (
+                        <div key={lbl} style={{ textAlign:"center" }}>
+                          <div style={{ fontFamily:F.head, fontSize:22, color, lineHeight:1 }}>{val || 0}</div>
+                          <div style={{ fontFamily:F.mono, fontSize:8, letterSpacing:0.5, color:C.mid, marginTop:2 }}>{lbl}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:4 }}>
-                    {[
-                      ["STOPS",  stops,            pace],
-                      ["PM OPP", row.pm_opps,      C.blueLight],
-                      ["EQ OPP", row.equip_opps,   C.blueLight],
-                      ["APPT",   row.appt_set,     C.green],
-                    ].map(([label, val, color]) => (
-                      <div key={label} style={{ textAlign:"center" }}>
-                        <div style={{ fontFamily:F.head, fontSize:22, color, lineHeight:1 }}>{val || 0}</div>
-                        <div style={{ fontFamily:F.mono, fontSize:8, letterSpacing:0.5, color:C.dim, marginTop:2 }}>{label}</div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── GRAPH VIEW ── */}
+          {leaderSubView === "graph" && (
+            <div>
+              {/* Bar chart */}
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 12px 10px" }}>
+                <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:10 }}>
+                  STOPS TODAY vs. 20-STOP DAILY PACE GOAL
+                </div>
+                <div style={{ position:"relative" }}>
+                  {/* Pace goal dashed line at 20 stops */}
+                  <div style={{
+                    position:"absolute", top:0, left:0, right:0,
+                    borderTop:"1px dashed rgba(255,255,255,0.15)",
+                    display:"flex", justifyContent:"flex-end", paddingRight:2,
+                  }}>
+                    <span style={{ fontFamily:F.mono, fontSize:7, color:"rgba(255,255,255,0.3)", lineHeight:"10px", background:C.surface, paddingLeft:3 }}>20</span>
+                  </div>
+                  {/* Bars */}
+                  <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:124, paddingTop:12 }}>
+                    {repRows.map(row => {
+                      const s  = Number(row.stops);
+                      const pct = Math.min(s / 20, 1.5);
+                      const barH = s === 0 ? 2 : Math.max(pct * 110, 5);
+                      const col  = paceColor(s);
+                      return (
+                        <div key={row.rep_name} style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", height:"100%" }}>
+                          <div style={{ fontFamily:F.mono, fontSize:9, color:col, lineHeight:1, marginBottom:2 }}>{s > 0 ? s : ""}</div>
+                          <div style={{
+                            width:"100%", borderRadius:"2px 2px 0 0", transition:"height 0.5s ease",
+                            background: s === 0 ? "rgba(255,255,255,0.06)" : col,
+                            height: barH,
+                          }}/>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Rep name labels */}
+                  <div style={{ display:"flex", gap:3, marginTop:5, borderTop:`1px solid ${C.border}`, paddingTop:4 }}>
+                    {repRows.map(row => {
+                      const s = Number(row.stops);
+                      return (
+                        <div key={row.rep_name} style={{
+                          flex:1, minWidth:0, textAlign:"center",
+                          fontFamily:F.mono, fontSize:7, overflow:"hidden",
+                          textOverflow:"ellipsis", whiteSpace:"nowrap",
+                          color: s > 0 ? paceColor(s) : C.mid,
+                        }}>{row.rep_name}</div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Weekly trend mini chart */}
+              {(()=>{
+                const today = new Date();
+                const dow = (today.getDay() + 6) % 7; // Mon=0..Sun=6
+                const numDays = Math.max(1, Math.min(dow + 1, 5));
+                const DNAMES = ['Mon','Tue','Wed','Thu','Fri'];
+                const days = [];
+                for (let i = 0; i < numDays; i++) {
+                  const d = new Date(today);
+                  d.setDate(d.getDate() - (dow - i));
+                  days.push({ label: DNAMES[i], iso: d.toISOString().slice(0,10) });
+                }
+                const wMap = {};
+                weekData.forEach(w => { wMap[w.day] = Number(w.stops); });
+                const pts = days.map(d => ({ label:d.label, v: wMap[d.iso] || 0 }));
+                const maxV = Math.max(...pts.map(p=>p.v), 1);
+                const W=280, H=52, PX=10, PY=8, plotW=W-PX*2, plotH=H-PY*2;
+                const coords = pts.map((p,i) => ({
+                  x: numDays===1 ? W/2 : PX + i*(plotW/(numDays-1)),
+                  y: PY + plotH - (p.v/maxV)*plotH,
+                  ...p,
+                }));
+                const line = coords.map((c,i)=>`${i===0?'M':'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+                const area = `${line} L${coords[coords.length-1].x.toFixed(1)},${(PY+plotH).toFixed(1)} L${coords[0].x.toFixed(1)},${(PY+plotH).toFixed(1)} Z`;
+                return (
+                  <div style={{ marginTop:10, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 12px 6px" }}>
+                    <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:8 }}>
+                      THIS WEEK — TOTAL TEAM STOPS / DAY
+                    </div>
+                    <svg viewBox={`0 0 ${W} ${H+16}`} width="100%" style={{ display:"block", overflow:"visible" }}>
+                      <path d={area} fill="rgba(59,130,246,0.10)" stroke="none"/>
+                      <path d={line} fill="none" stroke="#3B6FD4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      {coords.map((c,i) => (
+                        <g key={i}>
+                          <circle cx={c.x} cy={c.y} r="3.5" fill="#3B6FD4"/>
+                          {c.v > 0 && <text x={c.x} y={c.y-7} textAnchor="middle" fontSize="9" fill="#E4EDF8">{c.v}</text>}
+                          <text x={c.x} y={H+14} textAnchor="middle" fontSize="9" fill="#6B82A8">{c.label}</text>
+                        </g>
+                      ))}
+                    </svg>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Export modal */}
+          {showExport && (
+            <div onClick={() => setShowExport(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:10020, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+              <div onClick={e => e.stopPropagation()} style={{ background:"#141414", border:`1.5px solid ${C.copper}`, borderRadius:12, padding:24, maxWidth:360, width:"100%" }}>
+                <div style={{ fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.copper, marginBottom:16 }}>EXPORT FIELD LOG DATA</div>
+                {[["today","Today"],["week","This Week"],["month","This Month"],["year","This Year"],["custom","Custom Range"]].map(([v,lbl]) => (
+                  <label key={v} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid rgba(255,255,255,0.05)`, cursor:"pointer" }}>
+                    <input type="radio" name="exportRange" checked={exportRange===v} onChange={() => setExportRange(v)} style={{ accentColor:C.copper, width:16, height:16, cursor:"pointer" }}/>
+                    <span style={{ fontFamily:F.body, fontSize:15, color:C.text }}>{lbl}</span>
+                  </label>
+                ))}
+                {exportRange === "custom" && (
+                  <div style={{ display:"flex", gap:10, marginTop:12 }}>
+                    {[["FROM",exportStart,setExportStart],["TO",exportEnd,setExportEnd]].map(([lbl,val,set]) => (
+                      <div key={lbl} style={{ flex:1 }}>
+                        <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:4 }}>{lbl}</div>
+                        <input type="date" value={val} onChange={e => set(e.target.value)} style={{
+                          width:"100%", background:C.surface2, border:`1px solid ${C.border}`,
+                          borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13,
+                          padding:"8px 10px", boxSizing:"border-box",
+                        }}/>
                       </div>
                     ))}
                   </div>
+                )}
+                <div style={{ display:"flex", gap:10, marginTop:20 }}>
+                  <button onClick={exportCSV} disabled={exporting} style={{
+                    flex:1, padding:"13px 0",
+                    background:`linear-gradient(135deg,${C.copper},#A0632A)`,
+                    border:"none", borderRadius:8, fontFamily:F.head, fontSize:16,
+                    letterSpacing:2, color:"#fff", cursor: exporting ? "not-allowed" : "pointer",
+                    opacity: exporting ? 0.6 : 1,
+                  }}>{exporting ? "EXPORTING..." : "EXPORT CSV"}</button>
+                  <button onClick={() => setShowExport(false)} style={{
+                    padding:"13px 16px", background:"transparent", border:`1px solid ${C.border}`,
+                    borderRadius:8, fontFamily:F.mono, fontSize:11, color:C.mid, cursor:"pointer",
+                  }}>CANCEL</button>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </div>

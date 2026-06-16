@@ -651,6 +651,55 @@ app.get('/api/field-log/dashboard', async (req, res) => {
   }
 });
 
+app.get('/api/field-log/week', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const { rows } = await pgPool.query(
+      `SELECT
+         (logged_at AT TIME ZONE 'America/New_York')::date::text AS day,
+         COUNT(*)::int AS stops
+       FROM field_log_entries
+       WHERE logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York')
+       GROUP BY 1
+       ORDER BY 1`
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/field-log/export', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const { start, end } = req.query;
+    const today = new Date().toISOString().slice(0,10);
+    const { rows } = await pgPool.query(
+      `SELECT
+         rep_name,
+         (logged_at AT TIME ZONE 'America/New_York')::date::text AS date,
+         COUNT(*)::int                                                        AS total_stops,
+         SUM(pm_opp::int)::int                                                AS pm_opps,
+         SUM(equip_opp::int)::int                                             AS equip_opps,
+         SUM(service_lead::int)::int                                          AS service_leads,
+         SUM(piping_opp::int)::int                                            AS piping_opps,
+         SUM(sticker::int)::int                                               AS stickers,
+         SUM(vr_pres::int)::int                                               AS vr_pres,
+         SUM(appt_set::int)::int                                              AS appt_set,
+         SUM(nothing::int)::int                                               AS nothing,
+         STRING_AGG(DISTINCT location, '; ') FILTER (WHERE location IS NOT NULL AND location <> '') AS locations,
+         STRING_AGG(notable_moment, ' | ')   FILTER (WHERE notable_moment IS NOT NULL AND notable_moment <> '') AS notable_moments
+       FROM (
+         SELECT *, (logged_at AT TIME ZONE 'America/New_York')::date AS date_local
+         FROM field_log_entries
+         WHERE (logged_at AT TIME ZONE 'America/New_York')::date BETWEEN $1::date AND $2::date
+       ) sub
+       GROUP BY rep_name, date
+       ORDER BY date, rep_name`,
+      [start || today, end || today]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── SLACK FEEDBACK ───────────────────────────────────────────────────────────
 app.post('/api/slack-feedback', async (req, res) => {
   const { rep, branch, type, message, tab } = req.body;
