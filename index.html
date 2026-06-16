@@ -2613,6 +2613,85 @@ function EnergyCalculator() {
   );
 }
 
+// ─── FEEDBACK MODAL ───────────────────────────────────────────────────────────
+function FeedbackModal({ tab, onClose }) {
+  const [rep, setRep]     = React.useState(() => localStorage.getItem('airiq_rep_name') || '');
+  const [branch, setBranch] = React.useState('');
+  const [fbType, setFbType] = React.useState('Bug Report');
+  const [msg, setMsg]     = React.useState('');
+  const [status, setStatus] = React.useState(null);
+
+  async function send() {
+    if (!msg.trim()) return;
+    setStatus('sending');
+    try {
+      const r = await fetch('/api/slack-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rep, branch, type: fbType, message: msg, tab }),
+      });
+      if (!r.ok) throw new Error();
+      setStatus('ok');
+      setTimeout(onClose, 2000);
+    } catch {
+      setStatus('err');
+    }
+  }
+
+  const overlay = { position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:16 };
+  const box     = { background:'#1C1C1E', border:'1px solid rgba(193,122,53,0.4)', borderRadius:12, padding:24, width:'100%', maxWidth:420, fontFamily:F.body };
+  const inS     = { width:'100%', background:'#0D1117', border:'1px solid rgba(255,255,255,0.12)', borderRadius:6, padding:'8px 10px', color:'#F9FAFB', fontFamily:F.body, fontSize:14, boxSizing:'border-box', outline:'none' };
+
+  return (
+    <div style={overlay} onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div style={box}>
+        <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:'#F9FAFB',marginBottom:16}}>SEND FEEDBACK TO JON</div>
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:4}}>REP NAME</div>
+            <input value={rep} onChange={e=>setRep(e.target.value)} placeholder="Your name" style={inS}/>
+          </div>
+          <div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:4}}>BRANCH</div>
+            <select value={branch} onChange={e=>setBranch(e.target.value)} style={inS}>
+              <option value="">Select branch...</option>
+              {BRANCHES.map(b=><option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:6}}>TYPE</div>
+            <div style={{display:'flex',gap:8}}>
+              {['Bug Report','Feature Request','General'].map(t=>(
+                <button key={t} onClick={()=>setFbType(t)} style={{
+                  flex:1,padding:'7px 4px',borderRadius:6,border:'1px solid',
+                  borderColor:fbType===t?'#C17A35':'rgba(255,255,255,0.12)',
+                  background:fbType===t?'rgba(193,122,53,0.18)':'transparent',
+                  color:fbType===t?'#C17A35':'#9CA3AF',
+                  fontFamily:F.mono,fontSize:9,letterSpacing:1,cursor:'pointer',
+                }}>
+                  {t==='Bug Report'?'🐛':t==='Feature Request'?'✨':'💬'} {t.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:4}}>WHAT'S ON YOUR MIND?</div>
+            <textarea value={msg} onChange={e=>setMsg(e.target.value)} placeholder="Describe the issue or idea..." rows={4} style={{...inS,resize:'vertical'}}/>
+          </div>
+          {status==='ok'  && <div style={{textAlign:'center',color:'#22C55E',fontFamily:F.mono,fontSize:13}}>✅ Sent! Jon will review.</div>}
+          {status==='err' && <div style={{textAlign:'center',color:'#EF4444',fontFamily:F.mono,fontSize:11}}>❌ Failed to send. Screenshot and text Jon directly.</div>}
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={onClose} style={{flex:1,padding:'10px 0',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'transparent',color:'#9CA3AF',fontFamily:F.mono,fontSize:11,letterSpacing:1,cursor:'pointer'}}>CANCEL</button>
+            <button onClick={send} disabled={status==='sending'||status==='ok'} style={{flex:2,padding:'10px 0',borderRadius:8,border:'1px solid #C17A35',background:'rgba(193,122,53,0.18)',color:'#C17A35',fontFamily:F.mono,fontSize:11,letterSpacing:1,cursor:'pointer',opacity:(status==='sending'||status==='ok')?0.5:1}}>
+              {status==='sending'?'SENDING...':'SEND'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquipment, setDrawingReset }) {
   const [job, setJob]         = React.useState({customer:"",address:"",pipeSize:"1\"",pipeColor:"Blue",totalRun:"",dropSize:"3/4\""});
   const [comps, setComps]     = React.useState([]);
@@ -2657,6 +2736,7 @@ function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquip
   const [selectedTier, setSelectedTier] = React.useState(null);
   const [openSections, setOpenSections] = React.useState({buildSystem:true,saveexport:false,valueJustification:false});
   const [tierModal,    setTierModal]    = React.useState(null);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   const toggleSection = k => setOpenSections(p=>({...p,[k]:!p[k]}));
   const secOpen       = k => !!openSections[k];
   const secHdr = (key, label, badge, step, subtitle) => (
@@ -3292,10 +3372,15 @@ No fabricated prices.`;
         <img src="https://mldp0hrp4tx9.i.optimole.com/cb:YTLn.459d0/w:1026/h:1020/q:100/f:best/https://hodgecompressor.com/wp-content/uploads/2025/03/HC-logo-dk-1.png"
           height="36" alt="Hodge" style={{borderRadius:4,background:"white",padding:"2px 6px"}}/>
         <div>
-          <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.text,lineHeight:1}}>SYSTEM ENGINEER</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <div style={{fontFamily:F.head,fontSize:22,letterSpacing:3,color:C.text,lineHeight:1}}>SYSTEM ENGINEER</div>
+            <span style={{background:'#0D1117',color:'#39FF14',border:'1px solid #39FF14',borderRadius:4,padding:'2px 7px',fontFamily:F.mono,fontSize:10,letterSpacing:2,fontWeight:'bold',textShadow:'0 0 8px #39FF14, 0 0 16px #39FF14',boxShadow:'0 0 8px #39FF14, 0 0 16px rgba(57,255,20,0.4)'}}>BETA</span>
+            <button onClick={()=>setFeedbackOpen(true)} style={{background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'3px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer'}}>💬 FEEDBACK</button>
+          </div>
           <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:2,marginTop:3}}>Compressed Air System Design &amp; Estimation</div>
         </div>
       </div>
+      {feedbackOpen && <FeedbackModal tab="Sys Eng" onClose={()=>setFeedbackOpen(false)}/>}
 
       {/* Job Info */}
       <div style={card}>
@@ -5360,6 +5445,22 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       ctx.fillText(`${gy/FD.G}`,34/zoom,gy+4/zoom);
     }
 
+    // Leader lines — drawn before symbols/labels so they appear underneath
+    ctx.save();
+    for(const el of els) {
+      if(el.type!=='symbol'||!el.label) continue;
+      const sc=el.scale||1;
+      if(12*sc*zoom<=20) continue;
+      const symY=el.y+32*sc;
+      const lblY=el.y+44*sc-13/zoom;
+      if(lblY<=symY) continue;
+      ctx.strokeStyle='rgba(249,115,22,0.6)'; ctx.lineWidth=1.5/zoom;
+      ctx.beginPath(); ctx.moveTo(el.x,symY); ctx.lineTo(el.x,lblY); ctx.stroke();
+      ctx.fillStyle='#C17A35';
+      ctx.beginPath(); ctx.arc(el.x,symY,3/zoom,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
     // Elements
     for(const el of els) {
       ctx.save();
@@ -6025,6 +6126,7 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
   const [pastLoading, setPastLoading] = React.useState(false);
   const [savedData, setSavedData]       = React.useState(null);
   const [drawingOpen, setDrawingOpen]   = React.useState(false);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   const drawingRef                      = React.useRef(null);
   const SESSIONS_KEY = 'airiq_sessions';
   const [sessions, setSessions]         = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(SESSIONS_KEY)||'[]');}catch{return[];} });
@@ -6438,10 +6540,13 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
         )}
       </div>
 
+      {feedbackOpen && <FeedbackModal tab="Site/IQF" onClose={()=>setFeedbackOpen(false)}/>}
       {/* Header + completion bar */}
       <div style={{marginBottom:16}}>
-        <div style={{fontFamily:F.head, fontSize:26, letterSpacing:4, color:C.text, marginBottom:8}}>
-          SITE SURVEY
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
+          <div style={{fontFamily:F.head, fontSize:26, letterSpacing:4, color:C.text}}>SITE SURVEY</div>
+          <span style={{background:'#0D1117',color:'#39FF14',border:'1px solid #39FF14',borderRadius:4,padding:'2px 7px',fontFamily:F.mono,fontSize:10,letterSpacing:2,fontWeight:'bold',textShadow:'0 0 8px #39FF14, 0 0 16px #39FF14',boxShadow:'0 0 8px #39FF14, 0 0 16px rgba(57,255,20,0.4)'}}>BETA</span>
+          <button onClick={()=>setFeedbackOpen(true)} style={{background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'3px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer'}}>💬 FEEDBACK</button>
         </div>
         <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:4}}>
           <div style={{flex:1, height:6, background:C.surface2, borderRadius:3, overflow:"hidden"}}>

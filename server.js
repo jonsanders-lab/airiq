@@ -651,6 +651,34 @@ app.get('/api/field-log/dashboard', async (req, res) => {
   }
 });
 
+// ─── SLACK FEEDBACK ───────────────────────────────────────────────────────────
+app.post('/api/slack-feedback', async (req, res) => {
+  const { rep, branch, type, message, tab } = req.body;
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL || 'SLACK_WEBHOOK_PLACEHOLDER';
+  if (webhookUrl === 'SLACK_WEBHOOK_PLACEHOLDER') {
+    return res.status(503).json({ error: 'Slack webhook not configured' });
+  }
+  const text = [
+    '🛠️ *AirIQ Feedback*',
+    `*From:* ${rep || 'Unknown'} — ${branch || 'Unknown'}`,
+    `*Type:* ${type || 'General'}`,
+    `*Message:* ${message || '(no message)'}`,
+    `*Tab:* ${tab || 'Unknown'}`,
+    `*Time:* ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} EST`,
+  ].join('\n');
+  try {
+    const r = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) throw new Error(`Slack ${r.status}`);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.sendFile(path.join(__dirname, 'index.html'));
