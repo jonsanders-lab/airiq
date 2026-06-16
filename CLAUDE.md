@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 16, 2026 (session 3)**
+**Last updated: June 16, 2026 (session 4)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -67,6 +67,11 @@ Railway volume mounted at /app/data for persistent storage
 - Condensate drain lines in drawing tool: DRAIN toggle in toolbar, drain size selector (1/4"–10mm metric), dashed amber (#F59E0B) rendering with endpoint dots, orthogonal-only routing, no auto-NPT/coupling
 - DRAIN FITTINGS palette section: PTL Elbow, PTL Tee, PTL Straight — amber symbols that inline-snap to drain pipes only (PTL_FITTINGS filter in findPipeSnap)
 - BOM: split into COMPRESSED AIR and CONDENSATE DRAIN sections; drain rows show footage and PTL fitting counts
+- Infinite canvas: drawing area is unbounded in all directions; grid renders dynamically based on viewport (wLeft/wRight/wTop/wBottom computed from zoom/pan); only visible elements rendered (viewport culling in element + leader-lines loops)
+- Dynamic grid interval: auto-scales from 1ft (high zoom) to 1000ft (low zoom) so screen spacing stays >= 16px; ruler labels scale independently to >= 80px
+- fitView: content-aware — computes bounding box of all drawn elements and fits to canvas with padding; falls back to origin if empty
+- Zoom range: 10%–400% (clampZoom changed from 0.25 min to 0.1)
+- Scale bar: bottom-right screen-space overlay shows current real-world scale (e.g. "├──┤ 50 ft"), updates live with zoom
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock
