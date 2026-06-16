@@ -723,6 +723,236 @@ function PasswordGate({ onAuth }) {
   );
 }
 
+// ─── HELP / SOP TAB ─────────────────────────────────────────────────────────
+function HelpTab() {
+  const [q, setQ] = React.useState('');
+
+  const sCard  = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:'16px 18px', marginBottom:14 };
+  const sTitle = { fontFamily:F.head, fontSize:17, letterSpacing:3, color:C.orange, marginBottom:12, display:'block' };
+  const sP     = { fontFamily:F.body, fontSize:13.5, color:C.text, lineHeight:1.75, margin:'0 0 9px 0' };
+  const sLi    = { fontFamily:F.body, fontSize:13.5, color:C.text, lineHeight:1.75, marginBottom:2 };
+  const sHint  = { background:'#0a0f1a', border:`1px solid ${C.border}`, borderRadius:4, padding:'2px 8px', fontFamily:F.mono, fontSize:11, color:'#93C5FD', display:'inline', margin:'0 2px' };
+  const sBeta  = { display:'inline-block', background:'rgba(57,255,20,0.12)', border:'1px solid #39FF14', borderRadius:4, padding:'1px 7px', fontFamily:F.mono, fontSize:10, color:'#39FF14', marginBottom:10 };
+  const sTh    = { textAlign:'left', fontFamily:F.mono, fontSize:10, letterSpacing:1, color:C.mid, borderBottom:`1px solid ${C.border}`, padding:'6px 10px' };
+  const sTdA   = { padding:'7px 10px', borderBottom:`1px solid rgba(255,255,255,0.04)`, color:C.orange, fontFamily:F.mono, fontSize:12, verticalAlign:'top', whiteSpace:'nowrap' };
+  const sTdB   = { padding:'7px 10px', borderBottom:`1px solid rgba(255,255,255,0.04)`, color:C.text, fontFamily:F.body, fontSize:13, verticalAlign:'top' };
+
+  const SECTIONS = [
+    {
+      id:'getting-in', title:'1. Getting In',
+      keys:'login password install pwa home screen access safari chrome',
+      body() { return (
+        <>
+          <p style={sP}><strong style={{color:C.text}}>Password:</strong> Ask your RSM. Enter it on the lock screen and tap ENTER — the session stays unlocked on the same device until you clear browser data.</p>
+          <p style={sP}><strong style={{color:C.text}}>Install on iPhone (PWA):</strong></p>
+          <ol style={{paddingLeft:20, margin:'0 0 10px 0'}}>
+            <li style={sLi}>Open Safari → go to <span style={sHint}>airiq-production.up.railway.app</span></li>
+            <li style={sLi}>Tap the Share icon (box with arrow) → "Add to Home Screen" → Add</li>
+            <li style={sLi}>Launch from your home screen — runs fullscreen, no address bar</li>
+          </ol>
+          <p style={sP}><strong style={{color:C.text}}>Android:</strong> Chrome → ⋮ menu → "Add to Home Screen"</p>
+          <p style={sP}><strong style={{color:C.text}}>Desktop:</strong> Visit the URL directly in Chrome or Edge. Bookmark it.</p>
+          <p style={{...sP, color:C.mid, marginBottom:0}}><strong>Locked out?</strong> Hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) or clear site data in your browser settings, then re-enter the password.</p>
+        </>
+      );},
+    },
+    {
+      id:'wingman', title:'2. Wingman',
+      keys:'war stories mission brief intel win log a win wingman',
+      body() { return (
+        <>
+          <p style={sP}><strong style={{color:C.orange}}>Mission Brief</strong> — Generates a daily field briefing: talking points, current inventory highlights, and competitive angles. Tap GENERATE to refresh.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Field Intel</strong> — Team-wide competitive intelligence pulled from uploaded quotes and win notes. Refresh to get the latest.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Log a Win</strong> — Record a closed deal. Fill in customer, equipment sold, and what made the difference. Wins are visible to the whole team and feed future Mission Briefs.</p>
+          <p style={{...sP, color:C.mid, marginBottom:0}}>The more wins you log, the smarter the intel gets.</p>
+        </>
+      );},
+    },
+    {
+      id:'field-log', title:'3. Field Log',
+      keys:'stop log leader graph csv export field log daily pace',
+      body() { return (
+        <>
+          <p style={sP}><strong style={{color:C.orange}}>Log a Stop</strong> — Tap <span style={sHint}>+ LOG STOP</span>. Enter stop type, company, contact, and notes. Tap Save. Goal: 20 stops/day.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Stop Types:</strong> Cold Call · Follow-Up · Service · Bid · Demo · Other</p>
+          <p style={sP}><strong style={{color:C.orange}}>Leader View</strong> — Jon, Tony, and Kyle see the full team dashboard automatically on login. Reps see their own log only.</p>
+          <p style={sP}><strong style={{color:C.orange}}>GRAPH View (leader only)</strong> — Toggle LIST / GRAPH. Bar chart shows today's stop counts by rep with a 20-stop goal line. The weekly trend mini-chart shows Mon–today activity.</p>
+          <p style={{...sP, marginBottom:0}}><strong style={{color:C.orange}}>CSV Export (leader only)</strong> — Tap EXPORT → choose date range (Today / Week / Month / Year / Custom) → auto-downloads a CSV with all 13 activity columns per rep per day.</p>
+        </>
+      );},
+    },
+    {
+      id:'syseng', title:'4. System Engineer — BETA',
+      keys:'system engineer good better best design advisor energy calculator bom send drawing tier switch',
+      body() { return (
+        <>
+          <div style={sBeta}>BETA</div>
+          <p style={sP}><strong style={{color:C.orange}}>7-Step Interview</strong> — Step through CFM, pressure, duty cycle, power, footprint, piping, and budget. AirIQ recommends the right product.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Good / Better / Best</strong> — Three equipment tiers side-by-side with specs, pricing from ServiceTitan, and lead times. Tap any tier to drill in or switch.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Send to Drawing</strong> — On any tier card, tap "Send to Drawing" to push that equipment into the Site / IQF proposed layout automatically.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Energy Calculator</strong> — Enter motor kW, load factor, and run hours/year. Calculates annual energy cost and VSD savings at $0.085/kWh.</p>
+          <p style={sP}><strong style={{color:C.orange}}>BOM Generator</strong> — Auto-generates a bill of materials from the system design including pipe, fittings, and accessories.</p>
+          <p style={{...sP, color:C.mid, marginBottom:0}}>HTM lead times (2–3 days), lugging rental requirements, and deposit rules are flagged automatically by the Design Advisor as you build.</p>
+        </>
+      );},
+    },
+    {
+      id:'site-iqf', title:'5. Site / IQF — BETA',
+      keys:'site survey iqf drawing pipe drain session submit google sheets as-is proposed',
+      body() { return (
+        <>
+          <div style={sBeta}>BETA</div>
+          <p style={sP}><strong style={{color:C.orange}}>Site Survey</strong> — 10-section IQF checklist covering Job Info, Existing Equipment, Access & Logistics, Placement, Electrical, Piping, Rental Equipment, Drawings, and Manager Approval. Auto-saves draft to this device.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Submit</strong> — Tap SAVE & SUBMIT at the bottom. Saves to the AirIQ Google Sheet and drafts an email summary to your inbox. Requires internet connection.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Past Surveys</strong> — Tap PAST SURVEYS to reload or re-submit a previous session pulled from the Google Sheet.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Drawing Tool</strong> — Opens below the survey. Draw the facility as-is and the proposed system in separate views. See section 6 for all controls.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Pipe Types:</strong> AIRpipe Blue (compressed air) · AIRpipe Green (nitrogen) · AIRpipe Gray (vacuum) · Copper · Stainless · Black Iron · PVC · CPVC</p>
+          <p style={{...sP, marginBottom:0}}><strong style={{color:C.orange}}>Drain Lines:</strong> Toggle <span style={sHint}>⋯ DRAIN</span> in the toolbar. Dashed amber lines — PTL Elbow / Tee / Straight fittings snap to drain pipes only. As-Is and Proposed views save independently.</p>
+        </>
+      );},
+    },
+    {
+      id:'drawing-ref', title:'6. Drawing Tool — Quick Reference',
+      keys:'draw pipe wall symbol select move rotate zoom fit undo clear keyboard shortcut elbow coupling reducer bom pdf png export',
+      body() { return (
+        <table style={{width:'100%', borderCollapse:'collapse'}}>
+          <thead>
+            <tr>
+              <th style={sTh}>Action</th>
+              <th style={sTh}>How to Do It</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ['Draw air pipe','PIPE → click start → click end point'],
+              ['Flip H-V / V-H route','Hold Shift while placing the endpoint'],
+              ['Draw drain line','DRAIN toggle → draw like a regular pipe'],
+              ['Place symbol / fitting','SYMBOL → pick from left palette → click on canvas'],
+              ['Select & move element','SELECT → click element → drag to new position'],
+              ['Rotate symbol','SELECT → drag the orange dot at top of symbol'],
+              ['Edit label','Double-click element in SELECT mode, or right-click → Edit Label'],
+              ['Duplicate element','Right-click (PC) or long-press (iPad) → Duplicate'],
+              ['Delete element','SELECT element → Delete/Backspace key, or right-click → Delete'],
+              ['Zoom in / out','Pinch (iPad) · Scroll wheel (desktop) · +/− ZOOM buttons'],
+              ['Fit drawing to screen','Press F, or click ⊡ FIT'],
+              ['Toggle fullscreen','Click ⛶ FULL in toolbar (Esc to exit)'],
+              ['Undo last action','Click ↩ UNDO'],
+              ['Clear drawing','CLEAR button (prompts confirmation)'],
+              ['Export print-ready PDF','Click ⬇ PDF — white background, dark labels, Hodge footer'],
+              ['Export dark PNG','Click ⬇ PNG — dark canvas screenshot'],
+              ['View bill of materials','Click BOM — shows pipe footage, sticks, and all fittings'],
+              ['Auto elbow at bend','Placed automatically at every L-shape corner'],
+              ['Auto coupling at 19 ft','Placed automatically every stick length along a run'],
+              ['Auto reducer','Inserted when two pipe sizes meet end-to-end'],
+            ].map(([a,b],i) => (
+              <tr key={i} style={{background:i%2===0?'transparent':'rgba(255,255,255,0.025)'}}>
+                <td style={sTdA}>{a}</td>
+                <td style={sTdB}>{b}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );},
+    },
+    {
+      id:'market-intel', title:'7. Market Intel',
+      keys:'market intel competitor quote upload comparison auto log',
+      body() { return (
+        <>
+          <p style={sP}><strong style={{color:C.orange}}>Upload Quotes</strong> — Tap the upload area or drag and drop a PNG/JPG of a competitor quote. AirIQ extracts model, CFM, pressure, and price automatically.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Comparison</strong> — Side-by-side spec and price table: Hodge vs. competitor. Use it to prep a re-quote conversation on the spot.</p>
+          <p style={{...sP, marginBottom:0, color:C.mid}}>Upload as soon as you see a competitor quote in the field — competitive data is most useful when it's fresh and logged immediately.</p>
+        </>
+      );},
+    },
+    {
+      id:'feedback', title:'8. Sending Feedback',
+      keys:'feedback bug feature slack report send',
+      body() { return (
+        <>
+          <p style={sP}>Every tab has a <span style={sHint}>💬 FEEDBACK</span> button in its header bar (top right).</p>
+          <p style={sP}><strong style={{color:C.orange}}>Form fields:</strong></p>
+          <ul style={{paddingLeft:20, margin:'0 0 10px 0'}}>
+            <li style={sLi}><strong>Your Name</strong> — pre-filled from your last saved name</li>
+            <li style={sLi}><strong>Branch</strong> — dropdown: Atlanta · Charlotte · Tampa · Greenville · Nashville · Dallas · Detroit · Cleveland · Chicago</li>
+            <li style={sLi}><strong>Type</strong> — Bug · Feature Request · General</li>
+            <li style={sLi}><strong>Message</strong> — describe the issue or idea in plain language</li>
+          </ul>
+          <p style={{...sP, marginBottom:0}}>Tap <strong style={{color:C.orange}}>SEND</strong>. Posts instantly to <strong>#airiq-feedback</strong> in Slack with tab name, branch, and rep name. No report is too small — bug reports and feature requests directly shape the next update.</p>
+        </>
+      );},
+    },
+    {
+      id:'changelog', title:'9. Change Log',
+      keys:'update version history new feature change release',
+      body() { return (
+        <div>
+          {[
+            ['Jun 16, 2026','PDF footer now includes branch and customer location pulled from localStorage.'],
+            ['Jun 16, 2026','Three drawing fixes: DRAIN/PIPE mutual exclusion; PDF export with white background and Hodge footer; auto-reducing fittings placed at pipe size mismatches.'],
+            ['Jun 16, 2026','Ortho pipe routing — all air pipes route as two-segment L-shapes (H-V). Hold Shift for V-H. Auto-elbow at corner. Existing diagonal pipes auto-converted on load.'],
+            ['Jun 15, 2026','Infinite canvas — unbounded pan/zoom, dynamic grid scaling, map-style scale bar, fit-to-content, zoom range 10–400%.'],
+            ['Jun 15, 2026','Condensate drain lines — amber dashed pipe type, PTL Elbow/Tee/Straight fittings, BOM split into Compressed Air and Condensate Drain sections.'],
+            ['Jun 15, 2026','Field Log — graph view (bar chart + weekly trend), CSV export for leaders, auto-dashboard for Jon/Tony/Kyle.'],
+            ['Jun 14, 2026','Drawing tool — 8 pipe materials, right-click context menu, 4-directional connectors, real-world equipment footprints, canvas leader lines.'],
+            ['Jun 13, 2026','AirIQ launch — AI Q&A, Wingman, Field Log, Site/IQF survey + drawing tool, Sys Eng, Market Intel, Feedback.'],
+          ].map(([date,text],i) => (
+            <div key={i} style={{display:'flex', gap:14, alignItems:'flex-start', marginBottom:9}}>
+              <span style={{fontFamily:F.mono, fontSize:10, color:C.mid, flexShrink:0, paddingTop:3, minWidth:88}}>{date}</span>
+              <span style={{fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.65}}>{text}</span>
+            </div>
+          ))}
+        </div>
+      );},
+    },
+  ];
+
+  const qLow = q.trim().toLowerCase();
+  const visible = qLow.length < 2 ? SECTIONS
+    : SECTIONS.filter(s => (s.title + ' ' + s.keys).toLowerCase().includes(qLow));
+
+  return (
+    <div style={{height:'100%', overflowY:'auto', WebkitOverflowScrolling:'touch'}}>
+      <div style={{padding:'20px 16px 32px', maxWidth:820, margin:'0 auto'}}>
+
+        {/* Page header */}
+        <div style={{fontFamily:F.head, fontSize:22, letterSpacing:5, color:C.text, marginBottom:2}}>REP SOP</div>
+        <div style={{fontFamily:F.mono, fontSize:10, color:C.mid, letterSpacing:3, marginBottom:20}}>
+          AirIQ FIELD TOOL GUIDE · HODGE COMPRESSOR
+        </div>
+
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="Search topics… (e.g. pipe, export, stop)"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          style={{
+            width:'100%', boxSizing:'border-box',
+            background:C.surface2, border:`1px solid ${C.border}`,
+            borderRadius:8, padding:'11px 14px', fontFamily:F.body, fontSize:14,
+            color:C.text, outline:'none', marginBottom:20,
+          }}
+        />
+
+        {visible.length === 0 && (
+          <div style={{fontFamily:F.body, fontSize:13, color:C.mid, textAlign:'center', padding:'48px 0'}}>
+            No sections match "{q}"
+          </div>
+        )}
+
+        {visible.map(sec => (
+          <div key={sec.id} style={sCard}>
+            <span style={sTitle}>{sec.title}</span>
+            {sec.body()}
+          </div>
+        ))}
+
+      </div>
+    </div>
+  );
+}
+
 // ─── APP SHELL ───────────────────────────────────────────────────────────────
 function App() {
   const [authed, setAuthed]                 = React.useState(false);
@@ -800,6 +1030,9 @@ function App() {
           flexDirection:"column", height:"100%", overflow:"hidden" }}>
           <FieldLog/>
         </div>
+        <div style={{ display: tab==="help" ? "block" : "none", height:"100%", overflowY:"auto" }}>
+          <HelpTab/>
+        </div>
       </div>
 
       {/* Bottom Tab Bar */}
@@ -818,6 +1051,7 @@ function App() {
             { id:"site-design",  icon:"📋", label:"Site / IQF" },
             { id:"estimator",    icon:null,  label:"Sys Eng"   },
             { id:"market-intel", icon:"📊", label:"Mkt Intel"  },
+            { id:"help",         icon:"❓", label:"Help"       },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               flexShrink:0, minWidth:58,

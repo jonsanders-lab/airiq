@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 16, 2026 (session 6)**
+**Last updated: June 16, 2026 (session 7)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -76,6 +76,8 @@ Railway volume mounted at /app/data for persistent storage
 - DRAIN/PIPE mutual exclusion: changeTool() clears drain mode; DRAIN button sets tool state directly to avoid self-clearing; clicking PIPE always returns to regular pipe mode
 - PDF export (white background, print-ready): jsPDF CDN loaded; doExportPDF() renders drawing on white canvas with light-gray grid (#EEEEEE), equipment symbols white-fill/dark-border (fdSym pm=true), dark pipe labels (#1a1a1a), Hodge footer bar; PDF button is primary, PNG kept as secondary
 - Auto-reducing fittings: PIPE_SIZE_ORDER size index ['3/4"'…'4"']; 'reducer' symbol (tapered inline symbol) added to FITTINGS palette; findSnapPoint() returns sourceEl for pipe endpoint snaps; pipe completion detects end-to-end size mismatch and auto-inserts labeled reducer (e.g. "2×1") at connection point; works on both single-segment and L-shape routing paths
+- PDF footer: branch (from airiq_site_survey_draft.branch or wingman_branch localStorage) and customer location (from airiq_site_survey_draft.equipLocation) added; fields joined gracefully, blank fields omitted
+- Help / SOP tab: ❓ tab added to bottom tab bar; HelpTab component with 9 searchable SOP sections (Getting In, Wingman, Field Log, Sys Eng, Site/IQF, Drawing Tool Quick Reference table, Market Intel, Sending Feedback, Change Log); dark theme, real-time keyword filter, inline section cards
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock
