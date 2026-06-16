@@ -862,6 +862,7 @@ function AirIQ() {
   const [showStarters, setShowStarters] = React.useState(true);
   const [isListening, setIsListening]   = React.useState(false);
   const [stLookupActive, setStLookupActive] = React.useState(false);
+  const [feedbackOpen, setFeedbackOpen]     = React.useState(false);
   const bottomRef      = React.useRef(null);
   const recognitionRef = React.useRef(null);
   const textareaRef    = React.useRef(null);
@@ -1117,6 +1118,7 @@ function AirIQ() {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:C.bg }}>
+      {feedbackOpen && <FeedbackModal tab="AirIQ" onClose={()=>setFeedbackOpen(false)}/>}
       {/* ST Status bar — single scrollable row */}
       <div className="vendor-bar" style={{ padding:"4px 12px 6px", background:C.surface, borderBottom:`1px solid ${C.border}`,
         display:"flex", alignItems:"center", gap:6, overflowX:"auto", flexWrap:"nowrap",
@@ -1137,6 +1139,7 @@ function AirIQ() {
             ? <><span style={{ width:5,height:5,borderRadius:"50%",background:"#f59e0b",display:"inline-block",animation:"blink 1s infinite" }}/> ST…</>
             : "ST Price + Stock"}
         </span>
+        <button onClick={()=>setFeedbackOpen(true)} style={{marginLeft:"auto",flexShrink:0,background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'3px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer',whiteSpace:'nowrap'}}>💬 FEEDBACK</button>
       </div>
 
       {/* Messages */}
@@ -1267,6 +1270,7 @@ const BRANCH_INTEL = {
 function Wingman() {
   const [tab, setTab]     = React.useState("brief");
   const [stories, setStories] = React.useState([]);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -1297,8 +1301,9 @@ function Wingman() {
 
   return (
     <div>
+      {feedbackOpen && <FeedbackModal tab="Wingman" onClose={()=>setFeedbackOpen(false)}/>}
       {/* Wingman sub-tabs */}
-      <div style={{ display:"flex", gap:2, marginBottom:20, borderBottom:`1px solid ${C.border}`,
+      <div style={{ display:"flex", gap:2, alignItems:"center", marginBottom:20, borderBottom:`1px solid ${C.border}`,
         marginLeft:-16, marginRight:-16, paddingLeft:16 }}>
         {WTABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -1309,6 +1314,7 @@ function Wingman() {
             borderBottom: tab===t.id ? `2px solid ${C.orange}` : "2px solid transparent",
           }}>{t.label}</button>
         ))}
+        <button onClick={()=>setFeedbackOpen(true)} style={{marginLeft:"auto",marginRight:16,flexShrink:0,background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'3px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer'}}>💬 FEEDBACK</button>
       </div>
       {tab==="brief" && <MissionBrief stories={stories}/>}
       {tab==="intel" && <FieldIntel stories={stories}/>}
@@ -6938,6 +6944,7 @@ function MarketIntel() {
   const [compFile, setCompFile]     = React.useState(null);
   const [comparing, setComparing]   = React.useState(false);
   const [compareMsg, setCompareMsg] = React.useState("");
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
 
   // ── Manual entry ────────────────────────────────────────────────────────────
   function hf(k,v) { setHeader(p => ({...p, [k]:v})); }
@@ -7108,7 +7115,14 @@ function MarketIntel() {
 
   return (
     <div style={{padding:"16px 16px 40px", maxWidth:600, margin:"0 auto"}}>
-      <SectionHeader label="MARKET INTEL" sub="Competitive quote comparison & price analysis"/>
+      {feedbackOpen && <FeedbackModal tab="Market Intel" onClose={()=>setFeedbackOpen(false)}/>}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:24}}>
+        <div>
+          <div style={{fontFamily:F.head,fontSize:26,letterSpacing:4,marginBottom:5,color:C.text}}>MARKET INTEL</div>
+          <div style={{fontFamily:F.mono,fontSize:11,color:C.mid,letterSpacing:2}}>Competitive quote comparison &amp; price analysis</div>
+        </div>
+        <button onClick={()=>setFeedbackOpen(true)} style={{flexShrink:0,marginTop:4,background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'4px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer'}}>💬 FEEDBACK</button>
+      </div>
 
       {/* Dual upload zones */}
       <div style={{marginBottom:4}}>
@@ -7390,6 +7404,7 @@ function FieldLog() {
   const [msg,        setMsg]        = React.useState("");
   const [dashboard,  setDashboard]  = React.useState([]);
   const [dashLoad,   setDashLoad]   = React.useState(false);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   const dashTimer = React.useRef(null);
 
   React.useEffect(() => {
@@ -7483,10 +7498,11 @@ function FieldLog() {
 
   return (
     <div style={{ height:"100%", display:"flex", flexDirection:"column", background:C.bg }}>
+      {feedbackOpen && <FeedbackModal tab="Field Log" onClose={()=>setFeedbackOpen(false)}/>}
 
       {/* View toggle */}
-      <div style={{ padding:"10px 16px 0", flexShrink:0 }}>
-        <div style={{ display:"flex", background:C.surface2, borderRadius:8, padding:3, border:`1px solid ${C.border}` }}>
+      <div style={{ padding:"10px 16px 0", flexShrink:0, display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ flex:1, display:"flex", background:C.surface2, borderRadius:8, padding:3, border:`1px solid ${C.border}` }}>
           {[["rep","MY LOG"],["leader","LEADER VIEW"]].map(([v,label]) => (
             <button key={v} onClick={() => setView(v)} style={{
               flex:1, padding:"9px 0", borderRadius:6,
@@ -7496,6 +7512,7 @@ function FieldLog() {
             }}>{label}</button>
           ))}
         </div>
+        <button onClick={()=>setFeedbackOpen(true)} style={{flexShrink:0,background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'6px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer'}}>💬 FEEDBACK</button>
       </div>
 
       {/* ── REP VIEW ── */}
