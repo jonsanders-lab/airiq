@@ -4494,14 +4494,14 @@ No fabricated prices.`;
                 if(rec.dual){
                   const p1=oldComps[0]||{x:160,y:300,rotation:0,scale:1};
                   const p2=oldComps[1]||{x:160,y:500,rotation:0,scale:1};
-                  newEquip.push({...p1,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor'});
-                  newEquip.push({...p2,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor'});
+                  newEquip.push({...p1,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor',...fdDimPatch('compressor',rec.model)});
+                  newEquip.push({...p2,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor',...fdDimPatch('compressor',rec.model)});
                 } else {
                   const p=oldComps[0]||{x:200,y:400,rotation:0,scale:1};
-                  newEquip.push({...p,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor'});
+                  newEquip.push({...p,id:idg(),type:'symbol',symbolId:'compressor',label:rec.model||'Compressor',...fdDimPatch('compressor',rec.model)});
                 }
-                if(rec.dryer){const p=oldDryer||{x:380,y:400,rotation:0,scale:1};newEquip.push({...p,id:idg(),type:'symbol',symbolId:'dryer',label:'Air Dryer'});}
-                if(rec.tankGal){const p=oldTank||{x:560,y:380,rotation:0,scale:1};newEquip.push({...p,id:idg(),type:'symbol',symbolId:'tank',label:`${rec.tankGal}G Tank`});}
+                if(rec.dryer){const p=oldDryer||{x:380,y:400,rotation:0,scale:1};newEquip.push({...p,id:idg(),type:'symbol',symbolId:'dryer',label:'Air Dryer',...fdDimPatch('dryer',rec.dryer)});}
+                if(rec.tankGal){const p=oldTank||{x:560,y:380,rotation:0,scale:1};newEquip.push({...p,id:idg(),type:'symbol',symbolId:'tank',label:`${rec.tankGal}G Tank`,...fdDimPatch('tank',rec.tankGal)});}
                 try{localStorage.setItem('airiq_facility_drawing_proposed',JSON.stringify([...nonEquip,...newEquip]));}catch{}
                 setDrawingReset(n=>n+1);
                 setProposedEquipment(rec);setDrawingMode('proposed');setTab('site-design');setTierModal(null);
@@ -4605,13 +4605,15 @@ const FD_SYMBOLS   = [
 ];
 
 // Connection points per symbol (relative to center 0,0, before rotation/scale)
-// Tank uses ±20 (multiple of grid G=20) so connectors land on the 20px grid from any grid-aligned position
+// Every equipment symbol gets points on BOTH axes (not just left/right) so pipes approaching
+// from any direction get a precise, deterministic connector instead of falling through to the
+// generic bbox fallback in findSnapPoint (which caused missing NPT labels + diagonal tank pipes).
 const FD_CONNECTORS = {
-  compressor:[{x:-32,y:0},{x:32,y:0}],
-  dryer:     [{x:-28,y:0},{x:28,y:0}],
-  tank:      [{x:0,y:-20},{x:0,y:20}],
-  filter:    [{x:-16,y:0},{x:16,y:0}],
-  ows:       [{x:-28,y:0},{x:28,y:0}],
+  compressor:[{x:-32,y:0},{x:32,y:0},{x:0,y:-20},{x:0,y:20}],
+  dryer:     [{x:-28,y:0},{x:28,y:0},{x:0,y:-18},{x:0,y:18}],
+  tank:      [{x:0,y:-20},{x:0,y:20},{x:-20,y:0},{x:20,y:0}],
+  filter:    [{x:-16,y:0},{x:16,y:0},{x:0,y:-16},{x:0,y:16}],
+  ows:       [{x:-28,y:0},{x:28,y:0},{x:0,y:-18},{x:0,y:18}],
   ballvalve: [{x:-20,y:0},{x:20,y:0}],
   tee:       [{x:-20,y:0},{x:20,y:0},{x:0,y:-18}],
   drop:      [{x:0,y:-20},{x:0,y:22}],
@@ -4625,6 +4627,43 @@ function getConnectors(el) {
     const lx=p.x*sc, ly=p.y*sc;
     return {x:el.x+lx*Math.cos(rot)-ly*Math.sin(rot), y:el.y+lx*Math.sin(rot)+ly*Math.cos(rot)};
   });
+}
+
+// Real-world equipment footprints (width x depth, inches) — used to auto-scale symbols to true size
+const FD_DIMS = {
+  HD30:[28,46], HD40:[28,46], HD60:[30,55], HD75:[32,60], HD100:[34,68], HD150:[38,76],
+  HV30:[28,46], HV40:[28,46], HV60:[30,55], HV75:[32,60],
+  HT30:[30,55], HT40:[30,55], HT60:[34,62], HT75:[34,68], HT100:[38,72], HT150:[42,80],
+  HT200:[48,90], HT250:[52,96], HT300:[56,102], HT350:[60,108],
+  HTM60:[48,72], HTM75:[48,72], HTM100:[54,80], HTM150:[60,90],
+  HAD18:[8,12], HAD42:[10,14], HAD85:[12,18], HAD135:[14,20], HAD230:[16,24], HAD378:[18,28], HAD487:[20,32],
+};
+const FD_TANK_DIMS = { '80':[16,16], '120':[18,18], '240':[24,24], '400':[30,30], '660':[36,36] };
+const FD_DIM_SYMS = ['compressor','dryer','tank'];
+// Base on-screen footprint (px, at scale=1) for each dimensionable symbol — matches fdSym's drawn box
+const FD_BASE_PX = { compressor:[64,40], dryer:[56,36], tank:[28,62] };
+
+function fdLookupDims(symbolId, modelOrLabel) {
+  if(!modelOrLabel) return null;
+  const L=String(modelOrLabel).toUpperCase().replace(/[\s\-]/g,'');
+  if(symbolId==='tank') {
+    const m=L.match(/^(\d+)G?/);
+    return (m && FD_TANK_DIMS[m[1]]) || null;
+  }
+  const m2=L.match(/^(H[A-Z]+\d+)/);
+  return FD_DIMS[m2?m2[1]:L] || null;
+}
+function fdScaleForDims(symbolId, dimW, dimD) {
+  const base=FD_BASE_PX[symbolId];
+  if(!base||!dimW||!dimD) return 1;
+  const pxPerInch=FD.G/12;
+  const sW=(dimW*pxPerInch)/base[0], sD=(dimD*pxPerInch)/base[1];
+  return Math.max(0.3,Math.min(4,Math.sqrt(sW*sD)));
+}
+// Returns {dimW,dimD,scale} patch to spread onto a symbol element, or {} if no match found
+function fdDimPatch(symbolId, modelOrLabel) {
+  const d=fdLookupDims(symbolId, modelOrLabel);
+  return d ? {dimW:d[0], dimD:d[1], scale:fdScaleForDims(symbolId,d[0],d[1])} : {};
 }
 
 const FD_TEMPLATES = {
@@ -4861,14 +4900,14 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       const items=[];
       // Tank at y=380 so its bottom connector (y+20=400) aligns with the horizontal pipe train
       if(proposedEquipment.dual){
-        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:300,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
-        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:500,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
-        if(proposedEquipment.dryer)  items.push({id:id(),type:'symbol',symbolId:'dryer', x:400,y:400,label:'Air Dryer',rotation:0,scale:1});
-        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:580,y:380,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1});
+        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:300,label:proposedEquipment.model||'Compressor',rotation:0,scale:1,...fdDimPatch('compressor',proposedEquipment.model)});
+        items.push({id:id(),type:'symbol',symbolId:'compressor',x:160,y:500,label:proposedEquipment.model||'Compressor',rotation:0,scale:1,...fdDimPatch('compressor',proposedEquipment.model)});
+        if(proposedEquipment.dryer)  items.push({id:id(),type:'symbol',symbolId:'dryer', x:400,y:400,label:'Air Dryer',rotation:0,scale:1,...fdDimPatch('dryer',proposedEquipment.dryer)});
+        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:580,y:380,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1,...fdDimPatch('tank',proposedEquipment.tankGal)});
       } else {
-        items.push({id:id(),type:'symbol',symbolId:'compressor',x:200,y:400,label:proposedEquipment.model||'Compressor',rotation:0,scale:1});
-        if(proposedEquipment.dryer)  items.push({id:id(),type:'symbol',symbolId:'dryer', x:380,y:400,label:'Air Dryer',rotation:0,scale:1});
-        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:560,y:380,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1});
+        items.push({id:id(),type:'symbol',symbolId:'compressor',x:200,y:400,label:proposedEquipment.model||'Compressor',rotation:0,scale:1,...fdDimPatch('compressor',proposedEquipment.model)});
+        if(proposedEquipment.dryer)  items.push({id:id(),type:'symbol',symbolId:'dryer', x:380,y:400,label:'Air Dryer',rotation:0,scale:1,...fdDimPatch('dryer',proposedEquipment.dryer)});
+        if(proposedEquipment.tankGal)items.push({id:id(),type:'symbol',symbolId:'tank',  x:560,y:380,label:`${proposedEquipment.tankGal}G Tank`,rotation:0,scale:1,...fdDimPatch('tank',proposedEquipment.tankGal)});
       }
       try{localStorage.setItem(FD_PR_LS,JSON.stringify(items));}catch{}
       return items;
@@ -4885,6 +4924,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const addEl    = el  => mutate(p=>[...p,el]);
   const rmEl     = id  => { mutate(p=>p.filter(e=>e.id!==id)); setSelected(null); };
   const updEl    = (id,u) => setEls(p=>{ const n=p.map(e=>e.id===id?{...e,...u}:e); persist(n); return n; });
+  const setSymDims = (el,dimW,dimD) => updEl(el.id,{dimW,dimD,scale:fdScaleForDims(el.symbolId,dimW,dimD)});
   const undo     = ()  => { const p=undoRef.current.pop(); if(p!=null){setEls(p);persist(p);} };
   const clearAll = ()  => { if(!window.confirm('Clear entire drawing?'))return; mutate(()=>[]); setSelected(null); };
   const fitView  = ()  => { setZoom(1); setPan({x:0,y:0}); };
@@ -4935,6 +4975,16 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       }
     }
     return null;
+  }
+
+  // If the snap endpoint (ex,ey) is within 1 grid cell of the pipe's start point on one axis,
+  // force the pipe perfectly horizontal/vertical on that axis instead of leaving it diagonal.
+  function orthoLock(x1, y1, ex, ey) {
+    const dx=ex-x1, dy=ey-y1;
+    if(dx===0||dy===0) return {x:ex,y:ey};
+    if(Math.abs(dx)<=FD.G && Math.abs(dx)<Math.abs(dy)) return {x:x1,y:ey};
+    if(Math.abs(dy)<=FD.G && Math.abs(dy)<=Math.abs(dx)) return {x:ex,y:y1};
+    return {x:ex,y:ey};
   }
 
   function hitTest(x, y) {
@@ -5087,7 +5137,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         setDrawing({x1:fx,y1:fy,x2:fx,y2:fy,startSnap:sp,isDim:tool==='dim'});
       } else {
         const sp2=findSnapPoint(raw.x,raw.y,els);
-        const ex=sp2?sp2.x:snapped.x, ey=sp2?sp2.y:snapped.y;
+        let ex=sp2?sp2.x:snapped.x, ey=sp2?sp2.y:snapped.y;
         if(tool==='dim') {
           addEl({id:(Date.now()+Math.random()).toString(36),type:'dim',x1:drawing.x1,y1:drawing.y1,x2:ex,y2:ey});
           setDrawing(null); setSnapPt(null);
@@ -5097,6 +5147,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           setDrawing(null); setSnapPt(null);
         } else {
           // Pipe completion: auto-elbow, auto-NPT-adapter, auto-couplings
+          if(sp2) { const lk=orthoLock(drawing.x1,drawing.y1,ex,ey); ex=lk.x; ey=lk.y; }
           const newAngle=Math.atan2(ey-drawing.y1,ex-drawing.x1);
           const pipeLen=Math.hypot(ex-drawing.x1,ey-drawing.y1);
           const ftLen=pipeLen/FD.G;
@@ -5221,7 +5272,9 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     if((tool==='pipe'||tool==='dim')&&drawing) {
       const sp=findSnapPoint(raw.x,raw.y,els);
       setSnapPt(sp);
-      setDrawing(d=>({...d, x2:sp?sp.x:snapped.x, y2:sp?sp.y:snapped.y}));
+      let nx2=sp?sp.x:snapped.x, ny2=sp?sp.y:snapped.y;
+      if(sp&&tool==='pipe') { const lk=orthoLock(drawing.x1,drawing.y1,nx2,ny2); nx2=lk.x; ny2=lk.y; }
+      setDrawing(d=>({...d, x2:nx2, y2:ny2}));
       return;
     }
     if(drawing) { setDrawing(d=>({...d,x2:snapped.x,y2:snapped.y})); return; }
@@ -5330,11 +5383,27 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     }
   }
 
+  // Right-click (PC) equivalent of the touch long-press → symbol context menu
+  function onContextMenu(e) {
+    e.preventDefault();
+    const raw=getPos(e,false);
+    const h=hitTest(raw.x,raw.y);
+    if(h&&h.type==='symbol') {
+      const src=e.changedTouches?e.changedTouches[0]:e;
+      setCtxMenu({show:true,x:src.clientX,y:src.clientY,elId:h.id});
+    }
+  }
+
   function commitLabel() {
     const {forId,text,x,y,isPipe,elevNote}=labelIn;
     if(forId) {
       if(isPipe) updEl(forId,{customLabel:text||null,elevNote:elevNote||null});
-      else updEl(forId,{label:text});
+      else {
+        const el=els.find(e=>e.id===forId);
+        const patch={label:text};
+        if(el && !el.dimW && FD_DIM_SYMS.includes(el.symbolId)) Object.assign(patch,fdDimPatch(el.symbolId,text));
+        updEl(forId,patch);
+      }
     } else if(text.trim()) {
       addEl({id:(Date.now()+Math.random()).toString(36),type:'label',x,y,text});
     }
@@ -5853,6 +5922,31 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         </button>
       </div>
 
+      {/* Dimensions panel — shown when a compressor/dryer/tank symbol is selected */}
+      {(()=>{
+        const selEl=selected&&els.find(e=>e.id===selected);
+        if(!selEl||selEl.type!=='symbol'||!FD_DIM_SYMS.includes(selEl.symbolId)) return null;
+        return (
+          <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0,flexWrap:'wrap',
+            background:'#080C14',padding:'6px 12px',borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:2}}>DIMENSIONS (IN)</span>
+            <label style={{fontFamily:F.mono,fontSize:10,color:C.mid,display:'flex',alignItems:'center',gap:4}}>
+              W
+              <input type="number" min="1" value={selEl.dimW||''} placeholder="—"
+                onChange={e=>setSymDims(selEl,Number(e.target.value)||0,selEl.dimD||0)}
+                style={{width:56,background:C.surface2,border:`1px solid ${C.border}`,borderRadius:4,color:'#fff',fontFamily:F.mono,fontSize:11,padding:'3px 6px'}}/>
+            </label>
+            <label style={{fontFamily:F.mono,fontSize:10,color:C.mid,display:'flex',alignItems:'center',gap:4}}>
+              D
+              <input type="number" min="1" value={selEl.dimD||''} placeholder="—"
+                onChange={e=>setSymDims(selEl,selEl.dimW||0,Number(e.target.value)||0)}
+                style={{width:56,background:C.surface2,border:`1px solid ${C.border}`,borderRadius:4,color:'#fff',fontFamily:F.mono,fontSize:11,padding:'3px 6px'}}/>
+            </label>
+            <span style={{fontFamily:F.mono,fontSize:8,color:C.dim}}>scales symbol to true footprint on grid (1 sq = 1 ft)</span>
+          </div>
+        );
+      })()}
+
       {/* Palette + Canvas */}
       <div style={{display:'flex',flex:1,overflow:'hidden',minHeight:0}}>
         <div style={paletteStyle}>
@@ -5878,7 +5972,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             style={{width:'100%',height:'auto',display:'block',touchAction:'none',
                    cursor:tool==='erase'?'crosshair':tool==='select'?'default':'crosshair'}}
             onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-            onDoubleClick={onDblClick}
+            onDoubleClick={onDblClick} onContextMenu={onContextMenu}
             onTouchStart={e=>{e.preventDefault();onDown(e);}}
             onTouchMove={e=>{e.preventDefault();onMove(e);}}
             onTouchEnd={e=>onUp(e)}

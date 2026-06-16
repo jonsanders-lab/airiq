@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 15, 2026 (session 2 update)**
+**Last updated: June 16, 2026**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -54,6 +54,11 @@ Railway volume mounted at /app/data for persistent storage
 - Facility Drawing Tool: fullscreen, zoom/pan, rotation, snap, auto-fittings, auto-couplings at 19ft, elevation notes, BOM from drawing
 - Energy & Cost Calculator with VSD recommendation engine and tank cycle calculator
 - Site Survey: 10-section IQF form, auto-save draft, Past Surveys panel, email on save (Gmail compose)
+- 💬 FEEDBACK button (no BETA badge) added to AirIQ, Wingman, Field Log, and Mkt Intel tab headers — all post to /api/slack-feedback with correct tab name
+- Equipment real-world dimensions: FD_DIMS/FD_TANK_DIMS lookup table (HD/HV/HT/HTM compressors, HAD dryers, receiver tanks by gallon) auto-scales compressor/dryer/tank symbols to true footprint on the drawing grid; editable W/D (inches) panel appears when one of those symbols is selected; auto-populates on Sys Eng pre-place and on manual placement when the typed label matches a known model
+- FD_CONNECTORS given 4-directional (not just left/right) connector points for compressor/dryer/tank/filter/ows so pipes approaching from any side get a precise snap — fixes inconsistent NPT-adapter generation and tank diagonal-pipe artifacts
+- Ortho-lock on pipe snap: if a pipe endpoint snaps within 1 grid cell on one axis, the pipe is forced perfectly horizontal/vertical instead of diagonal
+- Right-click (PC) now opens the same symbol context menu (Edit Label/Rotate/Duplicate/Delete) as long-press on iPad — `onContextMenu` handler added to the drawing canvas
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock
@@ -65,6 +70,7 @@ Railway volume mounted at /app/data for persistent storage
 - Minimum labor: first compressor 8hrs, each additional 4hrs, each dryer 4hrs, each tank 4hrs
 - Energy cost formula: motor_kW × load_factor × annual_hours × $0.085/kWh
 - VSD uses load_factor^1.6 (square-law). Fixed speed unload draws 25%
+- Equipment footprints (W x D, inches) for drawing tool auto-scale: HD30/HV30 28x46, HD60/HV60/HT30/HT40 30x55, HD100 34x68, HD150 38x76, HT200 48x90, HT350 60x108, HTM60/75 48x72, HTM150 60x90; HAD dryers 8x12 (HAD18) up to 20x32 (HAD487); receiver tanks 80G=16x16 up to 660G=36x36 — see FD_DIMS/FD_TANK_DIMS in index.html
 
 ## AIRPIPE PART NUMBERS
 Pipe prefix by size: 3/4"=1, 1"=2, 1.5"=4, 2"=5, 2.5"=6, 3"=7, 4"=8, 6"=9, 8"=A
