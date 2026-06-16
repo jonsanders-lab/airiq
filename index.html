@@ -4956,7 +4956,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   },[isProposed,proposedEquipment]);
 
   const snap        = v => Math.round(v/FD.G)*FD.G;
-  const clampZoom   = z => Math.max(0.25,Math.min(4,z));
+  const clampZoom   = z => Math.max(0.1,Math.min(4,z));
   const persist     = list => { try{localStorage.setItem(currentLSKey,JSON.stringify(list));}catch{} };
 
   function mutate(fn) {
@@ -4968,7 +4968,30 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const setSymDims = (el,dimW,dimD) => updEl(el.id,{dimW,dimD,scale:fdScaleForDims(el.symbolId,dimW,dimD)});
   const undo     = ()  => { const p=undoRef.current.pop(); if(p!=null){setEls(p);persist(p);} };
   const clearAll = ()  => { if(!window.confirm('Clear entire drawing?'))return; mutate(()=>[]); setSelected(null); };
-  const fitView  = ()  => { setZoom(1); setPan({x:0,y:0}); };
+  const fitView = () => {
+    const targets=els.filter(e=>e.type==='symbol'||e.type==='pipe'||e.type==='wall'||e.type==='dim'||e.type==='label');
+    if(targets.length===0){setZoom(1);setPan({x:FD.W/2-300,y:FD.H/2-200});return;}
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const el of targets){
+      if(el.type==='pipe'||el.type==='wall'||el.type==='dim'){
+        minX=Math.min(minX,el.x1,el.x2);maxX=Math.max(maxX,el.x1,el.x2);
+        minY=Math.min(minY,el.y1,el.y2);maxY=Math.max(maxY,el.y1,el.y2);
+      } else if(el.type==='symbol'){
+        const p=50*(el.scale||1);
+        minX=Math.min(minX,el.x-p);maxX=Math.max(maxX,el.x+p);
+        minY=Math.min(minY,el.y-p);maxY=Math.max(maxY,el.y+p);
+      } else if(el.type==='label'){
+        minX=Math.min(minX,el.x);maxX=Math.max(maxX,el.x+120);
+        minY=Math.min(minY,el.y-20);maxY=Math.max(maxY,el.y);
+      }
+    }
+    if(minX===Infinity){setZoom(1);setPan({x:0,y:0});return;}
+    const PAD=80;
+    const contentW=maxX-minX+PAD*2, contentH=maxY-minY+PAD*2;
+    const nz=clampZoom(Math.min(FD.W/contentW,FD.H/contentH));
+    const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+    setZoom(nz); setPan({x:FD.W/2-cx*nz,y:FD.H/2-cy*nz});
+  };
   const changeTool = t => { if(t!=='select'&&t!=='erase') lastDrawTool.current=t; setTool(t); setPipeSnap(null); };
 
   function getCanvasPos(e) {
@@ -5568,36 +5591,59 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     ctx.save();
     ctx.setTransform(zoom,0,0,zoom,pan.x,pan.y);
 
-    // Grid — minor (1 ft) and major (5 ft) lines in copper
+    // Visible world bounds (used for grid and viewport culling below)
+    const wLeft   = (0    - pan.x) / zoom;
+    const wRight  = (FD.W - pan.x) / zoom;
+    const wTop    = (0    - pan.y) / zoom;
+    const wBottom = (FD.H - pan.y) / zoom;
+
+    // Infinite dynamic grid — choose minor interval so screen spacing >= 16px
+    const GRID_FT = [1,2,5,10,25,50,100,200,500,1000];
+    const minorFt = GRID_FT.find(f=>f*FD.G*zoom>=16)||1000;
+    const minorG  = minorFt*FD.G;
+    const majorMod = 5; // draw a major line every 5 minor lines
+
     ctx.lineCap='butt';
-    for(let gx=0;gx<=FD.W;gx+=FD.G){
-      const major=(gx%(FD.G*5)===0);
+    const gxStart=Math.floor(wLeft/minorG)*minorG;
+    const gxEnd  =Math.ceil(wRight/minorG)*minorG;
+    const gyStart=Math.floor(wTop/minorG)*minorG;
+    const gyEnd  =Math.ceil(wBottom/minorG)*minorG;
+
+    for(let gx=gxStart;gx<=gxEnd;gx+=minorG){
+      const major=(Math.round(gx/minorG)%majorMod===0);
       ctx.strokeStyle=major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)';
       ctx.lineWidth=(major?1:0.5)/zoom;
-      ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,FD.H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(gx,wTop); ctx.lineTo(gx,wBottom); ctx.stroke();
     }
-    for(let gy=0;gy<=FD.H;gy+=FD.G){
-      const major=(gy%(FD.G*5)===0);
+    for(let gy=gyStart;gy<=gyEnd;gy+=minorG){
+      const major=(Math.round(gy/minorG)%majorMod===0);
       ctx.strokeStyle=major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)';
       ctx.lineWidth=(major?1:0.5)/zoom;
-      ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(FD.W,gy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(wLeft,gy); ctx.lineTo(wRight,gy); ctx.stroke();
     }
-    // Footage labels along top and left edges every 5 ft
+
+    // Ruler labels — choose interval so screen spacing >= 80px
+    const labelFt = GRID_FT.find(f=>f*FD.G*zoom>=80)||1000;
+    const labelG  = labelFt*FD.G;
+    const lxStart = Math.floor(wLeft/labelG)*labelG;
+    const lyStart = Math.floor(wTop/labelG)*labelG;
+    const fs10    = 10/zoom; // 10-screen-px font in world units
     ctx.fillStyle='rgba(193,122,53,0.65)';
-    ctx.font=`bold ${Math.round(10/zoom)}px 'Barlow Semi Condensed',sans-serif`;
+    ctx.font=`bold ${fs10}px 'Barlow Semi Condensed',sans-serif`;
     ctx.textAlign='center';
-    for(let gx=FD.G*5;gx<FD.W;gx+=FD.G*5){
-      ctx.fillText(`${gx/FD.G}`,gx,12/zoom);
+    for(let gx=lxStart;gx<=gxEnd;gx+=labelG){
+      ctx.fillText(`${Math.round(gx/FD.G)}`,gx,wTop+fs10*1.2);
     }
     ctx.textAlign='right';
-    for(let gy=FD.G*5;gy<FD.H;gy+=FD.G*5){
-      ctx.fillText(`${gy/FD.G}`,34/zoom,gy+4/zoom);
+    for(let gy=lyStart;gy<=gyEnd;gy+=labelG){
+      ctx.fillText(`${Math.round(gy/FD.G)}`,wLeft+36/zoom,gy+fs10*0.4);
     }
 
     // Leader lines — drawn before symbols/labels so they appear underneath
     ctx.save();
     for(const el of els) {
       if(el.type!=='symbol'||!el.label) continue;
+      if(el.x<wLeft-80||el.x>wRight+80||el.y<wTop-120||el.y>wBottom+80) continue;
       const sc=el.scale||1;
       if(12*sc*zoom<=20) continue;
       const symY=el.y+32*sc;
@@ -5610,8 +5656,20 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     }
     ctx.restore();
 
-    // Elements
+    // Elements — viewport-culled for performance on large drawings
     for(const el of els) {
+      if(el.id!==selected) {
+        const pad=el.type==='symbol'?60*(el.scale||1):12;
+        const vis=
+          (el.type==='wall'||el.type==='pipe'||el.type==='dim')
+          ?(Math.max(el.x1,el.x2)+pad>=wLeft&&Math.min(el.x1,el.x2)-pad<=wRight&&Math.max(el.y1,el.y2)+pad>=wTop&&Math.min(el.y1,el.y2)-pad<=wBottom)
+          :el.type==='symbol'
+          ?(el.x+pad>=wLeft&&el.x-pad<=wRight&&el.y+pad>=wTop&&el.y-pad<=wBottom)
+          :el.type==='label'
+          ?(el.x+200>=wLeft&&el.x-10<=wRight&&el.y+20>=wTop&&el.y-10<=wBottom)
+          :true;
+        if(!vis) continue;
+      }
       ctx.save();
       if(el.type==='wall') {
         ctx.strokeStyle='#9CA3AF'; ctx.lineWidth=4; ctx.lineCap='round';
@@ -5866,8 +5924,21 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
     // Screen-space overlays (fixed size regardless of zoom)
     ctx.save(); ctx.setTransform(1,0,0,1,0,0);
-    ctx.fillStyle='rgba(193,122,53,0.45)'; ctx.font="bold 10px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='left';
-    ctx.fillText('1 sq = 1 ft',8,FD.H-8);
+    // Bottom-left info strip
+    ctx.fillStyle='rgba(193,122,53,0.45)'; ctx.font="bold 9px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='left';
+    ctx.fillText(`1 sq = 1 ft  ·  ${Math.round(zoom*100)}%`,8,FD.H-8);
+    // Bottom-right scale bar
+    const sbFt=GRID_FT.find(f=>f*FD.G*zoom>=70)||1000;
+    const sbPx=Math.round(sbFt*FD.G*zoom);
+    const sbX=FD.W-sbPx-14, sbY2=FD.H-14;
+    ctx.strokeStyle='rgba(193,122,53,0.85)'; ctx.lineWidth=1.5; ctx.lineCap='butt';
+    ctx.beginPath();
+    ctx.moveTo(sbX,sbY2-4);    ctx.lineTo(sbX,sbY2);
+    ctx.moveTo(sbX,sbY2);      ctx.lineTo(sbX+sbPx,sbY2);
+    ctx.moveTo(sbX+sbPx,sbY2-4);ctx.lineTo(sbX+sbPx,sbY2);
+    ctx.stroke();
+    ctx.fillStyle='rgba(193,122,53,0.9)'; ctx.textAlign='center';
+    ctx.fillText(`${sbFt} ft`,sbX+sbPx/2,sbY2-6);
     ctx.restore();
 
   },[els,drawing,selected,hoverSym,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym,drainMode,drainSize]);
