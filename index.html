@@ -5030,7 +5030,6 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
   switch(sym) {
     case 'compressor':
       ctx.fillRect(-32,-20,64,40); ctx.strokeRect(-32,-20,64,40);
-      ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.stroke();
       ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('COMP',0,4); break;
     case 'dryer':
@@ -5041,9 +5040,7 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
       ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('DRY',0,-5); break;
     case 'tank':
-      // Top-down bird's eye view: outer circle = tank body, inner ring = top cap/fitting
       ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle=_fg; ctx.beginPath(); ctx.arc(0,0,3,0,Math.PI*2); ctx.fill();
       ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('TANK',0,4); break;
     case 'filter':
@@ -5567,7 +5564,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           const EQ=['compressor','dryer','tank','filter','ows'];
           const extraEls=[];
           const idg=()=>(Date.now()+Math.random()).toString(36);
-          const hasNptLabel=(px,py)=>els.some(e=>e.type==='symbol'&&e.symbolId==='nptadapt'&&e.label&&Math.hypot(e.x-px,e.y-py)<60);
+          const hasNptLabel=(px,py)=>els.some(e=>e.type==='symbol'&&e.symbolId==='nptadapt'&&e.label&&Math.hypot(e.x-px,e.y-py)<20);
 
           if(Math.abs(dx)<1||Math.abs(dy)<1) {
             // Already perfectly ortho — single segment
@@ -6024,10 +6021,16 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       ctx.fillText(`${Math.round(gy/FD.G)}`,wLeft+36/zoom,gy+fs10*0.4);
     }
 
+    // Pre-compute which NPT adapters may show their label (first one per connector position wins)
+    const _nptShowLabel=new Set();
+    {const _seen=[];for(const el of els){if(el.symbolId!=='nptadapt'||!el.label)continue;if(!_seen.some(p=>Math.hypot(el.x-p.x,el.y-p.y)<20)){_seen.push({x:el.x,y:el.y});_nptShowLabel.add(el.id);}}}
+
     // Leader lines — drawn before symbols/labels so they appear underneath
     ctx.save();
     for(const el of els) {
-      if(el.type!=='symbol'||!el.label) continue;
+      if(el.type!=='symbol') continue;
+      const _hasLblL=el.symbolId==='nptadapt'?(el.label&&_nptShowLabel.has(el.id)):el.label;
+      if(!_hasLblL) continue;
       if(el.x<wLeft-80||el.x>wRight+80||el.y<wTop-120||el.y>wBottom+80) continue;
       const sc=el.scale||1;
       if(12*sc*zoom<=20) continue;
@@ -6172,7 +6175,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         ctx.fillText(`${ft} ft`,mx,my-8);
       } else if(el.type==='symbol') {
         fdSym(ctx,el.symbolId,el.x,el.y,el.scale||1,el.rotation||0,isLight);
-        if(el.label){
+        const _showLbl=el.symbolId==='nptadapt'?(el.label&&_nptShowLabel.has(el.id)):el.label;
+        if(_showLbl){
           const sc=el.scale||1;
           ctx.fillStyle=isLight?'#1E3A8A':'#fff'; ctx.font="bold 13px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
           ctx.fillText(el.label,el.x,el.y+44*sc);
