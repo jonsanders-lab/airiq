@@ -5030,7 +5030,7 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
   switch(sym) {
     case 'compressor':
       ctx.fillRect(-32,-20,64,40); ctx.strokeRect(-32,-20,64,40);
-      ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.stroke();
       ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('COMP',0,4); break;
     case 'dryer':
@@ -5043,7 +5043,7 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
     case 'tank':
       // Top-down bird's eye view: outer circle = tank body, inner ring = top cap/fitting
       ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle=_fg; ctx.beginPath(); ctx.arc(0,0,3,0,Math.PI*2); ctx.fill();
       ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('TANK',0,4); break;
     case 'filter':
@@ -5152,6 +5152,13 @@ function orthoElbowRot(dx, dy, flip) {
     if(dy>0)           return 0;
     return 270;
   }
+}
+
+// Returns correct tee rotation so stem points toward the branch.
+function teeBranchRot(mainDeg, branchRad) {
+  const m=mainDeg*Math.PI/180;
+  const c=Math.cos(m)*Math.sin(branchRad)-Math.sin(m)*Math.cos(branchRad);
+  return ((c>=0?mainDeg+180:mainDeg)+360)%360;
 }
 
 // Splits any diagonal pipe elements into two ortho segments with an elbow (H-V routing).
@@ -5560,6 +5567,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           const EQ=['compressor','dryer','tank','filter','ows'];
           const extraEls=[];
           const idg=()=>(Date.now()+Math.random()).toString(36);
+          const hasNptLabel=(px,py)=>els.some(e=>e.type==='symbol'&&e.symbolId==='nptadapt'&&e.label&&Math.hypot(e.x-px,e.y-py)<60);
 
           if(Math.abs(dx)<1||Math.abs(dy)<1) {
             // Already perfectly ortho — single segment
@@ -5569,13 +5577,13 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             const rotDeg=((angle*180/Math.PI)%360+360)%360;
             if(drawing.startSnap?.sourceEl&&EQ.includes(drawing.startSnap.sourceEl.symbolId))
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',x:drawing.x1,y:drawing.y1,
-                rotation:((rotDeg+180)%360),scale:0.7,label:`${pipeSize} NPT`});
+                rotation:((rotDeg+180)%360),scale:0.7,label:hasNptLabel(drawing.x1,drawing.y1)?'':`${pipeSize} NPT`});
             if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',x:ex,y:ey,
-                rotation:rotDeg,scale:0.7,label:`${pipeSize} NPT`});
+                rotation:rotDeg,scale:0.7,label:hasNptLabel(ex,ey)?'':`${pipeSize} NPT`});
             // Auto-reducing fitting when connecting to a different-size air pipe
-            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){if(drawing.startSnap.onBody){const _pA=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1)*180/Math.PI,_isR=_sp.pipeSize!==pipeSize,_si2=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_si2>=_ni2?[_sp.pipeSize,pipeSize]:[pipeSize,_sp.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:_pA,scale:1,label:''});}else{const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rotDeg+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}}
-            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){if(sp2.onBody){const _pA=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1)*180/Math.PI,_isR=_ep.pipeSize!==pipeSize,_ei2=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_ei2>=_ni2?[_ep.pipeSize,pipeSize]:[pipeSize,_ep.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:_pA,scale:1,label:''});}else{const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rotDeg,scale:0.8,label:`${_lg}×${_sm}`});}}}}
+            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){if(drawing.startSnap.onBody){const _pA=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1)*180/Math.PI,_isR=_sp.pipeSize!==pipeSize,_si2=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_si2>=_ni2?[_sp.pipeSize,pipeSize]:[pipeSize,_sp.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:teeBranchRot(_pA,angle),scale:1,label:''});}else{const _pAr=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1),_cabs=Math.abs(Math.cos(_pAr)*Math.sin(angle)-Math.sin(_pAr)*Math.cos(angle));if(_cabs>0.5){extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:teeBranchRot(_pAr*180/Math.PI,angle),scale:1,label:''});}else{const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rotDeg+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}}}
+            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){if(sp2.onBody){const _pA=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1)*180/Math.PI,_isR=_ep.pipeSize!==pipeSize,_ei2=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_ei2>=_ni2?[_ep.pipeSize,pipeSize]:[pipeSize,_ep.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:teeBranchRot(_pA,angle+Math.PI),scale:1,label:''});}else{const _pAr=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1),_cabs=Math.abs(Math.cos(_pAr)*Math.sin(angle)-Math.sin(_pAr)*Math.cos(angle));if(_cabs>0.5){extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:teeBranchRot(_pAr*180/Math.PI,angle+Math.PI),scale:1,label:''});}else{const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rotDeg,scale:0.8,label:`${_lg}×${_sm}`});}}}}}}
             for(let i=1;i<sticks;i++){
               const t=i*19*FD.G/pipeLen;
               extraEls.push({id:idg(),type:'symbol',symbolId:'coupling',
@@ -5608,14 +5616,14 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             // NPT at start connection
             if(drawing.startSnap?.sourceEl&&EQ.includes(drawing.startSnap.sourceEl.symbolId))
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',
-                x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.7,label:`${pipeSize} NPT`});
+                x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.7,label:hasNptLabel(drawing.x1,drawing.y1)?'':`${pipeSize} NPT`});
             // NPT at end connection
             if(sp2?.sourceEl&&EQ.includes(sp2.sourceEl.symbolId))
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',
-                x:ex,y:ey,rotation:rot2,scale:0.7,label:`${pipeSize} NPT`});
+                x:ex,y:ey,rotation:rot2,scale:0.7,label:hasNptLabel(ex,ey)?'':`${pipeSize} NPT`});
             // Auto-reducing fittings for L-shape endpoints connecting to different-size air pipes
-            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){if(drawing.startSnap.onBody){const _pA=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1)*180/Math.PI,_isR=_sp.pipeSize!==pipeSize,_si2=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_si2>=_ni2?[_sp.pipeSize,pipeSize]:[pipeSize,_sp.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:_pA,scale:1,label:''});}else{const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}}
-            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){if(sp2.onBody){const _pA=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1)*180/Math.PI,_isR=_ep.pipeSize!==pipeSize,_ei2=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_ei2>=_ni2?[_ep.pipeSize,pipeSize]:[pipeSize,_ep.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:_pA,scale:1,label:''});}else{const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rot2,scale:0.8,label:`${_lg}×${_sm}`});}}}}
+            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){if(drawing.startSnap.onBody){const _pA=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1)*180/Math.PI,_isR=_sp.pipeSize!==pipeSize,_si2=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_si2>=_ni2?[_sp.pipeSize,pipeSize]:[pipeSize,_sp.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:teeBranchRot(_pA,ang1),scale:1,label:''});}else{const _pAr=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1),_cabs=Math.abs(Math.cos(_pAr)*Math.sin(ang1)-Math.sin(_pAr)*Math.cos(ang1));if(_cabs>0.5){extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:teeBranchRot(_pAr*180/Math.PI,ang1),scale:1,label:''});}else{const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}}}
+            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){if(sp2.onBody){const _pA=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1)*180/Math.PI,_isR=_ep.pipeSize!==pipeSize,_ei2=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_ei2>=_ni2?[_ep.pipeSize,pipeSize]:[pipeSize,_ep.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:teeBranchRot(_pA,ang2+Math.PI),scale:1,label:''});}else{const _pAr=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1),_cabs=Math.abs(Math.cos(_pAr)*Math.sin(ang2)-Math.sin(_pAr)*Math.cos(ang2));if(_cabs>0.5){extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:teeBranchRot(_pAr*180/Math.PI,ang2+Math.PI),scale:1,label:''});}else{const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rot2,scale:0.8,label:`${_lg}×${_sm}`});}}}}}}
             // Couplings on seg1
             for(let i=1;i<sticks1;i++){
               const t=i*19*FD.G/len1;
@@ -6071,7 +6079,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           const lbl=ft>0?`${dsz} Drain — ${ft} ft`:`${dsz} Drain`;
           ctx.font="bold 11px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
           const lblW=ctx.measureText(lbl).width;
-          ctx.fillStyle='rgba(8,10,20,0.82)'; ctx.fillRect(mx-lblW/2-5,my-19,lblW+10,16);
+          ctx.fillStyle=isLight?'rgba(248,250,252,0.92)':'rgba(8,10,20,0.82)'; ctx.fillRect(mx-lblW/2-5,my-19,lblW+10,16);
           ctx.fillStyle=FD_DRAIN_HEX; ctx.fillText(lbl,mx,my-7);
         } else {
           const mat=FD_PIPE_MATS[el.pipeColor]||FD_PIPE_MATS.blue;
@@ -6101,6 +6109,15 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
             ctx.beginPath(); ctx.moveTo(el.x1,el.y1); ctx.lineTo(el.x2,el.y2); ctx.stroke();
           }
           const mx=(el.x1+el.x2)/2, my=(el.y1+el.y2)/2;
+          // Flow direction arrow at midpoint
+          {const _ang=Math.atan2(el.y2-el.y1,el.x2-el.x1),_aL=7,_aA=0.42;
+          const _ac=mat.shimmer?'#A0A0A0':(el.pipeColor==='blackiron'?'#888888':mat.hex);
+          ctx.strokeStyle=_ac; ctx.lineWidth=1.5; ctx.lineCap='round';
+          ctx.beginPath();
+          ctx.moveTo(mx+Math.cos(_ang+Math.PI+_aA)*_aL,my+Math.sin(_ang+Math.PI+_aA)*_aL);
+          ctx.lineTo(mx,my);
+          ctx.lineTo(mx+Math.cos(_ang+Math.PI-_aA)*_aL,my+Math.sin(_ang+Math.PI-_aA)*_aL);
+          ctx.stroke();}
           const ftRaw=Math.hypot(el.x2-el.x1,el.y2-el.y1)/FD.G;
           const ft=Math.round(ftRaw*2)/2;
           const colorName=(FD_PIPE_MATS[el.pipeColor]||FD_PIPE_MATS.blue).short;
@@ -6117,9 +6134,9 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           if(lbl){
           ctx.font="bold 12px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
           const lblW=ctx.measureText(lbl).width;
-          ctx.fillStyle='rgba(8,10,20,0.78)';
+          ctx.fillStyle=isLight?'rgba(248,250,252,0.92)':'rgba(8,10,20,0.78)';
           ctx.fillRect(mx-lblW/2-5,my-19,lblW+10,16);
-          ctx.fillStyle='#fff';
+          ctx.fillStyle=isLight?'#1E3A8A':'#fff';
           ctx.fillText(lbl,mx,my-7);
           }
           // Elevation note tag (FIX 6)
