@@ -5024,7 +5024,7 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
   ctx.translate(x,y);
   if(rotation) ctx.rotate(rotation*Math.PI/180);
   if(scale!==1) ctx.scale(scale,scale);
-  const _bg=pm?'#f8f8f8':'#111A2E',_fg=pm?'#1a1a1a':'#ffffff',_bd=pm?'#1E3A8A':'#C17A35';
+  const _bg=pm?'#FFFFFF':'#111A2E',_fg=pm?'#1E3A8A':'#ffffff',_bd=pm?'#1E3A8A':'#C17A35';
   ctx.strokeStyle=_bd; ctx.fillStyle=_bg; ctx.lineWidth=2.5;
   const SYM_FONT = "bold 12px 'Barlow Semi Condensed',sans-serif";
   switch(sym) {
@@ -5101,7 +5101,7 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
       ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(20,0);
       ctx.moveTo(-20,0); ctx.arc(-20,0,40,0,Math.PI/2); ctx.stroke(); break;
     case 'column':
-      ctx.fillStyle='#4B5563'; ctx.fillRect(-10,-10,20,20); ctx.strokeRect(-10,-10,20,20); break;
+      ctx.fillStyle=pm?'#94A3B8':'#4B5563'; ctx.fillRect(-10,-10,20,20); ctx.strokeRect(-10,-10,20,20); break;
     case 'dimnarrow':
       ctx.beginPath(); ctx.moveTo(-28,0); ctx.lineTo(28,0);
       ctx.moveTo(-28,-6); ctx.lineTo(-28,6); ctx.moveTo(28,-6); ctx.lineTo(28,6);
@@ -6154,10 +6154,10 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         ctx.fillStyle='#F9FAFB'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
         ctx.fillText(`${ft} ft`,mx,my-8);
       } else if(el.type==='symbol') {
-        fdSym(ctx,el.symbolId,el.x,el.y,el.scale||1,el.rotation||0);
+        fdSym(ctx,el.symbolId,el.x,el.y,el.scale||1,el.rotation||0,isLight);
         if(el.label){
           const sc=el.scale||1;
-          ctx.fillStyle='#fff'; ctx.font="bold 13px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
+          ctx.fillStyle=isLight?'#1E3A8A':'#fff'; ctx.font="bold 13px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='center';
           ctx.fillText(el.label,el.x,el.y+44*sc);
         }
       } else if(el.type==='label') {
