@@ -467,17 +467,17 @@ IMPORTANT: Do NOT quote pricing from this document. All pricing must come from S
 function formatMsg(text) {
   return text
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^### (.+)$/gm, '<p style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:12px 0 4px">$1</p>')
+    .replace(/^### (.+)$/gm, '<p style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--c-mid);margin:12px 0 4px">$1</p>')
     .replace(/^## (.+)$/gm, '<p style="font-weight:600;margin:10px 0 4px">$1</p>')
-    .replace(/^- (.+)/gm, '<div style="display:flex;gap:8px;margin:3px 0"><span style="color:#94a3b8;flex-shrink:0">•</span><span>$1</span></div>')
-    .replace(/^(\d+)\. (.+)/gm, '<div style="display:flex;gap:8px;margin:3px 0"><span style="color:#94a3b8;flex-shrink:0;min-width:16px">$1.</span><span>$2</span></div>')
+    .replace(/^- (.+)/gm, '<div style="display:flex;gap:8px;margin:3px 0"><span style="color:var(--c-mid);flex-shrink:0">•</span><span>$1</span></div>')
+    .replace(/^(\d+)\. (.+)/gm, '<div style="display:flex;gap:8px;margin:3px 0"><span style="color:var(--c-mid);flex-shrink:0;min-width:16px">$1.</span><span>$2</span></div>')
     .replace(/\n\n/g, '<br/>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;text-decoration:underline">$1 ↗</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--c-blue-light);text-decoration:underline">$1 ↗</a>')
     .replace(/\n/g, '<br/>');
 }
 
 function formatSTReply(text) {
-  const T_BG = '#1a1d27', T_HEAD = '#1e2535', T_BORDER = '#2a2d3a';
+  const T_BG = 'var(--c-surface)', T_HEAD = 'var(--c-surface2)', T_BORDER = 'var(--c-border)';
   const isTableLine = l => /^\s*\|/.test(l);
   const isSepLine   = l => /^\s*\|[-| :]+\|\s*$/.test(l);
   const parseRow    = l => l.split('|').slice(1, -1).map(c => c.trim());
@@ -508,7 +508,7 @@ function formatSTReply(text) {
       const trHtml   = dataRows.map(rl =>
         `<tr style="border-bottom:1px solid ${T_BORDER}">${parseRow(rl).map(c => `<td style="padding:6px 10px">${styleCell(c)}</td>`).join('')}</tr>`
       ).join('');
-      parts.push(`<table style="width:100%;border-collapse:collapse;font-size:12px;background:${T_BG};border:1px solid ${T_BORDER};border-radius:6px;overflow:hidden;margin:6px 0"><thead><tr style="background:${T_HEAD};color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:.05em">${thHtml}</tr></thead><tbody>${trHtml}</tbody></table>`);
+      parts.push(`<table style="width:100%;border-collapse:collapse;font-size:12px;background:${T_BG};border:1px solid ${T_BORDER};border-radius:6px;overflow:hidden;margin:6px 0"><thead><tr style="background:${T_HEAD};color:var(--c-mid);font-size:11px;text-transform:uppercase;letter-spacing:.05em">${thHtml}</tr></thead><tbody>${trHtml}</tbody></table>`);
       continue;
     }
 
@@ -519,7 +519,7 @@ function formatSTReply(text) {
     const block = textLines.join('\n').trim();
     if (block) {
       const processed = block.replace(/^\*\*(.+?)\*\*\s*$/gm,
-        `<p style="font-weight:700;color:#e87c2a;margin:12px 0 4px;font-size:13px">$1</p>`);
+        `<p style="font-weight:700;color:var(--c-orange);margin:12px 0 4px;font-size:13px">$1</p>`);
       parts.push(formatMsg(processed));
     }
   }
@@ -1210,7 +1210,7 @@ function AirIQ() {
           statusHtml = `<span style="color:#22c55e">✅ In Stock</span>`;
         }
         const availDisplay = r.available < 0 ? "—" : r.available;
-        return `<tr style="border-bottom:1px solid #2a2d3a">
+        return `<tr style="border-bottom:1px solid var(--c-border)">
           <td style="padding:6px 10px">${displayCode}</td>
           <td style="padding:6px 10px;text-align:center">${r.onHand}</td>
           <td style="padding:6px 10px;text-align:center">${availDisplay}</td>
@@ -1219,10 +1219,10 @@ function AirIQ() {
       }).join("");
 
       const html = `<div>
-        <p style="font-weight:600;margin:0 0 8px;color:#e2e6f0">📦 ${series} SERIES — LIVE STOCK</p>
-        <table style="width:100%;border-collapse:collapse;font-size:12px;background:#1a1d27;border:1px solid #2a2d3a;border-radius:6px;overflow:hidden">
+        <p style="font-weight:600;margin:0 0 8px;color:var(--c-text)">📦 ${series} SERIES — LIVE STOCK</p>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:6px;overflow:hidden">
           <thead>
-            <tr style="background:#1e2535;color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:.05em">
+            <tr style="background:var(--c-surface2);color:var(--c-mid);font-size:11px;text-transform:uppercase;letter-spacing:.05em">
               <th style="padding:6px 10px;text-align:left">Model</th>
               <th style="padding:6px 10px;text-align:center">On Hand</th>
               <th style="padding:6px 10px;text-align:center">Available</th>
@@ -1231,7 +1231,7 @@ function AirIQ() {
           </thead>
           <tbody>${rowsHtml}</tbody>
         </table>
-        <p style="font-size:11px;color:#64748b;margin:6px 0 0">${inStockCount} of ${items.length} models in stock · Last updated from ServiceTitan inventory report</p>
+        <p style="font-size:11px;color:var(--c-mid);margin:6px 0 0">${inStockCount} of ${items.length} models in stock · Last updated from ServiceTitan inventory report</p>
       </div>`;
 
       setMessages([...newMsgs, { role:"assistant", content:html, stDataUsed:true, isHtml:true }]);
@@ -1398,14 +1398,14 @@ function AirIQ() {
         {ST_VENDORS.map((v,i) => (
           <a key={i} href={v.url} target="_blank" rel="noopener noreferrer"
             style={{ fontSize:10, fontWeight:600, padding:"2px 8px", borderRadius:20,
-              background:"#1e2535", color:"#60a5fa", textDecoration:"none",
-              display:"flex", alignItems:"center", gap:3, border:"1px solid #2a3a55",
+              background:C.surface2, color:C.blueLight, textDecoration:"none",
+              display:"flex", alignItems:"center", gap:3, border:`1px solid ${C.border}`,
               flexShrink:0, whiteSpace:"nowrap" }}>
             <span style={{ fontSize:7 }}>↗</span>{v.short}
           </a>
         ))}
-        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, background:"#1e2535",
-          border:"1px solid #2a3a55", color:"#60a5fa", fontWeight:500,
+        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, background:C.surface2,
+          border:`1px solid ${C.border}`, color:C.blueLight, fontWeight:500,
           display:"flex", alignItems:"center", gap:4, flexShrink:0, whiteSpace:"nowrap" }}>
           {stLookupActive
             ? <><span style={{ width:5,height:5,borderRadius:"50%",background:"#f59e0b",display:"inline-block",animation:"blink 1s infinite" }}/> ST…</>
@@ -1435,24 +1435,24 @@ function AirIQ() {
                 <div style={{ width:26, height:26, borderRadius:"50%", flexShrink:0,
                   display:"flex", alignItems:"center", justifyContent:"center",
                   fontSize:10, fontWeight:600,
-                  background:isUser?"#e87c2a":"#2a2d3a", color:isUser?"#fff":"#9ca3af" }}>
+                  background:isUser?C.orange:C.border, color:isUser?"#fff":C.mid }}>
                   {isUser?"Rep":"AI"}
                 </div>
                 <div style={{ padding:"10px 13px",
                   borderRadius:isUser?"12px 4px 12px 12px":"4px 12px 12px 12px",
                   fontSize:14, lineHeight:1.65,
-                  background:isUser?"#e87c2a":"#1a1d27",
-                  color:isUser?"#fff":"#e2e6f0",
-                  border:isUser?"none":"1px solid #2a2d3a", maxWidth:"100%" }}>
+                  background:isUser?C.orange:C.surface,
+                  color:isUser?"#fff":C.text,
+                  border:isUser?"none":`1px solid ${C.border}`, maxWidth:"100%" }}>
                   {isUser ? m.content : <span dangerouslySetInnerHTML={{ __html: m.isHtml ? m.content : formatMsg(m.content) }}/>}
                 </div>
               </div>
               {!isUser && (m.webSearched||m.stDataUsed) && (
                 <div style={{ display:"flex", gap:5, paddingLeft:34 }}>
                   {m.stDataUsed && <span style={{ fontSize:9, padding:"2px 7px", borderRadius:20,
-                    background:"#1e2535", color:"#60a5fa", border:"1px solid #2a3a55" }}>📊 Live ST data</span>}
+                    background:C.surface2, color:C.blueLight, border:`1px solid ${C.border}` }}>📊 Live ST data</span>}
                   {m.webSearched && <span style={{ fontSize:9, padding:"2px 7px", borderRadius:20,
-                    background:"#1a1d27", color:"#6b7280", border:"1px solid #2a2d3a" }}>🔍 web searched</span>}
+                    background:C.surface, color:C.mid, border:`1px solid ${C.border}` }}>🔍 web searched</span>}
                 </div>
               )}
             </div>
@@ -1460,13 +1460,13 @@ function AirIQ() {
         })}
         {loading && (
           <div style={{ display:"flex", gap:8, alignSelf:"flex-start" }}>
-            <div style={{ width:26, height:26, borderRadius:"50%", background:"#2a2d3a",
-              display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, color:"#9ca3af" }}>AI</div>
+            <div style={{ width:26, height:26, borderRadius:"50%", background:C.border,
+              display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, color:C.mid }}>AI</div>
             <div style={{ padding:"10px 14px", borderRadius:"4px 12px 12px 12px",
-              background:"#1a1d27", border:"1px solid #2a2d3a", display:"flex", gap:4, alignItems:"center" }}>
-              {stLookupActive && <span style={{ fontSize:10, color:"#1d4ed8", marginRight:3 }}>Checking ST…</span>}
+              background:C.surface, border:`1px solid ${C.border}`, display:"flex", gap:4, alignItems:"center" }}>
+              {stLookupActive && <span style={{ fontSize:10, color:C.blueLight, marginRight:3 }}>Checking ST…</span>}
               {[0,1,2].map(i=>(
-                <div key={i} style={{ width:5,height:5,borderRadius:"50%",background:"#4b5563",
+                <div key={i} style={{ width:5,height:5,borderRadius:"50%",background:C.mid,
                   animation:"pulse 1.2s infinite", animationDelay:`${i*0.2}s` }}/>
               ))}
             </div>
@@ -1478,11 +1478,11 @@ function AirIQ() {
       {/* Starters */}
       {showStarters && (
         <div style={{ padding:"6px 14px 8px", display:"flex", flexWrap:"wrap", gap:5,
-          flexShrink:0, background:C.bg, borderTop:`1px solid #2a2d3a` }}>
+          flexShrink:0, background:C.bg, borderTop:`1px solid ${C.border}` }}>
           {STARTERS.map((s,i) => (
             <button key={i} onClick={() => submit(s)} style={{
-              fontSize:11, padding:"5px 10px", borderRadius:20, border:"1px solid #2a2d3a",
-              background:"#1a1d27", color:"#9ca3af", cursor:"pointer", fontFamily:"inherit" }}>
+              fontSize:11, padding:"5px 10px", borderRadius:20, border:`1px solid ${C.border}`,
+              background:C.surface, color:C.mid, cursor:"pointer", fontFamily:"inherit" }}>
               {s}
             </button>
           ))}
@@ -1490,20 +1490,20 @@ function AirIQ() {
       )}
 
       {/* Input */}
-      <div style={{ padding:"10px 14px", borderTop:`1px solid #2a2d3a`,
-        display:"flex", gap:7, background:"#1a1d27", flexShrink:0 }}>
+      <div style={{ padding:"10px 14px", borderTop:`1px solid ${C.border}`,
+        display:"flex", gap:7, background:C.surface, flexShrink:0 }}>
         <textarea ref={textareaRef} value={input}
           onChange={e=>{setInput(e.target.value);autoResize();}}
           onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
           placeholder="Ask a question or check availability — e.g. 'price and stock on HD30'"
-          style={{ flex:1, resize:"none", border:"1px solid #2a2d3a", borderRadius:8,
+          style={{ flex:1, resize:"none", border:`1px solid ${C.border}`, borderRadius:8,
             padding:"11px 11px", fontSize:14, fontFamily:"inherit", outline:"none",
             height:44, minHeight:44, maxHeight:120, lineHeight:1.5,
-            color:"#e2e6f0", background:"#0f1117" }}/>
+            color:C.text, background:C.bg }}/>
         <button onClick={startListening} disabled={loading} style={{
           minWidth:44, height:44, borderRadius:8, border:"none",
-          background:isListening?"#7f1d1d":"#1e2535",
-          color:isListening?"#f87171":"#60a5fa",
+          background:isListening?"#7f1d1d":C.surface2,
+          color:isListening?"#f87171":C.blueLight,
           cursor:loading?"not-allowed":"pointer",
           display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1513,7 +1513,7 @@ function AirIQ() {
         </button>
         <button onClick={()=>submit()} disabled={loading||!input.trim()} style={{
           minWidth:44, height:44, borderRadius:8, border:"none",
-          background:loading||!input.trim()?"#1e2535":"#e87c2a",
+          background:loading||!input.trim()?C.surface2:C.orange,
           color:"#fff", cursor:loading||!input.trim()?"not-allowed":"pointer",
           display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
