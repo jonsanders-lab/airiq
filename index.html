@@ -5494,6 +5494,16 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       lastTapRef.current={time:now,x:raw.x,y:raw.y};
     }
 
+    // Double-tap (touch only, DRAW mode) → end active pipe run without placing a segment
+    if(e.touches&&e.touches.length===1&&drawing&&(tool==='pipe'||drainMode)) {
+      const now=Date.now(), last=lastTapRef.current;
+      if(now-last.time<300&&Math.hypot(raw.x-last.x,raw.y-last.y)<40) {
+        lastTapRef.current={time:0,x:0,y:0};
+        setDrawing(null); setSnapPt(null); return;
+      }
+      lastTapRef.current={time:now,x:raw.x,y:raw.y};
+    }
+
     // Rotate handle works in any tool mode — intercept before tool dispatch
     if(hoverSym) {
       const hEl=els.find(e=>e.id===hoverSym);
@@ -6548,7 +6558,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const btnBase = {
     background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,
     padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:C.mid,
-    cursor:'pointer',whiteSpace:'nowrap',minHeight:44,
+    cursor:'pointer',whiteSpace:'nowrap',minHeight:44,minWidth:44,
     touchAction:'manipulation',WebkitTouchCallout:'none',
   };
   const btnActive = {
@@ -6665,6 +6675,11 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         <span style={{fontFamily:F.body,fontSize:12,color:C.mid,minWidth:36,textAlign:'center'}}>{Math.round(zoom*100)}%</span>
         <button onClick={fitView} style={btnBase} title="Fit to screen (press F)">⊡ FIT</button>
         <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
+        {drawing&&(tool==='pipe'||drainMode)&&(
+          <button onClick={()=>{setDrawing(null);setSnapPt(null);}}
+            style={{...btnBase,background:'rgba(239,68,68,0.15)',border:'1px solid #EF4444',color:'#EF4444',fontWeight:700}}
+            title="Cancel current pipe run (Escape)">✕ CANCEL</button>
+        )}
         <button onClick={undo}     style={btnBase} title="Undo (Ctrl+Z)">↩ UNDO</button>
         <button onClick={redo}     style={btnBase} title="Redo (Ctrl+Y)">↪ REDO</button>
         <button onClick={clearAll} style={btnBase} title="Clear entire drawing">✕ CLEAR</button>
