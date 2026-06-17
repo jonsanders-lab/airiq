@@ -5217,6 +5217,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const [hoverSym,     setHoverSym]     = React.useState(null); // id of symbol under cursor for rotate handle
   const [drainMode,    setDrainMode]    = React.useState(false);
   const [drainSize,    setDrainSize]    = React.useState('3/8"');
+  const [isLight,      setIsLight]      = React.useState(()=>document.documentElement.classList.contains('theme-light'));
 
   // Fittings that can be inserted inline into an existing pipe segment
   const INLINE_FITTINGS = ['ballvalve','elbow90','elbow45','tee','filter','ows','ptlelbow','ptltee','ptlconn'];
@@ -5252,6 +5253,11 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   React.useEffect(()=>{ zoomRef.current=zoom; },[zoom]);
   React.useEffect(()=>{ panRef.current=pan; },[pan]);
   React.useEffect(()=>{ const img=new Image(); img.onload=()=>{logoRef.current=img;}; img.src=LOGO_SRC; },[]);
+  React.useEffect(()=>{
+    const obs=new MutationObserver(()=>setIsLight(document.documentElement.classList.contains('theme-light')));
+    obs.observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+    return()=>obs.disconnect();
+  },[]);
 
   // Pre-place recommended equipment when first entering proposed mode from Sys Eng
   React.useEffect(()=>{
@@ -5942,7 +5948,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
     // Clear in screen space
     ctx.save(); ctx.setTransform(1,0,0,1,0,0);
-    ctx.fillStyle='#141414'; ctx.fillRect(0,0,FD.W,FD.H);
+    ctx.fillStyle=isLight?'#FFFFFF':'#141414'; ctx.fillRect(0,0,FD.W,FD.H);
     ctx.restore();
 
     // Apply zoom/pan
@@ -5969,13 +5975,13 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
     for(let gx=gxStart;gx<=gxEnd;gx+=minorG){
       const major=(Math.round(gx/minorG)%majorMod===0);
-      ctx.strokeStyle=major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)';
+      ctx.strokeStyle=isLight?(major?'rgba(100,116,139,0.35)':'rgba(100,116,139,0.15)'):(major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)');
       ctx.lineWidth=(major?1:0.5)/zoom;
       ctx.beginPath(); ctx.moveTo(gx,wTop); ctx.lineTo(gx,wBottom); ctx.stroke();
     }
     for(let gy=gyStart;gy<=gyEnd;gy+=minorG){
       const major=(Math.round(gy/minorG)%majorMod===0);
-      ctx.strokeStyle=major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)';
+      ctx.strokeStyle=isLight?(major?'rgba(100,116,139,0.35)':'rgba(100,116,139,0.15)'):(major?'rgba(193,122,53,0.45)':'rgba(193,122,53,0.22)');
       ctx.lineWidth=(major?1:0.5)/zoom;
       ctx.beginPath(); ctx.moveTo(wLeft,gy); ctx.lineTo(wRight,gy); ctx.stroke();
     }
@@ -5986,7 +5992,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     const lxStart = Math.floor(wLeft/labelG)*labelG;
     const lyStart = Math.floor(wTop/labelG)*labelG;
     const fs10    = 10/zoom; // 10-screen-px font in world units
-    ctx.fillStyle='rgba(193,122,53,0.65)';
+    ctx.fillStyle=isLight?'rgba(100,116,139,0.75)':'rgba(193,122,53,0.65)';
     ctx.font=`bold ${fs10}px 'Barlow Semi Condensed',sans-serif`;
     ctx.textAlign='center';
     for(let gx=lxStart;gx<=gxEnd;gx+=labelG){
@@ -6294,7 +6300,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         ctx.save();
         ctx.fillStyle='rgba(193,122,53,0.55)';
         ctx.beginPath(); ctx.arc(rhx,rhy,9,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+        ctx.fillStyle=isLight?'rgba(0,0,0,0.85)':'rgba(255,255,255,0.90)'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
         ctx.fillText('↻',rhx,rhy+4);
         ctx.restore();
       }
@@ -6305,23 +6311,23 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     // Screen-space overlays (fixed size regardless of zoom)
     ctx.save(); ctx.setTransform(1,0,0,1,0,0);
     // Bottom-left info strip
-    ctx.fillStyle='rgba(193,122,53,0.45)'; ctx.font="bold 9px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='left';
+    ctx.fillStyle=isLight?'rgba(100,116,139,0.75)':'rgba(193,122,53,0.45)'; ctx.font="bold 9px 'Barlow Semi Condensed',sans-serif"; ctx.textAlign='left';
     ctx.fillText(`1 sq = 1 ft  ·  ${Math.round(zoom*100)}%`,8,FD.H-8);
     // Bottom-right scale bar
     const sbFt=GRID_FT.find(f=>f*FD.G*zoom>=70)||1000;
     const sbPx=Math.round(sbFt*FD.G*zoom);
     const sbX=FD.W-sbPx-14, sbY2=FD.H-14;
-    ctx.strokeStyle='rgba(193,122,53,0.85)'; ctx.lineWidth=1.5; ctx.lineCap='butt';
+    ctx.strokeStyle=isLight?'rgba(100,116,139,0.80)':'rgba(193,122,53,0.85)'; ctx.lineWidth=1.5; ctx.lineCap='butt';
     ctx.beginPath();
     ctx.moveTo(sbX,sbY2-4);    ctx.lineTo(sbX,sbY2);
     ctx.moveTo(sbX,sbY2);      ctx.lineTo(sbX+sbPx,sbY2);
     ctx.moveTo(sbX+sbPx,sbY2-4);ctx.lineTo(sbX+sbPx,sbY2);
     ctx.stroke();
-    ctx.fillStyle='rgba(193,122,53,0.9)'; ctx.textAlign='center';
+    ctx.fillStyle=isLight?'rgba(100,116,139,0.85)':'rgba(193,122,53,0.90)'; ctx.textAlign='center';
     ctx.fillText(`${sbFt} ft`,sbX+sbPx/2,sbY2-6);
     ctx.restore();
 
-  },[els,drawing,selected,hoverSym,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym,drainMode,drainSize,orthoFlip]);
+  },[els,drawing,selected,hoverSym,cursor,tool,pipeSize,pipeColor,zoom,pan,snapPt,pipeSnap,activeSym,drainMode,drainSize,orthoFlip,isLight]);
 
   function buildExportCanvas() {
     const src=canvasRef.current; if(!src) return null;
@@ -6454,8 +6460,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     React.useEffect(()=>{
       const cv=r.current; if(!cv) return;
       const ctx=cv.getContext('2d'); ctx.clearRect(0,0,60,52);
-      fdSym(ctx,symId,30,26,1,0);
-    },[symId]);
+      fdSym(ctx,symId,30,26,1,0,isLight);
+    },[symId,isLight]);
     return <canvas ref={r} width={60} height={52} style={{display:'block',flexShrink:0}}/>;
   }
 
@@ -6472,7 +6478,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
   const toolbarStyle = {
     display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',
-    background: isFullscreen?'#0A0A0A':'#0D0D0D',
+    background: isLight?C.bg:(isFullscreen?'#0A0A0A':'#0D0D0D'),
     padding:'8px 12px',minHeight:48,borderBottom:`1px solid ${C.border}`,flexShrink:0,
   };
   const btnBase = {
@@ -6489,7 +6495,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   const touchCss = {WebkitTouchCallout:'none',userSelect:'none',WebkitUserSelect:'none'};
   const outerStyle = isFullscreen
     ? {position:'fixed',top:0,left:0,width:'100vw',height:'100vh',zIndex:9999,
-       background:'#0A0A0A',display:'flex',flexDirection:'column',borderRadius:0,
+       background:isLight?C.bg:'#0A0A0A',display:'flex',flexDirection:'column',borderRadius:0,
        paddingTop:'env(safe-area-inset-top, 44px)',
        paddingLeft:'env(safe-area-inset-left, 0px)',
        paddingRight:'env(safe-area-inset-right, 0px)',
@@ -6497,7 +6503,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     : {borderRadius:'0 0 10px 10px',overflow:'hidden',border:`1.5px solid ${C.copper}`,borderTop:'none',display:'flex',flexDirection:'column',...touchCss};
 
   const paletteStyle = {
-    width:200,flexShrink:0,background:'#0A0A0A',borderRight:`1px solid ${C.border}`,
+    width:200,flexShrink:0,background:isLight?C.surface:'#0A0A0A',borderRight:`1px solid ${C.border}`,
     overflowY:'auto', maxHeight: isFullscreen?'100%':500,
   };
 
@@ -6519,7 +6525,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       {setDrawingMode && (
         <div style={{
           display:'flex',alignItems:'center',gap:0,flexShrink:0,
-          background:'#080C14',padding:'6px 12px',borderBottom:`1px solid ${C.border}`,
+          background:isLight?C.surface:'#080C14',padding:'6px 12px',borderBottom:`1px solid ${C.border}`,
         }}>
           <span style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:2,marginRight:10,flexShrink:0}}>DRAWING MODE</span>
           {['asis','proposed'].map(mode=>(
@@ -6561,7 +6567,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           }}/>
         ))}
         {/* Divider between AIRpipe and Other Materials */}
-        <span style={{width:1,height:20,background:'rgba(255,255,255,0.18)',margin:'0 3px',flexShrink:0}}/>
+        <span style={{width:1,height:20,background:isLight?C.border:'rgba(255,255,255,0.18)',margin:'0 3px',flexShrink:0}}/>
         {/* Other Pipe Materials group */}
         {Object.entries(FD_PIPE_MATS).filter(([,m])=>m.group==='other').map(([n,m])=>(
           <button key={n} onClick={()=>setPipeColor(n)} title={m.label} style={{
@@ -6616,19 +6622,19 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         if(!selEl||selEl.type!=='symbol'||!FD_DIM_SYMS.includes(selEl.symbolId)) return null;
         return (
           <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0,flexWrap:'wrap',
-            background:'#080C14',padding:'6px 12px',borderBottom:`1px solid ${C.border}`}}>
+            background:isLight?C.surface:'#080C14',padding:'6px 12px',borderBottom:`1px solid ${C.border}`}}>
             <span style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:2}}>DIMENSIONS (IN)</span>
             <label style={{fontFamily:F.mono,fontSize:10,color:C.mid,display:'flex',alignItems:'center',gap:4}}>
               W
               <input type="number" min="1" value={selEl.dimW||''} placeholder="—"
                 onChange={e=>setSymDims(selEl,Number(e.target.value)||0,selEl.dimD||0)}
-                style={{width:56,background:C.surface2,border:`1px solid ${C.border}`,borderRadius:4,color:'#fff',fontFamily:F.mono,fontSize:11,padding:'3px 6px'}}/>
+                style={{width:56,background:C.surface2,border:`1px solid ${C.border}`,borderRadius:4,color:C.text,fontFamily:F.mono,fontSize:11,padding:'3px 6px'}}/>
             </label>
             <label style={{fontFamily:F.mono,fontSize:10,color:C.mid,display:'flex',alignItems:'center',gap:4}}>
               D
               <input type="number" min="1" value={selEl.dimD||''} placeholder="—"
                 onChange={e=>setSymDims(selEl,selEl.dimW||0,Number(e.target.value)||0)}
-                style={{width:56,background:C.surface2,border:`1px solid ${C.border}`,borderRadius:4,color:'#fff',fontFamily:F.mono,fontSize:11,padding:'3px 6px'}}/>
+                style={{width:56,background:C.surface2,border:`1px solid ${C.border}`,borderRadius:4,color:C.text,fontFamily:F.mono,fontSize:11,padding:'3px 6px'}}/>
             </label>
             <span style={{fontFamily:F.mono,fontSize:8,color:C.dim}}>scales symbol to true footprint on grid (1 sq = 1 ft)</span>
           </div>
@@ -6648,14 +6654,14 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
                     background:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?'rgba(193,122,53,0.14)':'transparent',
                     borderLeft:activeSym===sym.id&&(tool==='symbol'||tool==='dim')?`3px solid ${C.copper}`:'3px solid transparent'}}>
                   <PalIcon symId={sym.id}/>
-                  <span style={{fontFamily:F.body,fontSize:11,color:'#fff',lineHeight:1.3}}>{sym.label}</span>
+                  <span style={{fontFamily:F.body,fontSize:11,color:C.text,lineHeight:1.3}}>{sym.label}</span>
                 </div>
               ))}
             </div>
           ))}
         </div>
 
-        <div style={{flex:1,position:'relative',overflow:'hidden',background:'#141414'}}>
+        <div style={{flex:1,position:'relative',overflow:'hidden',background:isLight?C.bg:'#141414'}}>
           <canvas ref={canvasRef} width={FD.W} height={FD.H}
             style={{width:'100%',height:'auto',display:'block',touchAction:'none',
                    cursor:tool==='erase'?'crosshair':tool==='select'?'default':'crosshair'}}
@@ -6711,7 +6717,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       </div>
 
       {/* Status bar */}
-      <div style={{padding:'3px 10px',background:'#0A0A0A',fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,borderTop:`1px solid ${C.border}`,display:'flex',gap:14,flexWrap:'wrap',flexShrink:0}}>
+      <div style={{padding:'3px 10px',background:isLight?C.surface:'#0A0A0A',fontFamily:F.mono,fontSize:8,color:C.dim,letterSpacing:1,borderTop:`1px solid ${C.border}`,display:'flex',gap:14,flexWrap:'wrap',flexShrink:0}}>
         <span>{els.filter(e=>e.type==='wall').length} walls</span>
         <span>{els.filter(e=>e.type==='pipe'&&!e.isDrain).length} pipe runs</span>
         {els.some(e=>e.type==='pipe'&&e.isDrain)&&<span style={{color:FD_DRAIN_HEX}}>{els.filter(e=>e.type==='pipe'&&e.isDrain).length} drain runs</span>}
@@ -6725,7 +6731,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
 
       {/* BOM panel (non-fullscreen only) */}
       {!isFullscreen&&(
-        <div style={{borderTop:`1px solid ${C.border}`,background:'#0A0A0A',padding:'8px 10px',flexShrink:0}}>
+        <div style={{borderTop:`1px solid ${C.border}`,background:isLight?C.surface:'#0A0A0A',padding:'8px 10px',flexShrink:0}}>
           <button onClick={()=>setShowBom(b=>!b)}
             style={{...btnBase,background:showBom?`linear-gradient(135deg,${C.orange},#C2540A)`:C.surface2,
                    color:showBom?'#fff':C.mid,border:`1px solid ${showBom?C.orange:C.border}`,
@@ -6856,7 +6862,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         <div onClick={()=>setShowTemplates(false)}
           style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',zIndex:10001,display:'flex',alignItems:'center',justifyContent:'center'}}>
           <div onClick={e=>e.stopPropagation()}
-            style={{background:'#141414',border:`1.5px solid ${C.copper}`,borderRadius:10,padding:24,maxWidth:480,width:'92%'}}>
+            style={{background:isLight?C.surface:'#141414',border:`1.5px solid ${C.copper}`,borderRadius:10,padding:24,maxWidth:480,width:'92%'}}>
             <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper,marginBottom:16}}>START FROM TEMPLATE</div>
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
               {TEMPLATE_OPTS.map(t=>(
@@ -6865,7 +6871,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
                          textAlign:'left',cursor:'pointer',transition:'border-color 0.15s'}}
                   onMouseEnter={e=>e.currentTarget.style.borderColor=C.copper}
                   onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
-                  <div style={{fontFamily:F.mono,fontSize:10,color:'#fff',marginBottom:3}}>{t.name}</div>
+                  <div style={{fontFamily:F.mono,fontSize:10,color:C.text,marginBottom:3}}>{t.name}</div>
                   <div style={{fontFamily:F.mono,fontSize:8,color:C.mid}}>{t.desc}</div>
                 </button>
               ))}
