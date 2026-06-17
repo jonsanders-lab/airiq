@@ -4903,7 +4903,7 @@ const FD_SYMBOLS   = [
 const FD_CONNECTORS = {
   compressor:[{x:-32,y:0},{x:32,y:0},{x:0,y:-20},{x:0,y:20}],
   dryer:     [{x:-28,y:0},{x:28,y:0},{x:0,y:-18},{x:0,y:18}],
-  tank:      [{x:0,y:-20},{x:0,y:20},{x:-20,y:0},{x:20,y:0}],
+  tank:      [{x:0,y:-22},{x:0,y:22},{x:-22,y:0},{x:22,y:0}],
   filter:    [{x:-16,y:0},{x:16,y:0},{x:0,y:-16},{x:0,y:16}],
   ows:       [{x:-28,y:0},{x:28,y:0},{x:0,y:-18},{x:0,y:18}],
   ballvalve: [{x:-20,y:0},{x:20,y:0}],
@@ -4933,7 +4933,7 @@ const FD_DIMS = {
 const FD_TANK_DIMS = { '80':[16,16], '120':[18,18], '240':[24,24], '400':[30,30], '660':[36,36] };
 const FD_DIM_SYMS = ['compressor','dryer','tank'];
 // Base on-screen footprint (px, at scale=1) for each dimensionable symbol — matches fdSym's drawn box
-const FD_BASE_PX = { compressor:[64,40], dryer:[56,36], tank:[28,62] };
+const FD_BASE_PX = { compressor:[64,40], dryer:[56,36], tank:[44,44] };
 
 function fdLookupDims(symbolId, modelOrLabel) {
   if(!modelOrLabel) return null;
@@ -5041,9 +5041,9 @@ function fdSym(ctx, sym, x, y, scale=1, rotation=0, pm=false) {
       ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('DRY',0,-5); break;
     case 'tank':
-      ctx.beginPath(); ctx.ellipse(0,-24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.fillRect(-14,-24,28,48); ctx.strokeRect(-14,-24,28,48);
-      ctx.beginPath(); ctx.ellipse(0,24,14,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      // Top-down bird's eye view: outer circle = tank body, inner ring = top cap/fitting
+      ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.stroke();
       ctx.fillStyle=_fg; ctx.font=SYM_FONT; ctx.textAlign='center';
       ctx.fillText('TANK',0,4); break;
     case 'filter':
@@ -5355,6 +5355,16 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
         if(Math.hypot(wx-pt.x,wy-pt.y)<threshold) return {x:pt.x,y:pt.y,sourceEl:el};
       }
     }
+    // 2.5. Pipe body — project cursor onto segment for T-branch snap (skip near endpoints)
+    for(const el of elsList) {
+      if(el.type!=='pipe') continue;
+      const bdx=el.x2-el.x1, bdy=el.y2-el.y1, blen2=bdx*bdx+bdy*bdy;
+      if(!blen2) continue;
+      const bt=((wx-el.x1)*bdx+(wy-el.y1)*bdy)/blen2;
+      if(bt<0.05||bt>0.95) continue;
+      const px=el.x1+bt*bdx, py=el.y1+bt*bdy;
+      if(Math.hypot(wx-px,wy-py)<threshold) return {x:px,y:py,sourceEl:el,onBody:true};
+    }
     // 3. Fallback: bbox edge centers of any symbol
     for(const el of elsList) {
       if(el.type!=='symbol') continue;
@@ -5564,8 +5574,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',x:ex,y:ey,
                 rotation:rotDeg,scale:0.7,label:`${pipeSize} NPT`});
             // Auto-reducing fitting when connecting to a different-size air pipe
-            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rotDeg+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}
-            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rotDeg,scale:0.8,label:`${_lg}×${_sm}`});}}}
+            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){if(drawing.startSnap.onBody){const _pA=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1)*180/Math.PI,_isR=_sp.pipeSize!==pipeSize,_si2=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_si2>=_ni2?[_sp.pipeSize,pipeSize]:[pipeSize,_sp.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:_pA,scale:0.8,label:_isR?`${_lg}×${_sm} Red. Tee`:`${_sp.pipeSize} Tee`});}else{const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rotDeg+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}}
+            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){if(sp2.onBody){const _pA=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1)*180/Math.PI,_isR=_ep.pipeSize!==pipeSize,_ei2=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_ei2>=_ni2?[_ep.pipeSize,pipeSize]:[pipeSize,_ep.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:_pA,scale:0.8,label:_isR?`${_lg}×${_sm} Red. Tee`:`${_ep.pipeSize} Tee`});}else{const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rotDeg,scale:0.8,label:`${_lg}×${_sm}`});}}}}
             for(let i=1;i<sticks;i++){
               const t=i*19*FD.G/pipeLen;
               extraEls.push({id:idg(),type:'symbol',symbolId:'coupling',
@@ -5601,8 +5611,8 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
               extraEls.push({id:idg(),type:'symbol',symbolId:'nptadapt',
                 x:ex,y:ey,rotation:rot2,scale:0.7,label:`${pipeSize} NPT`});
             // Auto-reducing fittings for L-shape endpoints connecting to different-size air pipes
-            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}
-            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rot2,scale:0.8,label:`${_lg}×${_sm}`});}}}
+            {const _sp=drawing.startSnap?.sourceEl;if(_sp?.type==='pipe'&&!_sp.isDrain){if(drawing.startSnap.onBody){const _pA=Math.atan2(_sp.y2-_sp.y1,_sp.x2-_sp.x1)*180/Math.PI,_isR=_sp.pipeSize!==pipeSize,_si2=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_si2>=_ni2?[_sp.pipeSize,pipeSize]:[pipeSize,_sp.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:drawing.x1,y:drawing.y1,rotation:_pA,scale:0.8,label:_isR?`${_lg}×${_sm} Red. Tee`:`${_sp.pipeSize} Tee`});}else{const _si=PIPE_SIZE_ORDER.indexOf(_sp.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_si>=0&&_ni>=0&&_si!==_ni){const[_lg,_sm]=_ni>_si?[pipeSize,_sp.pipeSize]:[_sp.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:drawing.x1,y:drawing.y1,rotation:((rot1+180)%360),scale:0.8,label:`${_lg}×${_sm}`});}}}}
+            {const _ep=sp2?.sourceEl;if(_ep?.type==='pipe'&&!_ep.isDrain){if(sp2.onBody){const _pA=Math.atan2(_ep.y2-_ep.y1,_ep.x2-_ep.x1)*180/Math.PI,_isR=_ep.pipeSize!==pipeSize,_ei2=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni2=PIPE_SIZE_ORDER.indexOf(pipeSize),[_lg,_sm]=_ei2>=_ni2?[_ep.pipeSize,pipeSize]:[pipeSize,_ep.pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'tee',x:ex,y:ey,rotation:_pA,scale:0.8,label:_isR?`${_lg}×${_sm} Red. Tee`:`${_ep.pipeSize} Tee`});}else{const _ei=PIPE_SIZE_ORDER.indexOf(_ep.pipeSize),_ni=PIPE_SIZE_ORDER.indexOf(pipeSize);if(_ei>=0&&_ni>=0&&_ei!==_ni){const[_lg,_sm]=_ni>_ei?[pipeSize,_ep.pipeSize]:[_ep.pipeSize,pipeSize];extraEls.push({id:idg(),type:'symbol',symbolId:'reducer',x:ex,y:ey,rotation:rot2,scale:0.8,label:`${_lg}×${_sm}`});}}}}
             // Couplings on seg1
             for(let i=1;i<sticks1;i++){
               const t=i*19*FD.G/len1;
@@ -6416,7 +6426,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       _pdfLocation=(_draft.equipLocation||'').trim();
       _pdfBranch=(_draft.branch||'').trim();
     } catch(e) {}
-    if(!_pdfBranch) _pdfBranch=(localStorage.getItem('wingman_branch')||'').trim();
+    if(!_pdfBranch) _pdfBranch=(localStorage.getItem('airiq_rep_branch')||localStorage.getItem('wingman_branch')||'').trim();
     const _metaParts=[];
     if(customerName) _metaParts.push(`Customer: ${customerName}`);
     if(_pdfLocation) _metaParts.push(`Location: ${_pdfLocation}`);
@@ -6552,7 +6562,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       <div style={toolbarStyle}>
         {TOOLS.map(t=>(
           <button key={t.id} onClick={()=>changeTool(t.id)} title={t.tip}
-            style={{...btnBase,...(tool===t.id?btnActive:{})}}>{t.i} {t.l}</button>
+            style={{...btnBase,...(tool===t.id&&!(t.id==='pipe'&&drainMode)?btnActive:{})}}>{t.i} {t.l}</button>
         ))}
         <span style={{width:1,height:24,background:C.border,margin:'0 3px',flexShrink:0}}/>
         <select value={pipeSize} onChange={e=>setPipeSize(e.target.value)} title="Pipe size"
