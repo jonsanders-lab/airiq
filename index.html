@@ -13,10 +13,10 @@
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
     html,body,#root{height:100%;overflow:hidden;}
-    body{background:#06090F;font-family:system-ui,sans-serif;color:#E4EDF8;}
+    body{background:var(--c-bg);font-family:system-ui,sans-serif;color:var(--c-text);}
     ::-webkit-scrollbar{width:3px;}
-    ::-webkit-scrollbar-track{background:#06090F;}
-    ::-webkit-scrollbar-thumb{background:#1E2D47;border-radius:2px;}
+    ::-webkit-scrollbar-track{background:var(--c-bg);}
+    ::-webkit-scrollbar-thumb{background:var(--c-border);border-radius:2px;}
     input,textarea,select,button{font-family:inherit;}
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
     @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
@@ -81,7 +81,27 @@
       .app-header-title{font-size:16px!important;}
       .app-header-sub{font-size:9px!important;}
     }
+    /* ── Theme tokens ─────────────────────────────────────────────── */
+    html.theme-dark{
+      --c-bg:#06090F;--c-surface:#0C1220;--c-surface2:#111A2E;--c-surface3:#172036;
+      --c-border:#1E2D47;--c-border-hov:#2D4168;
+      --c-blue:#1E3A8A;--c-blue-light:#3B6FD4;--c-blue-soft:rgba(30,58,138,0.18);
+      --c-orange:#F97316;--c-orange-soft:rgba(249,115,22,0.13);--c-orange-dim:#7C2D12;
+      --c-copper:#C17A35;--c-copper-soft:rgba(193,122,53,0.12);
+      --c-text:#E4EDF8;--c-mid:#6B82A8;--c-dim:#2E4268;
+      --c-green:#22C55E;--c-green-soft:rgba(34,197,94,0.10);--c-red:#DC2626;
+    }
+    html.theme-light{
+      --c-bg:#EEF2F7;--c-surface:#FFFFFF;--c-surface2:#F1F5F9;--c-surface3:#E4EAF2;
+      --c-border:#C8D3E1;--c-border-hov:#8FA0BC;
+      --c-blue:#1E3A8A;--c-blue-light:#2563EB;--c-blue-soft:rgba(30,58,138,0.07);
+      --c-orange:#E96908;--c-orange-soft:rgba(233,105,8,0.09);--c-orange-dim:#FDE8D0;
+      --c-copper:#9A5F1A;--c-copper-soft:rgba(154,95,26,0.08);
+      --c-text:#0F172A;--c-mid:#4B5F7C;--c-dim:#D4DCE8;
+      --c-green:#15803D;--c-green-soft:rgba(21,128,61,0.09);--c-red:#B91C1C;
+    }
   </style>
+<script>(function(){var t=localStorage.getItem('airiq_theme')||'dark';document.documentElement.classList.add('theme-'+t);})();</script>
 </head>
 <body>
 <div id="root"></div>
@@ -103,13 +123,13 @@ const AUTH_KEY = "hc_auth_v1";
 
 // ─── COLORS ──────────────────────────────────────────────────────────────────
 const C = {
-  bg:"#06090F", surface:"#0C1220", surface2:"#111A2E", surface3:"#172036",
-  border:"#1E2D47", borderHov:"#2D4168",
-  blue:"#1E3A8A", blueLight:"#3B6FD4", blueSoft:"rgba(30,58,138,0.18)",
-  orange:"#F97316", orangeSoft:"rgba(249,115,22,0.13)", orangeDim:"#7C2D12",
-  copper:"#C17A35", copperSoft:"rgba(193,122,53,0.12)",
-  text:"#E4EDF8", mid:"#6B82A8", dim:"#2E4268",
-  green:"#22C55E", greenSoft:"rgba(34,197,94,0.10)", red:"#DC2626",
+  bg:"var(--c-bg)", surface:"var(--c-surface)", surface2:"var(--c-surface2)", surface3:"var(--c-surface3)",
+  border:"var(--c-border)", borderHov:"var(--c-border-hov)",
+  blue:"var(--c-blue)", blueLight:"var(--c-blue-light)", blueSoft:"var(--c-blue-soft)",
+  orange:"var(--c-orange)", orangeSoft:"var(--c-orange-soft)", orangeDim:"var(--c-orange-dim)",
+  copper:"var(--c-copper)", copperSoft:"var(--c-copper-soft)",
+  text:"var(--c-text)", mid:"var(--c-mid)", dim:"var(--c-dim)",
+  green:"var(--c-green)", greenSoft:"var(--c-green-soft)", red:"var(--c-red)",
 };
 const F = {
   head:"'Bebas Neue','Arial Narrow',sans-serif",
@@ -654,7 +674,7 @@ function PasswordGate({ onAuth }) {
     <div style={{
       height:"100vh", background:C.bg, display:"flex", flexDirection:"column",
       alignItems:"center", justifyContent:"center", padding:32,
-      backgroundImage:`linear-gradient(${C.orange}08 1px,transparent 1px),linear-gradient(90deg,${C.orange}08 1px,transparent 1px)`,
+      backgroundImage:`linear-gradient(rgba(249,115,22,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(249,115,22,0.03) 1px,transparent 1px)`,
       backgroundSize:"48px 48px",
     }}>
       {/* Blue top stripe */}
@@ -734,8 +754,8 @@ function HelpTab() {
   const sHint  = { background:'#0a0f1a', border:`1px solid ${C.border}`, borderRadius:4, padding:'2px 8px', fontFamily:F.mono, fontSize:11, color:'#93C5FD', display:'inline', margin:'0 2px' };
   const sBeta  = { display:'inline-block', background:'rgba(57,255,20,0.12)', border:'1px solid #39FF14', borderRadius:4, padding:'1px 7px', fontFamily:F.mono, fontSize:10, color:'#39FF14', marginBottom:10 };
   const sTh    = { textAlign:'left', fontFamily:F.mono, fontSize:10, letterSpacing:1, color:C.mid, borderBottom:`1px solid ${C.border}`, padding:'6px 10px' };
-  const sTdA   = { padding:'7px 10px', borderBottom:`1px solid rgba(255,255,255,0.04)`, color:C.orange, fontFamily:F.mono, fontSize:12, verticalAlign:'top', whiteSpace:'nowrap' };
-  const sTdB   = { padding:'7px 10px', borderBottom:`1px solid rgba(255,255,255,0.04)`, color:C.text, fontFamily:F.body, fontSize:13, verticalAlign:'top' };
+  const sTdA   = { padding:'7px 10px', borderBottom:`1px solid ${C.border}`, color:C.orange, fontFamily:F.mono, fontSize:12, verticalAlign:'top', whiteSpace:'nowrap' };
+  const sTdB   = { padding:'7px 10px', borderBottom:`1px solid ${C.border}`, color:C.text, fontFamily:F.body, fontSize:13, verticalAlign:'top' };
 
   const SECTIONS = [
     {
@@ -845,7 +865,7 @@ function HelpTab() {
               ['Auto coupling at 19 ft','Placed automatically every stick length along a run'],
               ['Auto reducer','Inserted when two pipe sizes meet end-to-end'],
             ].map(([a,b],i) => (
-              <tr key={i} style={{background:i%2===0?'transparent':'rgba(255,255,255,0.025)'}}>
+              <tr key={i} style={{background:i%2===0?'transparent':C.surface3}}>
                 <td style={sTdA}>{a}</td>
                 <td style={sTdB}>{b}</td>
               </tr>
@@ -960,6 +980,14 @@ function App() {
   const [proposedEquipment, setProposedEquipment] = React.useState(null);
   const [drawingMode, setDrawingMode]       = React.useState('asis');
   const [drawingReset, setDrawingReset]     = React.useState(0);
+  const [darkMode, setDarkMode] = React.useState(() => (localStorage.getItem('airiq_theme')||'dark')==='dark');
+
+  const toggleTheme = () => {
+    const next = darkMode ? 'light' : 'dark';
+    localStorage.setItem('airiq_theme', next);
+    document.documentElement.classList.replace(darkMode?'theme-dark':'theme-light','theme-'+next);
+    setDarkMode(!darkMode);
+  };
 
   React.useEffect(() => {
     if (localStorage.getItem(AUTH_KEY) === PASSWORD) setAuthed(true);
@@ -996,10 +1024,19 @@ function App() {
               HODGE COMPRESSOR FIELD TOOLS
             </div>
           </div>
-          <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
-            <div style={{ width:6, height:6, borderRadius:"50%", background:C.green,
-              boxShadow:`0 0 8px ${C.green}` }}/>
-            <span style={{ fontFamily:F.mono, fontSize:8, color:C.green, letterSpacing:1 }}>LIVE</span>
+          <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:12 }}>
+            <button onClick={toggleTheme}
+              title={darkMode?"Switch to light mode":"Switch to dark mode"}
+              style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+                padding:"3px 9px", cursor:"pointer", fontSize:15, lineHeight:1,
+                color:C.text, flexShrink:0, transition:"border-color 0.2s" }}>
+              {darkMode ? "☀️" : "🌙"}
+            </button>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div style={{ width:6, height:6, borderRadius:"50%", background:C.green,
+                boxShadow:`0 0 8px ${C.green}` }}/>
+              <span style={{ fontFamily:F.mono, fontSize:8, color:C.green, letterSpacing:1 }}>LIVE</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1718,7 +1755,7 @@ Respond ONLY with valid JSON, zero markdown:
         </button>
         {err && <div style={{ marginTop:10, color:C.red, fontSize:12, textAlign:"center", fontFamily:F.mono }}>{err}</div>}
       </div>
-      <div style={{ background:C.blueSoft, border:`1px solid ${C.blue}44`,
+      <div style={{ background:C.blueSoft, border:`1px solid rgba(30,58,138,0.27)`,
         borderLeft:`3px solid ${C.blueLight}`, borderRadius:8, padding:"12px 16px" }}>
         <p style={{ fontSize:13, color:C.mid, lineHeight:1.75 }}>
           <span style={{ color:C.text, fontWeight:600 }}>Dock first. Always.</span>{" "}
@@ -2880,34 +2917,34 @@ function FeedbackModal({ tab, onClose }) {
   }
 
   const overlay = { position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:16 };
-  const box     = { background:'#1C1C1E', border:'1px solid rgba(193,122,53,0.4)', borderRadius:12, padding:24, width:'100%', maxWidth:420, fontFamily:F.body };
-  const inS     = { width:'100%', background:'#0D1117', border:'1px solid rgba(255,255,255,0.12)', borderRadius:6, padding:'8px 10px', color:'#F9FAFB', fontFamily:F.body, fontSize:14, boxSizing:'border-box', outline:'none' };
+  const box     = { background:C.surface2, border:`1px solid ${C.copper}`, borderRadius:12, padding:24, width:'100%', maxWidth:420, fontFamily:F.body };
+  const inS     = { width:'100%', background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:'8px 10px', color:C.text, fontFamily:F.body, fontSize:14, boxSizing:'border-box', outline:'none' };
 
   return (
     <div style={overlay} onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
       <div style={box}>
-        <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:'#F9FAFB',marginBottom:16}}>SEND FEEDBACK TO JON</div>
+        <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.text,marginBottom:16}}>SEND FEEDBACK TO JON</div>
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
           <div>
-            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:4}}>REP NAME</div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:C.mid,letterSpacing:1,marginBottom:4}}>REP NAME</div>
             <input value={rep} onChange={e=>setRep(e.target.value)} placeholder="Your name" style={inS}/>
           </div>
           <div>
-            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:4}}>BRANCH</div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:C.mid,letterSpacing:1,marginBottom:4}}>BRANCH</div>
             <select value={branch} onChange={e=>setBranch(e.target.value)} style={inS}>
               <option value="">Select branch...</option>
               {BRANCHES.map(b=><option key={b} value={b}>{b}</option>)}
             </select>
           </div>
           <div>
-            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:6}}>TYPE</div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:C.mid,letterSpacing:1,marginBottom:6}}>TYPE</div>
             <div style={{display:'flex',gap:8}}>
               {['Bug Report','Feature Request','General'].map(t=>(
                 <button key={t} onClick={()=>setFbType(t)} style={{
                   flex:1,padding:'7px 4px',borderRadius:6,border:'1px solid',
-                  borderColor:fbType===t?'#C17A35':'rgba(255,255,255,0.12)',
-                  background:fbType===t?'rgba(193,122,53,0.18)':'transparent',
-                  color:fbType===t?'#C17A35':'#9CA3AF',
+                  borderColor:fbType===t?C.copper:C.border,
+                  background:fbType===t?C.copperSoft:'transparent',
+                  color:fbType===t?C.copper:C.mid,
                   fontFamily:F.mono,fontSize:9,letterSpacing:1,cursor:'pointer',
                 }}>
                   {t==='Bug Report'?'🐛':t==='Feature Request'?'✨':'💬'} {t.toUpperCase()}
@@ -2916,13 +2953,13 @@ function FeedbackModal({ tab, onClose }) {
             </div>
           </div>
           <div>
-            <div style={{fontFamily:F.mono,fontSize:10,color:'#9CA3AF',letterSpacing:1,marginBottom:4}}>WHAT'S ON YOUR MIND?</div>
+            <div style={{fontFamily:F.mono,fontSize:10,color:C.mid,letterSpacing:1,marginBottom:4}}>WHAT'S ON YOUR MIND?</div>
             <textarea value={msg} onChange={e=>setMsg(e.target.value)} placeholder="Describe the issue or idea..." rows={4} style={{...inS,resize:'vertical'}}/>
           </div>
           {status==='ok'  && <div style={{textAlign:'center',color:'#22C55E',fontFamily:F.mono,fontSize:13}}>✅ Sent! Jon will review.</div>}
           {status==='err' && <div style={{textAlign:'center',color:'#EF4444',fontFamily:F.mono,fontSize:11}}>❌ Failed to send. Screenshot and text Jon directly.</div>}
           <div style={{display:'flex',gap:10}}>
-            <button onClick={onClose} style={{flex:1,padding:'10px 0',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'transparent',color:'#9CA3AF',fontFamily:F.mono,fontSize:11,letterSpacing:1,cursor:'pointer'}}>CANCEL</button>
+            <button onClick={onClose} style={{flex:1,padding:'10px 0',borderRadius:8,border:`1px solid ${C.border}`,background:'transparent',color:C.mid,fontFamily:F.mono,fontSize:11,letterSpacing:1,cursor:'pointer'}}>CANCEL</button>
             <button onClick={send} disabled={status==='sending'||status==='ok'} style={{flex:2,padding:'10px 0',borderRadius:8,border:'1px solid #C17A35',background:'rgba(193,122,53,0.18)',color:'#C17A35',fontFamily:F.mono,fontSize:11,letterSpacing:1,cursor:'pointer',opacity:(status==='sending'||status==='ok')?0.5:1}}>
               {status==='sending'?'SENDING...':'SEND'}
             </button>
@@ -3766,7 +3803,7 @@ No fabricated prices.`;
             </FieldRow>
           </div>
           {(() => { const ann = Number(sysReqs.hours)*Number(sysReqs.days)*Number(sysReqs.weeks); return ann > 0 && (
-            <div style={{fontFamily:F.mono,fontSize:11,color:C.blueLight,letterSpacing:1,marginBottom:10,padding:"6px 10px",background:C.blueSoft,borderRadius:6,border:`1px solid ${C.blue}33`}}>
+            <div style={{fontFamily:F.mono,fontSize:11,color:C.blueLight,letterSpacing:1,marginBottom:10,padding:"6px 10px",background:C.blueSoft,borderRadius:6,border:`1px solid rgba(30,58,138,0.20)`}}>
               ≈ {ann.toLocaleString()} hrs/year estimated annual operation
             </div>
           ); })()}
@@ -3801,17 +3838,17 @@ No fabricated prices.`;
                 </div>
               )}
               {sysReqs.voltage==="230v3ph" && (
-                <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
+                <div style={{background:C.blueSoft,border:`1px solid rgba(30,58,138,0.27)`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
                   ℹ HTM series and small HD models (HD10–HD25) are available in 208-230V. Most HV/HT/HTV units are 460V standard — confirm motor configuration with factory for larger models.
                 </div>
               )}
               {sysReqs.voltage==="575v3ph" && (
-                <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
+                <div style={{background:C.blueSoft,border:`1px solid rgba(30,58,138,0.27)`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
                   ℹ 575V available on most models — common in Canada. Confirm availability and lead time with factory.
                 </div>
               )}
               {sysReqs.voltage==="380v3ph" && (
-                <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
+                <div style={{background:C.blueSoft,border:`1px solid rgba(30,58,138,0.27)`,borderRadius:6,padding:"7px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5,width:"100%"}}>
                   ℹ 380V export configuration — not a standard stock voltage. Factory order required; confirm lead time.
                 </div>
               )}
@@ -3876,7 +3913,7 @@ No fabricated prices.`;
                         <div style={{fontFamily:F.head,fontSize:18,letterSpacing:3,color:headColor,lineHeight:1}}>{label}</div>
                         <div style={{fontFamily:F.mono,fontSize:9,color:C.dim,letterSpacing:2,marginTop:2}}>{sub}</div>
                       </div>
-                      {key==="best" && <span style={{fontSize:10,background:C.copperSoft,color:C.copper,border:`1px solid ${C.copper}44`,borderRadius:4,padding:"2px 6px",fontFamily:F.mono}}>VSD</span>}
+                      {key==="best" && <span style={{fontSize:10,background:C.copperSoft,color:C.copper,border:`1px solid rgba(193,122,53,0.27)`,borderRadius:4,padding:"2px 6px",fontFamily:F.mono}}>VSD</span>}
                     </div>
 
                     {/* Model */}
@@ -3928,7 +3965,7 @@ No fabricated prices.`;
 
                     {/* Audit note (BEST only) */}
                     {rec.auditNote && (
-                      <div style={{background:C.blueSoft,border:`1px solid ${C.blue}44`,borderRadius:6,padding:"8px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5}}>
+                      <div style={{background:C.blueSoft,border:`1px solid rgba(30,58,138,0.27)`,borderRadius:6,padding:"8px 10px",fontSize:11,color:C.blueLight,lineHeight:1.5}}>
                         📊 {rec.auditNote}
                       </div>
                     )}
@@ -4281,7 +4318,7 @@ No fabricated prices.`;
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:7}}>
                   <div style={{fontFamily:F.mono,fontSize:9,color:C.copper,letterSpacing:2}}>UNIT {idx+1}</div>
-                  {c.fromDrawing && <span style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,background:"rgba(59,111,212,0.12)",border:`1px solid ${C.blueLight}44`,borderRadius:3,padding:"1px 5px"}}>📐 DRAWING</span>}
+                  {c.fromDrawing && <span style={{fontFamily:F.mono,fontSize:7,letterSpacing:1,color:C.blueLight,background:"rgba(59,111,212,0.12)",border:`1px solid rgba(59,111,212,0.27)`,borderRadius:3,padding:"1px 5px"}}>📐 DRAWING</span>}
                 </div>
                 <button onClick={()=>rmComp(c.id)}
                   style={{background:"none",border:"none",color:C.mid,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
@@ -4474,7 +4511,7 @@ No fabricated prices.`;
               {layoutBusy?`ANALYZING ${layoutImgs.length} IMAGE${layoutImgs.length>1?"S":""}...`:`ANALYZE ${layoutImgs.length} IMAGE${layoutImgs.length>1?"S":""} →`}
             </button>
             {layoutAnalysis && !layoutAnalysis.error && (
-              <div style={{background:C.surface2,border:`1px solid ${C.blueLight}44`,borderRadius:8,padding:12}}>
+              <div style={{background:C.surface2,border:`1px solid rgba(59,111,212,0.27)`,borderRadius:8,padding:12}}>
                 {/* Header + confidence */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                   <div style={{fontFamily:F.mono,fontSize:9,color:C.blueLight,letterSpacing:2}}>LAYOUT ANALYSIS</div>
@@ -4534,7 +4571,7 @@ No fabricated prices.`;
 
                 {/* Auto-populated summary */}
                 {(layoutAnalysis._populated||[]).length>0 && (
-                  <div style={{background:C.greenSoft,border:`1px solid ${C.green}33`,borderRadius:5,padding:"8px 10px",marginBottom:10}}>
+                  <div style={{background:C.greenSoft,border:`1px solid rgba(34,197,94,0.20)`,borderRadius:5,padding:"8px 10px",marginBottom:10}}>
                     <div style={{fontFamily:F.mono,fontSize:8,color:C.green,letterSpacing:1,marginBottom:4}}>✓ AUTO-POPULATED INTO FORM</div>
                     {(layoutAnalysis._populated||[]).map((item,i)=>(
                       <div key={i} style={{fontSize:12,color:C.text,lineHeight:1.7}}>• {item}</div>
@@ -4545,7 +4582,7 @@ No fabricated prices.`;
 
                 {/* Pipe size recommendations */}
                 {(layoutAnalysis.headerPipeSize || layoutAnalysis.dropPipeSize) && (
-                  <div style={{background:C.surface2,border:`1px solid ${C.blueLight}55`,borderRadius:7,padding:"10px 12px",marginBottom:10}}>
+                  <div style={{background:C.surface2,border:`1px solid rgba(59,111,212,0.33)`,borderRadius:7,padding:"10px 12px",marginBottom:10}}>
                     <div style={{fontFamily:F.mono,fontSize:8,color:C.blueLight,letterSpacing:2,marginBottom:8}}>AI PIPE SIZE RECOMMENDATIONS — review and override in Job Info above</div>
                     <div className="grid-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                       {layoutAnalysis.headerPipeSize && (
@@ -4632,7 +4669,7 @@ No fabricated prices.`;
           {bomBusy?"GENERATING SYSTEM BOM...":"GENERATE SYSTEM BOM →"}
         </button>
         {bomText && (
-          <div style={{background:C.surface,border:`1px solid ${C.copper}44`,borderRadius:10,padding:16}}>
+          <div style={{background:C.surface,border:`1px solid rgba(193,122,53,0.27)`,borderRadius:10,padding:16}}>
             <Mono color={C.copper}>BILL OF MATERIALS</Mono>
             <div style={{marginTop:14}}>
               <BOMTable raw={bomText}/>
@@ -4705,7 +4742,7 @@ No fabricated prices.`;
         <div onClick={()=>setTierModal(null)}
           style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',zIndex:10050,display:'flex',alignItems:'center',justifyContent:'center'}}>
           <div onClick={e=>e.stopPropagation()}
-            style={{background:'#141414',border:`1.5px solid ${C.copper}`,borderRadius:12,padding:28,maxWidth:400,width:'92%'}}>
+            style={{background:C.surface2,border:`1.5px solid ${C.copper}`,borderRadius:12,padding:28,maxWidth:400,width:'92%'}}>
             <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper,marginBottom:8}}>CHANGE TIER ↗</div>
             <div style={{fontFamily:F.body,fontSize:14,color:C.text,marginBottom:6}}>
               Switching to <strong style={{color:C.copper}}>{tierModal.rec.model}{tierModal.rec.dual?' (×2)':''}</strong>
@@ -8545,10 +8582,10 @@ function FieldLog() {
                   {/* Pace goal dashed line at 20 stops */}
                   <div style={{
                     position:"absolute", top:0, left:0, right:0,
-                    borderTop:"1px dashed rgba(255,255,255,0.15)",
+                    borderTop:`1px dashed ${C.border}`,
                     display:"flex", justifyContent:"flex-end", paddingRight:2,
                   }}>
-                    <span style={{ fontFamily:F.mono, fontSize:7, color:"rgba(255,255,255,0.3)", lineHeight:"10px", background:C.surface, paddingLeft:3 }}>20</span>
+                    <span style={{ fontFamily:F.mono, fontSize:7, color:C.mid, lineHeight:"10px", background:C.surface, paddingLeft:3 }}>20</span>
                   </div>
                   {/* Bars */}
                   <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:124, paddingTop:12 }}>
@@ -8562,7 +8599,7 @@ function FieldLog() {
                           <div style={{ fontFamily:F.mono, fontSize:9, color:col, lineHeight:1, marginBottom:2 }}>{s > 0 ? s : ""}</div>
                           <div style={{
                             width:"100%", borderRadius:"2px 2px 0 0", transition:"height 0.5s ease",
-                            background: s === 0 ? "rgba(255,255,255,0.06)" : col,
+                            background: s === 0 ? C.surface3 : col,
                             height: barH,
                           }}/>
                         </div>
@@ -8617,12 +8654,12 @@ function FieldLog() {
                     </div>
                     <svg viewBox={`0 0 ${W} ${H+16}`} width="100%" style={{ display:"block", overflow:"visible" }}>
                       <path d={area} fill="rgba(59,130,246,0.10)" stroke="none"/>
-                      <path d={line} fill="none" stroke="#3B6FD4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d={line} fill="none" style={{stroke:C.blueLight}} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                       {coords.map((c,i) => (
                         <g key={i}>
-                          <circle cx={c.x} cy={c.y} r="3.5" fill="#3B6FD4"/>
-                          {c.v > 0 && <text x={c.x} y={c.y-7} textAnchor="middle" fontSize="9" fill="#E4EDF8">{c.v}</text>}
-                          <text x={c.x} y={H+14} textAnchor="middle" fontSize="9" fill="#6B82A8">{c.label}</text>
+                          <circle cx={c.x} cy={c.y} r="3.5" style={{fill:C.blueLight}}/>
+                          {c.v > 0 && <text x={c.x} y={c.y-7} textAnchor="middle" fontSize="9" style={{fill:C.text}}>{c.v}</text>}
+                          <text x={c.x} y={H+14} textAnchor="middle" fontSize="9" style={{fill:C.mid}}>{c.label}</text>
                         </g>
                       ))}
                     </svg>
@@ -8635,10 +8672,10 @@ function FieldLog() {
           {/* Export modal */}
           {showExport && (
             <div onClick={() => setShowExport(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:10020, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-              <div onClick={e => e.stopPropagation()} style={{ background:"#141414", border:`1.5px solid ${C.copper}`, borderRadius:12, padding:24, maxWidth:360, width:"100%" }}>
+              <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid ${C.copper}`, borderRadius:12, padding:24, maxWidth:360, width:"100%" }}>
                 <div style={{ fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.copper, marginBottom:16 }}>EXPORT FIELD LOG DATA</div>
                 {[["today","Today"],["week","This Week"],["month","This Month"],["year","This Year"],["custom","Custom Range"]].map(([v,lbl]) => (
-                  <label key={v} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid rgba(255,255,255,0.05)`, cursor:"pointer" }}>
+                  <label key={v} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}`, cursor:"pointer" }}>
                     <input type="radio" name="exportRange" checked={exportRange===v} onChange={() => setExportRange(v)} style={{ accentColor:C.copper, width:16, height:16, cursor:"pointer" }}/>
                     <span style={{ fontFamily:F.body, fontSize:15, color:C.text }}>{lbl}</span>
                   </label>
