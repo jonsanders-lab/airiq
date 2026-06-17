@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 16, 2026 (session 8)**
+**Last updated: June 16, 2026 (session 9)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -82,6 +82,11 @@ Railway volume mounted at /app/data for persistent storage
 - Tank symbol: redrawn as bird's eye top-down circle (outer ring=body, inner ring=cap/fitting) with 4-directional connectors; FD_BASE_PX updated
 - Pipe body snap + tee auto-insert: snap to pipe mid-segment (bt 0.05–0.95), auto-inserts tee or reducing tee at junction; tee rotation derived from main pipe angle (+90° for start, +270° for end); reducer auto-insert on size mismatch; bflip forces perpendicular-first routing so L-shape elbow lands off main pipe
 - Pipe label suppression: segments < 2ft show no label (avoids clutter at tee junctions)
+- Symbol text readability: tank inner ring replaced with small filled dot (r=3); compressor ring shrunk r=12→r=6 to clear 'COMP' text
+- Pipe/drain label backgrounds: isLight-aware (light bg + navy text in light mode)
+- NPT adapter label dedup: hasNptLabel() checks els within 60px — only first NPT at any equipment port gets a label, subsequent ones blank
+- Flow direction arrows: chevron at pipe midpoint, mat color, 1.5px, shows flow from x1/y1 to x2/y2
+- Tee stem direction fix: teeBranchRot() helper; body snap tees correctly orient stem toward branch for all 4 insertion points; perpendicular endpoint snaps also auto-insert tee (cross product > 0.5)
 - PDF footer: branch + customer location auto-populated from localStorage (airiq_site_survey_draft, airiq_rep_branch, wingman_branch fallback chain)
 - Dark/light mode toggle: ☀️/🌙 button in app header; anti-FOUC script; CSS variables on html.theme-dark/html.theme-light; all tabs and drawing tool UI respond to theme; canvas re-draws on toggle via MutationObserver + isLight state; PalIcon uses pm=isLight for correct symbol rendering on light palette
 - Tank symbol top-down view: fdSym 'tank' case redrawn as bird's eye circle (outer r=22, inner r=6 cap ring); FD_CONNECTORS.tank updated to radius 22; FD_BASE_PX.tank updated to [44,44]
