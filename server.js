@@ -608,6 +608,67 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// ─── SERIAL LOOKUP ───────────────────────────────────────────────────────────
+const SERIAL_SHEET_ID  = '15JjnuJuxvJpnj218Lr0s_xTwZazOLTrr2h5DXNJ9nVo';
+const SERIAL_SHEET_TAB = 'Hodge Compressor Master Sales';
+let serialCache = { rows: null, fetchedAt: 0 };
+
+async function fetchSerialSheet() {
+  if (serialCache.rows && (Date.now() - serialCache.fetchedAt) < 5 * 60 * 1000) {
+    return serialCache.rows;
+  }
+  const keyJson = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+  const auth = new google.auth.GoogleAuth({
+    credentials: keyJson,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  });
+  const sheets = google.sheets({ version: 'v4', auth });
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SERIAL_SHEET_ID,
+    range: SERIAL_SHEET_TAB,
+  });
+  const rows = res.data.values || [];
+  serialCache = { rows, fetchedAt: Date.now() };
+  console.log(`Serial sheet cached: ${rows.length} rows`);
+  return rows;
+}
+
+app.get('/api/serial-lookup', async (req, res) => {
+  const serial = (req.query.serial || '').trim();
+  if (!serial) return res.status(400).json({ error: 'serial parameter required' });
+  try {
+    const rows = await fetchSerialSheet();
+    if (rows.length === 0) return res.json({ matches: [], total: 0 });
+    const headers = rows[0].map(h => (h || '').toString().trim().toLowerCase());
+    const ci = kw => headers.findIndex(h => h.includes(kw));
+    const serialIdx  = ci('serial');
+    const modelIdx   = ci('model');
+    const custIdx    = ci('customer');
+    const saleDateIdx = (() => { const i = ci('sale date'); return i >= 0 ? i : ci('sale'); })();
+    const startupIdx = ci('startup');
+    const memoIdx    = ci('memo');
+    if (serialIdx === -1) {
+      console.error('Serial column not found. Headers:', headers);
+      return res.status(500).json({ error: 'Serial number column not found in sheet. Headers: ' + headers.join(', ') });
+    }
+    const q = serial.toLowerCase();
+    const matches = rows.slice(1)
+      .filter(row => (row[serialIdx] || '').toString().toLowerCase().includes(q))
+      .map(row => ({
+        serialNumber: row[serialIdx]   || '',
+        model:        modelIdx   >= 0 ? (row[modelIdx]    || '') : '',
+        customer:     custIdx    >= 0 ? (row[custIdx]     || '') : '',
+        saleDate:     saleDateIdx >= 0 ? (row[saleDateIdx] || '') : '',
+        startupDate:  startupIdx >= 0 ? (row[startupIdx]  || '') : '',
+        memo:         memoIdx    >= 0 ? (row[memoIdx]     || '') : '',
+      }));
+    res.json({ matches, total: matches.length });
+  } catch (e) {
+    console.error('serial-lookup error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── FIELD LOG ────────────────────────────────────────────────────────────────
 app.post('/api/field-log', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });

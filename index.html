@@ -1287,6 +1287,80 @@ function App() {
   );
 }
 
+function SerialLookup() {
+  const [open,    setOpen]    = React.useState(false);
+  const [query,   setQuery]   = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [results, setResults] = React.useState(null);
+  const [error,   setError]   = React.useState(null);
+
+  async function doSearch() {
+    const q = query.trim();
+    if (!q) return;
+    setLoading(true); setResults(null); setError(null);
+    try {
+      const r = await fetch(`/api/serial-lookup?serial=${encodeURIComponent(q)}`);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      setResults(d.matches);
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  }
+
+  const field = (label, val) => val ? (
+    <div style={{display:'flex',gap:8,alignItems:'baseline',padding:'4px 0',borderBottom:`1px solid ${C.border}`}}>
+      <span style={{fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid,flexShrink:0,minWidth:90}}>{label}</span>
+      <span style={{fontFamily:F.body,fontSize:13,color:C.text}}>{val}</span>
+    </div>
+  ) : null;
+
+  return (
+    <div style={{borderBottom:`1px solid ${C.border}`,background:C.surface,flexShrink:0}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{
+        width:'100%',display:'flex',alignItems:'center',gap:6,padding:'7px 14px',
+        background:'none',border:'none',cursor:'pointer',color:C.mid,
+        fontFamily:F.mono,fontSize:10,letterSpacing:2,textAlign:'left',
+      }}>
+        <span style={{color:C.copper}}>🔍</span>
+        SERIAL # LOOKUP
+        <span style={{marginLeft:'auto',fontSize:9}}>{open?'▲':'▼'}</span>
+      </button>
+      {open && (
+        <div style={{padding:'0 14px 12px'}}>
+          <div style={{display:'flex',gap:7,marginBottom:10}}>
+            <input value={query} onChange={e=>setQuery(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter')doSearch();}}
+              placeholder="Enter serial number..."
+              style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:7,
+                padding:'9px 11px',fontSize:13,color:C.text,fontFamily:F.body,outline:'none'}}/>
+            <button onClick={doSearch} disabled={loading||!query.trim()} style={{
+              padding:'9px 16px',borderRadius:7,border:'none',fontFamily:F.mono,fontSize:11,
+              letterSpacing:1,cursor:loading||!query.trim()?'not-allowed':'pointer',
+              background:loading||!query.trim()?C.surface2:'#C17A35',color:'#fff',flexShrink:0,
+            }}>{loading?'…':'SEARCH'}</button>
+          </div>
+          {error && <div style={{fontFamily:F.body,fontSize:12,color:C.red,padding:'4px 0'}}>{error}</div>}
+          {results && results.length===0 && (
+            <div style={{fontFamily:F.body,fontSize:12,color:C.mid,padding:'4px 0'}}>No unit found for that serial number.</div>
+          )}
+          {results && results.length>0 && results.map((r,i)=>(
+            <div key={i} style={{background:C.surface2,border:`1px solid ${C.border}`,
+              borderLeft:'3px solid #C17A35',borderRadius:8,padding:'10px 12px',
+              marginBottom:i<results.length-1?8:0}}>
+              {field('SERIAL #',   r.serialNumber)}
+              {field('MODEL',      r.model)}
+              {field('CUSTOMER',   r.customer)}
+              {field('SALE DATE',  r.saleDate)}
+              {field('STARTUP',    r.startupDate)}
+              {field('MEMO',       r.memo)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AirIQ() {
   const [messages, setMessages]     = React.useState([]);
   const [input, setInput]           = React.useState("");
@@ -1569,7 +1643,8 @@ function AirIQ() {
         <button onClick={()=>setFeedbackOpen(true)} style={{marginLeft:"auto",flexShrink:0,background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'3px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer',whiteSpace:'nowrap'}}>💬 FEEDBACK</button>
       </div>
 
-      
+      <SerialLookup/>
+
       <div style={{ flex:1, overflowY:"auto", padding:"16px", display:"flex", flexDirection:"column", gap:12 }}>
         {messages.length===0 && (
           <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center",
