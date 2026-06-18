@@ -940,8 +940,8 @@ function HelpTab() {
       );},
     },
     {
-      id:'wingman', title:'2. Wingman',
-      keys:'war stories mission brief intel win log a win wingman',
+      id:'sandbot', title:'2. Sandbot',
+      keys:'war stories mission brief intel win log a win sandbot',
       body() { return (
         <>
           <p style={sP}><strong style={{color:C.orange}}>Mission Brief</strong> — Generates a daily field briefing: talking points, current inventory highlights, and competitive angles. Tap GENERATE to refresh.</p>
@@ -1078,7 +1078,7 @@ function HelpTab() {
             ['Jun 15, 2026','Condensate drain lines — amber dashed pipe type, PTL Elbow/Tee/Straight fittings, BOM split into Compressed Air and Condensate Drain sections.'],
             ['Jun 15, 2026','Field Log — graph view (bar chart + weekly trend), CSV export for leaders, auto-dashboard for Jon/Tony/Kyle.'],
             ['Jun 14, 2026','Drawing tool — 8 pipe materials, right-click context menu, 4-directional connectors, real-world equipment footprints, canvas leader lines.'],
-            ['Jun 13, 2026','AirIQ launch — AI Q&A, Wingman, Field Log, Site/IQF survey + drawing tool, Sys Eng, Market Intel, Feedback.'],
+            ['Jun 13, 2026','AirIQ launch — AI Q&A, Sandbot, Field Log, Site/IQF survey + drawing tool, Sys Eng, Market Intel, Feedback.'],
           ].map(([date,text],i) => (
             <div key={i} style={{display:'flex', gap:14, alignItems:'flex-start', marginBottom:9}}>
               <span style={{fontFamily:F.mono, fontSize:10, color:C.mid, flexShrink:0, paddingTop:3, minWidth:88}}>{date}</span>
@@ -1208,9 +1208,9 @@ function App() {
           height:"100%", overflow:"hidden" }}>
           <AirIQ/>
         </div>
-        <div style={{ display: tab==="wingman" ? "block" : "none",
+        <div style={{ display: tab==="sandbot" ? "block" : "none",
           height:"100%", overflowY:"auto", padding:"20px 16px 20px" }}>
-          <Wingman/>
+          <Sandbot/>
         </div>
         <div style={{ display: tab==="estimator" ? "block" : "none",
           height:"100%", overflowY:"auto" }}>
@@ -1244,7 +1244,7 @@ function App() {
         }}>
           {[
             { id:"airiq",        icon:"💨", label:"AirIQ"      },
-            { id:"wingman",      icon:"🎯", label:"Wingman"    },
+            { id:"sandbot",      icon:"🎯", label:"Sandbot"    },
             { id:"field-log",    icon:"📍", label:"Field Log"  },
             { id:"site-design",  icon:"📋", label:"Site / IQF" },
             { id:"estimator",    icon:null,  label:"Sys Eng"   },
@@ -1692,7 +1692,7 @@ const BRANCH_INTEL = {
   "Chicago":    "Bears, Cubs, White Sox, Blackhawks, Bulls. Massive manufacturing hub. Midwest no-nonsense. Deep dish pizza debates are real. Strong union culture in many facilities.",
 };
 
-function Wingman() {
+function Sandbot() {
   const [tab, setTab]     = React.useState("brief");
   const [stories, setStories] = React.useState([]);
   const [feedbackOpen, setFeedbackOpen] = React.useState(false);
@@ -1726,7 +1726,7 @@ function Wingman() {
 
   return (
     <div>
-      {feedbackOpen && <FeedbackModal tab="Wingman" onClose={()=>setFeedbackOpen(false)}/>}
+      {feedbackOpen && <FeedbackModal tab="Sandbot" onClose={()=>setFeedbackOpen(false)}/>}
       
       <div style={{ display:"flex", gap:2, alignItems:"center", marginBottom:20, borderBottom:`1px solid ${C.border}`,
         marginLeft:-16, marginRight:-16, paddingLeft:16 }}>
@@ -1755,12 +1755,12 @@ function MissionBrief({ stories }) {
   const [loading,  setLoading]  = React.useState(false);
   const [brief,    setBrief]    = React.useState(null);
   const [err,      setErr]      = React.useState("");
-  const [branch,   setBranch]   = React.useState(() => localStorage.getItem("wingman_branch") || "");
+  const [branch,   setBranch]   = React.useState(() => localStorage.getItem("sandbot_branch") || "");
   const [repNotes, setRepNotes] = React.useState("");
 
   const handleBranchChange = (val) => {
     setBranch(val);
-    localStorage.setItem("wingman_branch", val);
+    localStorage.setItem("sandbot_branch", val);
   };
 
   const ready = industry && entry;
@@ -3361,8 +3361,8 @@ function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquip
       .join(", ")
     ).join("\n");
     const hadCatalog = HAD_DRYERS.map(d=>`${d.model}=${d.cfm}CFM`).join(", ");
-    const airQualityLabels = {"1":"Class 1 — Pharmaceutical/food (oil-free)","2":"Class 2 — Electronics/painting","3":"Class 3 — Instrument air","4":"Class 4 — General manufacturing","5":"Class 5 — Basic"};
-    const filterPkgs = {"1":"Desiccant dryer + coalescing pre-filter + coalescing after-filter + carbon filter + sterile filter (consider oil-free compressor)","2":"Refrigerant dryer + coalescing pre-filter + coalescing after-filter + carbon filter","3":"Refrigerant dryer + coalescing pre-filter + coalescing after-filter","4":"Refrigerant dryer + coalescing filter","5":"Coalescing filter only (dryer recommended)"};
+    const airQualityLabels = {"class0":"Class 0 — Oil-Free (ISO 8573-1)","1":"Class 1 — Pharmaceutical/food (oil-free)","2":"Class 2 — Electronics/painting","3":"Class 3 — Instrument air","4":"Class 4 — General manufacturing","5":"Class 5 — Basic"};
+    const filterPkgs = {"class0":"Oil-free compressor REQUIRED — Hodge HD/HV/HT are oil-flooded and cannot meet Class 0. Recommend Hertz Eagle oil-free series. Treatment: desiccant dryer + coalescing pre-filter + coalescing after-filter + sterile/HEPA terminal filter.","1":"Desiccant dryer + coalescing pre-filter + coalescing after-filter + carbon filter + sterile filter (consider oil-free compressor)","2":"Refrigerant dryer + coalescing pre-filter + coalescing after-filter + carbon filter","3":"Refrigerant dryer + coalescing pre-filter + coalescing after-filter","4":"Refrigerant dryer + coalescing filter","5":"Coalescing filter only (dryer recommended)"};
     const prompt =
 `You are a compressed air system design engineer for Hodge Compressor. Design Good/Better/Best recommendations.
 
@@ -3385,6 +3385,7 @@ ${compCatalog}
 HAD REFRIGERANT DRYERS: ${hadCatalog} — always prefer HAD if CFM fits; use Beko DRYPOINT if above HAD487.
 
 FILTER PACKAGES BY AIR QUALITY CLASS:
+Class 0: ${filterPkgs["class0"]}
 Class 1: ${filterPkgs["1"]}
 Class 2: ${filterPkgs["2"]}
 Class 3: ${filterPkgs["3"]}
@@ -3982,6 +3983,7 @@ No fabricated prices.`;
             </FieldRow>
             <FieldRow label="AIR QUALITY (ISO 8573-1)">
               <select value={sysReqs.airQuality} onChange={e=>setSysReqs(p=>({...p,airQuality:e.target.value}))} style={inS}>
+                <option value="class0">Class 0 — Oil-Free (ISO 8573-1)</option>
                 <option value="1">Class 1 — Pharmaceutical/Oil-free</option>
                 <option value="2">Class 2 — Electronics/Painting</option>
                 <option value="3">Class 3 — Instrument Air</option>
@@ -6602,7 +6604,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
       _pdfLocation=(_draft.equipLocation||'').trim();
       _pdfBranch=(_draft.branch||'').trim();
     } catch(e) {}
-    if(!_pdfBranch) _pdfBranch=(localStorage.getItem('airiq_rep_branch')||localStorage.getItem('wingman_branch')||'').trim();
+    if(!_pdfBranch) _pdfBranch=(localStorage.getItem('airiq_rep_branch')||localStorage.getItem('sandbot_branch')||'').trim();
     const _metaParts=[];
     if(customerName) _metaParts.push(`Customer: ${customerName}`);
     if(_pdfLocation) _metaParts.push(`Location: ${_pdfLocation}`);
