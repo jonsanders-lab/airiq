@@ -2100,6 +2100,19 @@ const MOTOR_KW = {
   "HTM7.5":5.5, "HTM7.5(1Ph)":5.5, HTM10:7.5, HTM15:11, HTM20:15,
 };
 
+// Nominal HP by normalized model — used for NEC electrical sizing auto-population
+const MODEL_HP = {
+  HD10:10,  HD15:15,  HD20:20,  HD25:25,  HD30:30,  HD40:40,  HD50:50,
+  HD60:60,  HD75:75,  HD100:100, HD125:125, HD150:150, HD175:150, HD200:200, HD250:250,
+  HV10:10,  HV15:15,  HV20:20,  HV25:25,  HV30:30,  HV40:40,  HV50:50,
+  HV60:60,  HV75:75,  HV100:100, HV125:125, HV150:150, HV175:150, HV200:200,
+  HV250:250, HV300:300, HV350:350,
+  HT30:30,  HT40:40,  HT50:50,  HT60:60,  HT75:75,  HT100:100, HT125:125,
+  HT150:150, HT175:150, HT200:200, HT250:250, HT275:300, HT300:300, HT350:350,
+  HTV200:200, HTV250:250, HTV350:350, HTV420:400,
+  'HTM7.5':7.5, 'HTM7.5(1PH)':7.5, HTM10:10, HTM15:15, HTM20:20,
+};
+
 // Energy cost calculated in JS — never trust LLM arithmetic for this
 function calcEnergyCost(model, series, ratedCFM, requiredCFM, annualHours) {
   const motorKw = MOTOR_KW[model];
@@ -2891,6 +2904,171 @@ function EnergyCalculator() {
   );
 }
 
+// ─── ELECTRICAL SIZING CALCULATOR ────────────────────────────────────────────
+const NEC_3PH = {
+  5:   {200:17.5,208:16.7,230:15.2,460:7.6, 575:6.1},
+  7.5: {200:25.3,208:24.2,230:22.0,460:11.0,575:9.0},
+  10:  {200:32.2,208:30.8,230:28.0,460:14.0,575:11.0},
+  15:  {200:48.3,208:46.2,230:42.0,460:21.0,575:17.0},
+  20:  {200:62.1,208:59.4,230:54.0,460:27.0,575:22.0},
+  25:  {200:78.2,208:74.8,230:68.0,460:34.0,575:27.0},
+  30:  {200:92.0,208:88.0,230:80.0,460:40.0,575:32.0},
+  40:  {200:120, 208:114, 230:104, 460:52.0,575:41.0},
+  50:  {200:150, 208:143, 230:130, 460:65.0,575:52.0},
+  60:  {200:177, 208:169, 230:154, 460:77.0,575:62.0},
+  75:  {200:221, 208:211, 230:192, 460:96.0,575:77.0},
+  100: {200:285, 208:273, 230:248, 460:124, 575:99.0},
+  125: {200:359, 208:343, 230:312, 460:156, 575:125},
+  150: {200:414, 208:396, 230:360, 460:180, 575:144},
+  200: {200:552, 208:528, 230:480, 460:240, 575:192},
+  250: {200:696, 208:665, 230:602, 460:302, 575:242},
+  300: {200:828, 208:792, 230:722, 460:361, 575:289},
+  350: {200:952, 208:910, 230:828, 460:414, 575:336},
+  400: {200:1104,208:1056,230:960, 460:477, 575:382},
+  450: {200:1242,208:1188,230:1080,460:515, 575:412},
+  500: {200:1380,208:1320,230:1200,460:590, 575:472},
+};
+const NEC_1PH = {
+  5:   {200:32.2,208:30.8,230:28.0},
+  7.5: {200:46.0,208:44.0,230:40.0},
+  10:  {200:57.5,208:55.0,230:50.0},
+};
+const STD_OCP = [15,20,25,30,35,40,45,50,60,70,80,90,100,110,125,150,175,200,225,250,300,350,400,450,500,600,700,800,1000,1200,1600,2000];
+const ELEC_CONDUCTORS = [
+  {maxA:20,  cu:'12 AWG Cu', al:'10 AWG Al'},
+  {maxA:25,  cu:'10 AWG Cu', al:'8 AWG Al'},
+  {maxA:35,  cu:'8 AWG Cu',  al:'6 AWG Al'},
+  {maxA:50,  cu:'6 AWG Cu',  al:'4 AWG Al'},
+  {maxA:65,  cu:'4 AWG Cu',  al:'2 AWG Al'},
+  {maxA:75,  cu:'3 AWG Cu',  al:'1 AWG Al'},
+  {maxA:85,  cu:'2 AWG Cu',  al:'1/0 AWG Al'},
+  {maxA:100, cu:'1 AWG Cu',  al:'2/0 AWG Al'},
+  {maxA:115, cu:'1/0 AWG Cu',al:'3/0 AWG Al'},
+  {maxA:130, cu:'2/0 AWG Cu',al:'4/0 AWG Al'},
+  {maxA:150, cu:'3/0 AWG Cu',al:'250 kcmil Al'},
+  {maxA:175, cu:'4/0 AWG Cu',al:'350 kcmil Al'},
+  {maxA:230, cu:'250 kcmil Cu',al:'500 kcmil Al'},
+  {maxA:255, cu:'300 kcmil Cu',al:'600 kcmil Al'},
+  {maxA:285, cu:'350 kcmil Cu',al:'700 kcmil Al'},
+  {maxA:310, cu:'400 kcmil Cu',al:'750 kcmil Al'},
+  {maxA:335, cu:'500 kcmil Cu',al:'Parallel/engineered'},
+  {maxA:380, cu:'600 kcmil Cu',al:'Parallel/engineered'},
+  {maxA:420, cu:'700 kcmil Cu',al:'Parallel/engineered'},
+  {maxA:475, cu:'750 kcmil Cu',al:'Parallel/engineered'},
+  {maxA:9999,cu:'Parallel/engineered',al:'Parallel/engineered'},
+];
+const ELEC_GROUNDS = [
+  {maxOCP:15,   cuEGC:'14 AWG Cu', alEGC:'12 AWG Al'},
+  {maxOCP:20,   cuEGC:'12 AWG Cu', alEGC:'10 AWG Al'},
+  {maxOCP:60,   cuEGC:'10 AWG Cu', alEGC:'8 AWG Al'},
+  {maxOCP:100,  cuEGC:'8 AWG Cu',  alEGC:'6 AWG Al'},
+  {maxOCP:200,  cuEGC:'6 AWG Cu',  alEGC:'4 AWG Al'},
+  {maxOCP:300,  cuEGC:'4 AWG Cu',  alEGC:'2 AWG Al'},
+  {maxOCP:400,  cuEGC:'3 AWG Cu',  alEGC:'1 AWG Al'},
+  {maxOCP:500,  cuEGC:'2 AWG Cu',  alEGC:'1/0 AWG Al'},
+  {maxOCP:600,  cuEGC:'1 AWG Cu',  alEGC:'2/0 AWG Al'},
+  {maxOCP:800,  cuEGC:'1/0 AWG Cu',alEGC:'3/0 AWG Al'},
+  {maxOCP:1000, cuEGC:'2/0 AWG Cu',alEGC:'4/0 AWG Al'},
+  {maxOCP:1200, cuEGC:'3/0 AWG Cu',alEGC:'250 kcmil Al'},
+  {maxOCP:1600, cuEGC:'4/0 AWG Cu',alEGC:'350 kcmil Al'},
+  {maxOCP:2000, cuEGC:'250 kcmil Cu',alEGC:'400 kcmil Al'},
+];
+const ELEC_HP_LIST = [5,7.5,10,15,20,25,30,40,50,60,75,100,125,150,200,250,300,350,400,450,500];
+const ELEC_1PH_HP  = [5,7.5,10];
+
+function ElectricalSizingCalc({ initHp, initPhase, initVoltage }) {
+  const [hp,      setHp]      = React.useState(initHp != null ? Number(initHp) : 30);
+  const [phase,   setPhase]   = React.useState(initPhase || '3');
+  const [voltage, setVoltage] = React.useState(initVoltage != null ? Number(initVoltage) : 460);
+
+  // Sync when parent auto-populates
+  React.useEffect(()=>{ if(initHp != null) setHp(Number(initHp)); }, [initHp]);
+  React.useEffect(()=>{ if(initPhase != null) setPhase(initPhase); }, [initPhase]);
+  React.useEffect(()=>{ if(initVoltage != null) setVoltage(Number(initVoltage)); }, [initVoltage]);
+  // Reset voltage to valid option when phase changes
+  React.useEffect(()=>{
+    const valid = phase === '1' ? [200,208,230] : [200,208,230,460,575];
+    if(!valid.includes(Number(voltage))) setVoltage(phase === '1' ? 230 : 460);
+  }, [phase]);
+  // Enforce 3-phase for HP > 10
+  React.useEffect(()=>{
+    if(phase === '1' && !ELEC_1PH_HP.includes(Number(hp))) setPhase('3');
+  }, [hp]);
+
+  const nextStd = v => STD_OCP.find(s => s >= v) || 2000;
+  const flc     = (phase === '1' ? NEC_1PH : NEC_3PH)[Number(hp)]?.[Number(voltage)] ?? null;
+  const mca     = flc != null ? Math.round(flc * 1.25 * 10) / 10 : null;
+  const disconnect  = mca  != null ? nextStd(mca) : null;
+  const maxFuse     = flc  != null ? nextStd(flc * 1.75) : null;
+  const maxBreaker  = flc  != null ? nextStd(flc * 2.5)  : null;
+  const cond    = mca  != null ? ELEC_CONDUCTORS.find(c => c.maxA >= mca) : null;
+  const maxOcp  = (maxFuse != null && maxBreaker != null) ? Math.max(maxFuse, maxBreaker) : null;
+  const gnd     = maxOcp != null ? ELEC_GROUNDS.find(g => g.maxOCP >= maxOcp) : null;
+
+  const voltOpts = phase === '1' ? [200,208,230] : [200,208,230,460,575];
+  const inS = {background:C.surface2,border:`1px solid ${C.border}`,borderRadius:5,
+    padding:'6px 8px',color:C.text,fontFamily:F.body,fontSize:12,width:'100%'};
+  const row = (label, value) => (
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',
+      padding:'5px 0',borderBottom:`1px solid ${C.border}`}}>
+      <span style={{fontFamily:F.body,fontSize:12,color:C.mid}}>{label}</span>
+      <span style={{fontFamily:F.head,fontSize:15,letterSpacing:1,color:'#F97316',flexShrink:0,marginLeft:8}}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:12}}>
+        <div>
+          <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:4}}>HP</div>
+          <select value={hp} onChange={e=>setHp(Number(e.target.value))} style={inS}>
+            {ELEC_HP_LIST.map(h=><option key={h} value={h}>{h} HP</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:4}}>PHASE</div>
+          <select value={phase} onChange={e=>setPhase(e.target.value)} style={inS}>
+            {ELEC_1PH_HP.includes(Number(hp)) && <option value="1">1-Phase</option>}
+            <option value="3">3-Phase</option>
+          </select>
+        </div>
+        <div>
+          <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.mid,marginBottom:4}}>VOLTAGE</div>
+          <select value={voltage} onChange={e=>setVoltage(Number(e.target.value))} style={inS}>
+            {voltOpts.map(v=><option key={v} value={v}>{v}V</option>)}
+          </select>
+        </div>
+      </div>
+      {flc != null ? (
+        <div style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 14px'}}>
+          <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:2,color:C.copper,marginBottom:10}}>
+            NEC 430 RESULTS — {hp} HP · {phase==='1'?'1-Phase':'3-Phase'} · {voltage}V
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 20px'}}>
+            {row('NEC Motor FLC', flc+' A')}
+            {row('Min Circuit Ampacity (MCA)', mca+' A')}
+            {row('Min Disconnect Size', disconnect+' A')}
+            {row('Max TD Fuse (DETDF)', maxFuse+' A')}
+            {row('Max Breaker (HACR/ITB)', maxBreaker+' A')}
+            {cond && row('Cu Conductors (75°C)', cond.cu)}
+            {cond && row('Al Conductors (75°C)', cond.al)}
+            {gnd  && row('Ground — Cu (EGC)', gnd.cuEGC)}
+            {gnd  && row('Ground — Al (EGC)', gnd.alEGC)}
+          </div>
+          <div style={{marginTop:10,fontFamily:F.body,fontSize:10,color:C.dim,lineHeight:1.5,
+            borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+            Use package nameplate MCA/MOCP when available. Verify final sizing with project electrician or engineer of record.
+          </div>
+        </div>
+      ) : (
+        <div style={{fontFamily:F.mono,fontSize:10,color:C.dim,padding:'8px 0'}}>
+          No NEC data for this HP / phase / voltage combination.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── FEEDBACK MODAL ───────────────────────────────────────────────────────────
 function FeedbackModal({ tab, onClose }) {
   const [rep, setRep]     = React.useState(() => localStorage.getItem('airiq_rep_name') || '');
@@ -3012,7 +3190,7 @@ function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquip
   const [compEquipPrice, setCompEquipPrice]   = React.useState("");
   const [compAnnualMaint, setCompAnnualMaint] = React.useState("");
   const [selectedTier, setSelectedTier] = React.useState(null);
-  const [openSections, setOpenSections] = React.useState({buildSystem:true,saveexport:false,valueJustification:false});
+  const [openSections, setOpenSections] = React.useState({buildSystem:true,saveexport:false,valueJustification:false,electrical:false});
   const [tierModal,    setTierModal]    = React.useState(null);
   const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   const toggleSection = k => setOpenSections(p=>({...p,[k]:!p[k]}));
@@ -3078,6 +3256,7 @@ function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquip
   }
 
   React.useEffect(() => { if (showPast) loadEstimates(); }, [showPast]);
+  React.useEffect(() => { if (selectedTier) setOpenSections(p=>({...p,electrical:true})); }, [selectedTier]);
 
   async function saveEstimate() {
     setSaveBusy(true); setSaveMsg("");
@@ -4016,6 +4195,32 @@ No fabricated prices.`;
           </div>
         );
       })()}
+
+      {/* ── ⚡ ELECTRICAL REQUIREMENTS ── */}
+      {sysRec && (()=>{
+        const normModel  = selectedTier ? String(selectedTier.model||'').toUpperCase().replace(/[-\s]/g,'') : null;
+        const initHp     = normModel ? (MODEL_HP[normModel]||null) : null;
+        const initPhase  = sysReqs.phase === '1ph' ? '1' : '3';
+        const voltMap    = {"230v1ph":230,"230v3ph":230,"460v3ph":460,"575v3ph":575,"208v3ph":208};
+        const initVoltage= voltMap[sysReqs.voltage] || 460;
+        return (
+          <div style={{marginBottom:12}}>
+            {secHdr('electrical','⚡ ELECTRICAL REQUIREMENTS',null,null,'NEC motor FLC, MCA, overcurrent protection, and wire sizing')}
+            <div style={{overflow:'hidden',maxHeight:secOpen('electrical')?'9999px':'0',transition:'max-height 0.3s ease',
+              background:C.surface,border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,borderTop:'none',borderRadius:'0 0 10px 10px'}}>
+              <div style={{padding:16}}>
+                {selectedTier && (
+                  <div style={{fontFamily:F.mono,fontSize:9,color:C.mid,letterSpacing:1,marginBottom:12}}>
+                    Auto-populated from {selectedTier.model} — edit inputs below to override
+                  </div>
+                )}
+                <ElectricalSizingCalc initHp={initHp} initPhase={initPhase} initVoltage={initVoltage} />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {sysRec?.error && (
         <div style={{...card,borderColor:C.red,color:C.red,fontFamily:F.mono,fontSize:12}}>
           ⚠ Design error: {sysRec.error}
@@ -7612,6 +7817,10 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
           <textarea value={form.electricalNotes} onChange={e=>f("electricalNotes",e.target.value)}
             rows={3} style={taS} placeholder="Voltage, phase, panel location, etc."/>
         </FieldRow>
+        <div style={{marginTop:14,borderTop:`1px solid ${C.border}`,paddingTop:14}}>
+          <div style={{fontFamily:F.mono,fontSize:9,letterSpacing:3,color:C.copper,marginBottom:10}}>⚡ ELECTRICAL SIZING CALCULATOR</div>
+          <ElectricalSizingCalc />
+        </div>
       </SurveyCard>
 
       {/* S7 — PIPING */}
