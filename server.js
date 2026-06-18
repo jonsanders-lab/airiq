@@ -669,6 +669,67 @@ app.get('/api/serial-lookup', async (req, res) => {
   }
 });
 
+// ─── FAQ ──────────────────────────────────────────────────────────────────────
+const FAQ_SHEET_ID  = '1CtShitln0BSzSmVSofqlrWWJpp91Z602';
+const FAQ_SHEET_TAB = 'FAQ';
+let faqCache = { items: null, fetchedAt: 0 };
+
+async function fetchFaqSheet() {
+  if (faqCache.items && (Date.now() - faqCache.fetchedAt) < 10 * 60 * 1000) {
+    return faqCache.items;
+  }
+  const keyJson = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+  const auth = new google.auth.GoogleAuth({
+    credentials: keyJson,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  });
+  const sheets = google.sheets({ version: 'v4', auth });
+  let rows = [];
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: FAQ_SHEET_ID,
+      range: FAQ_SHEET_TAB,
+    });
+    rows = res.data.values || [];
+  } catch (e) {
+    if (e.message && (e.message.includes('Unable to parse range') || e.message.includes('notFound'))) {
+      console.log('FAQ sheet tab not found yet — returning empty');
+    } else {
+      throw e;
+    }
+  }
+  if (rows.length < 2) {
+    faqCache = { items: [], fetchedAt: Date.now() };
+    return [];
+  }
+  const headers = rows[0].map(h => (h || '').toString().trim().toLowerCase());
+  const qi   = headers.findIndex(h => h.includes('question'));
+  const ai   = headers.findIndex(h => h.includes('answer'));
+  const ci   = headers.findIndex(h => h.includes('category'));
+  const acti = headers.findIndex(h => h.includes('active'));
+  const items = rows.slice(1)
+    .filter(row => acti < 0 || (row[acti] || '').toString().trim().toLowerCase() === 'yes')
+    .map(row => ({
+      question: qi >= 0 ? (row[qi] || '').toString().trim() : '',
+      answer:   ai >= 0 ? (row[ai] || '').toString().trim() : '',
+      category: ci >= 0 ? (row[ci] || '').toString().trim() || 'General' : 'General',
+    }))
+    .filter(item => item.question);
+  faqCache = { items, fetchedAt: Date.now() };
+  console.log(`FAQ cache loaded: ${items.length} active items`);
+  return items;
+}
+
+app.get('/api/faq', async (req, res) => {
+  try {
+    const items = await fetchFaqSheet();
+    res.json(items);
+  } catch (e) {
+    console.error('faq error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── FIELD LOG ────────────────────────────────────────────────────────────────
 app.post('/api/field-log', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });

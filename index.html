@@ -908,7 +908,20 @@ function PasswordGate({ onAuth }) {
 }
 
 function HelpTab() {
-  const [q, setQ] = React.useState('');
+  const [q,       setQ]       = React.useState('');
+  const [faqs,    setFaqs]    = React.useState([]);
+  const [faqLoad, setFaqLoad] = React.useState(true);
+  const [faqCat,  setFaqCat]  = React.useState('All');
+  const [faqQ,    setFaqQ]    = React.useState('');
+  const [openFaq, setOpenFaq] = React.useState({});
+
+  React.useEffect(() => {
+    fetch('/api/faq')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setFaqs(d); })
+      .catch(() => {})
+      .finally(() => setFaqLoad(false));
+  }, []);
 
   const sCard  = { background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:'16px 18px', marginBottom:14 };
   const sTitle = { fontFamily:F.head, fontSize:17, letterSpacing:3, color:C.orange, marginBottom:12, display:'block' };
@@ -1118,13 +1131,74 @@ function HelpTab() {
           }}
         />
 
-        {visible.length === 0 && (
+        {visible.filter(s=>s.id!=='changelog').length === 0 && qLow.length >= 2 && (
           <div style={{fontFamily:F.body, fontSize:13, color:C.mid, textAlign:'center', padding:'48px 0'}}>
             No sections match "{q}"
           </div>
         )}
 
-        {visible.map(sec => (
+        {visible.filter(s=>s.id!=='changelog').map(sec => (
+          <div key={sec.id} style={sCard}>
+            <span style={sTitle}>{sec.title}</span>
+            {sec.body()}
+          </div>
+        ))}
+
+        {/* ── FREQUENTLY ASKED QUESTIONS ── */}
+        <div style={sCard}>
+          <span style={sTitle}>💬 FREQUENTLY ASKED QUESTIONS</span>
+          {faqLoad ? (
+            <div style={{fontFamily:F.body,fontSize:13,color:C.mid,padding:'8px 0'}}>Loading FAQs…</div>
+          ) : faqs.length === 0 ? (
+            <div style={{fontFamily:F.body,fontSize:13,color:C.mid,padding:'4px 0'}}>No FAQs added yet — check back soon.</div>
+          ) : (
+            <div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+                {['All','Pricing','Product','Process','Policy','General'].map(cat=>(
+                  <button key={cat} onClick={()=>setFaqCat(cat)} style={{
+                    padding:'4px 12px',borderRadius:20,border:`1px solid ${C.border}`,cursor:'pointer',
+                    background:faqCat===cat?C.orange:C.surface2,
+                    color:faqCat===cat?'#fff':C.mid,
+                    fontFamily:F.mono,fontSize:10,letterSpacing:1,
+                  }}>{cat}</button>
+                ))}
+              </div>
+              <input value={faqQ} onChange={e=>setFaqQ(e.target.value)}
+                placeholder="Search FAQs…"
+                style={{width:'100%',boxSizing:'border-box',background:C.surface2,
+                  border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',
+                  fontFamily:F.body,fontSize:13,color:C.text,outline:'none',marginBottom:12}}/>
+              {(()=>{
+                const filtered = faqs
+                  .filter(f=>faqCat==='All'||f.category===faqCat)
+                  .filter(f=>!faqQ.trim()||f.question.toLowerCase().includes(faqQ.trim().toLowerCase()));
+                if (filtered.length===0) return (
+                  <div style={{fontFamily:F.body,fontSize:13,color:C.mid,padding:'8px 0'}}>No FAQs match your search.</div>
+                );
+                return filtered.map((f,i)=>(
+                  <div key={f.question} style={{border:`1px solid ${C.border}`,borderRadius:8,marginBottom:8,overflow:'hidden'}}>
+                    <button onClick={()=>setOpenFaq(p=>({...p,[f.question]:!p[f.question]}))} style={{
+                      width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
+                      padding:'11px 14px',background:C.surface3,border:'none',cursor:'pointer',
+                      fontFamily:F.body,fontSize:14,fontWeight:600,color:C.text,textAlign:'left',gap:8,
+                    }}>
+                      <span>{f.question}</span>
+                      <span style={{flexShrink:0,fontSize:11,color:C.mid}}>{openFaq[f.question]?'▲':'▼'}</span>
+                    </button>
+                    {openFaq[f.question] && (
+                      <div style={{padding:'12px 14px',background:C.surface2,borderTop:`1px solid ${C.border}`,
+                        fontFamily:F.body,fontSize:13.5,color:C.text,lineHeight:1.75,whiteSpace:'pre-wrap'}}>
+                        {f.answer}
+                      </div>
+                    )}
+                  </div>
+                ));
+              })()}
+            </div>
+          )}
+        </div>
+
+        {visible.filter(s=>s.id==='changelog').map(sec => (
           <div key={sec.id} style={sCard}>
             <span style={sTitle}>{sec.title}</span>
             {sec.body()}
