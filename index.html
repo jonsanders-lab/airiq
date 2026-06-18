@@ -4165,7 +4165,7 @@ No fabricated prices.`;
       })()}
 
       
-      {sysRec && (()=>{
+      {(()=>{
         const normModel  = selectedTier ? String(selectedTier.model||'').toUpperCase().replace(/[-\s]/g,'') : null;
         const initHp     = normModel ? (MODEL_HP[normModel]||null) : null;
         const initPhase  = sysReqs.phase === '1ph' ? '1' : '3';
