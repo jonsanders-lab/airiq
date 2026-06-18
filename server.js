@@ -670,8 +670,8 @@ app.get('/api/serial-lookup', async (req, res) => {
 });
 
 // ─── FAQ ──────────────────────────────────────────────────────────────────────
-const FAQ_SHEET_ID  = '1CtShitln0BSzSmVSofqlrWWJpp91Z602';
-const FAQ_SHEET_TAB = 'FAQ';
+const FAQ_SHEET_ID  = '1SwIQrNrBRosTdD-Vb_5ZsNaik5ChDMzhkpeJQ2PKuU4';
+const FAQ_SHEET_TAB = 'Sheet1';
 let faqCache = { items: null, fetchedAt: 0 };
 
 async function fetchFaqSheet() {
