@@ -10,8 +10,20 @@ const app = require('express')();
 
 // ─── POSTGRESQL (FIELD LOG) ───────────────────────────────────────────────────
 const pgPool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  ? new Pool({
+      connectionString:      process.env.DATABASE_URL,
+      ssl:                   { rejectUnauthorized: false },
+      max:                   10,
+      idleTimeoutMillis:     30000,
+      connectionTimeoutMillis: 2000,
+    })
   : null;
+
+if (pgPool) {
+  pgPool.on('error', (err) => {
+    console.error('Unexpected error on idle pg client', err.message);
+  });
+}
 
 async function initFieldLogTable() {
   if (!pgPool) return;
@@ -581,6 +593,18 @@ app.post('/api/market-intel/log', async (req, res) => {
   } catch (e) {
     console.error('market-intel/log error:', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── HEALTH CHECK ────────────────────────────────────────────────────────────
+app.get('/api/health', async (req, res) => {
+  if (!pgPool) return res.json({ status: 'ok', db: 'not configured', timestamp: new Date() });
+  try {
+    await pgPool.query('SELECT 1');
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date() });
+  } catch (e) {
+    console.error('Health check DB error:', e.message);
+    res.status(503).json({ status: 'error', db: 'disconnected', error: e.message });
   }
 });
 
