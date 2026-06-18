@@ -473,45 +473,87 @@ const NEC_1PH = {
 
 const STD_OCP = [15,20,25,30,35,40,45,50,60,70,80,90,100,110,125,150,175,200,225,250,300,350,400,450,500,600,700,800,1000,1200,1600,2000];
 
-const ELEC_CONDUCTORS = [
-  {maxA:20,  cu:'12 AWG Cu', al:'10 AWG Al'},
-  {maxA:25,  cu:'10 AWG Cu', al:'8 AWG Al'},
-  {maxA:35,  cu:'8 AWG Cu',  al:'6 AWG Al'},
-  {maxA:50,  cu:'6 AWG Cu',  al:'4 AWG Al'},
-  {maxA:65,  cu:'4 AWG Cu',  al:'2 AWG Al'},
-  {maxA:75,  cu:'3 AWG Cu',  al:'1 AWG Al'},
-  {maxA:85,  cu:'2 AWG Cu',  al:'1/0 AWG Al'},
-  {maxA:100, cu:'1 AWG Cu',  al:'2/0 AWG Al'},
-  {maxA:115, cu:'1/0 AWG Cu',al:'3/0 AWG Al'},
-  {maxA:130, cu:'2/0 AWG Cu',al:'4/0 AWG Al'},
-  {maxA:150, cu:'3/0 AWG Cu',al:'250 kcmil Al'},
-  {maxA:175, cu:'4/0 AWG Cu',al:'350 kcmil Al'},
-  {maxA:230, cu:'250 kcmil Cu',al:'500 kcmil Al'},
-  {maxA:255, cu:'300 kcmil Cu',al:'600 kcmil Al'},
-  {maxA:285, cu:'350 kcmil Cu',al:'700 kcmil Al'},
-  {maxA:310, cu:'400 kcmil Cu',al:'750 kcmil Al'},
-  {maxA:335, cu:'500 kcmil Cu',al:'Parallel/engineered'},
-  {maxA:380, cu:'600 kcmil Cu',al:'Parallel/engineered'},
-  {maxA:420, cu:'700 kcmil Cu',al:'Parallel/engineered'},
-  {maxA:475, cu:'750 kcmil Cu',al:'Parallel/engineered'},
-  {maxA:9999,cu:'Parallel/engineered',al:'Parallel/engineered'},
+const ELEC_CU_COND = [
+  {minA:0,   cu:'14 AWG Cu'},
+  {minA:21,  cu:'12 AWG Cu'},
+  {minA:26,  cu:'10 AWG Cu'},
+  {minA:36,  cu:'8 AWG Cu'},
+  {minA:51,  cu:'6 AWG Cu'},
+  {minA:66,  cu:'4 AWG Cu'},
+  {minA:86,  cu:'3 AWG Cu'},
+  {minA:101, cu:'2 AWG Cu'},
+  {minA:116, cu:'1 AWG Cu'},
+  {minA:131, cu:'1/0 AWG Cu'},
+  {minA:151, cu:'2/0 AWG Cu'},
+  {minA:176, cu:'3/0 AWG Cu'},
+  {minA:201, cu:'4/0 AWG Cu'},
+  {minA:231, cu:'250 kcmil Cu'},
+  {minA:256, cu:'300 kcmil Cu'},
+  {minA:286, cu:'350 kcmil Cu'},
+  {minA:311, cu:'400 kcmil Cu'},
+  {minA:336, cu:'500 kcmil Cu'},
+  {minA:381, cu:'600 kcmil Cu'},
+  {minA:421, cu:'700 kcmil Cu'},
+  {minA:461, cu:'750 kcmil Cu'},
+  {minA:476, cu:'800 kcmil Cu'},
+  {minA:491, cu:'900 kcmil Cu'},
+  {minA:521, cu:'1000 kcmil Cu'},
+  {minA:546, cu:'1250 kcmil Cu'},
+  {minA:591, cu:'1500 kcmil Cu'},
+  {minA:626, cu:'1750 kcmil Cu'},
+  {minA:651, cu:'2000 kcmil Cu'},
+  {minA:666, cu:'Parallel/engineered'},
+];
+
+const ELEC_AL_COND = [
+  {minA:0,   al:'12 AWG Al'},
+  {minA:26,  al:'10 AWG Al'},
+  {minA:41,  al:'8 AWG Al'},
+  {minA:51,  al:'6 AWG Al'},
+  {minA:66,  al:'4 AWG Al'},
+  {minA:76,  al:'3 AWG Al'},
+  {minA:91,  al:'2 AWG Al'},
+  {minA:101, al:'1 AWG Al'},
+  {minA:121, al:'1/0 AWG Al'},
+  {minA:136, al:'2/0 AWG Al'},
+  {minA:156, al:'3/0 AWG Al'},
+  {minA:181, al:'4/0 AWG Al'},
+  {minA:206, al:'250 kcmil Al'},
+  {minA:231, al:'300 kcmil Al'},
+  {minA:251, al:'350 kcmil Al'},
+  {minA:271, al:'400 kcmil Al'},
+  {minA:311, al:'500 kcmil Al'},
+  {minA:341, al:'600 kcmil Al'},
+  {minA:376, al:'700 kcmil Al'},
+  {minA:386, al:'750 kcmil Al'},
+  {minA:396, al:'800 kcmil Al'},
+  {minA:426, al:'900 kcmil Al'},
+  {minA:446, al:'1000 kcmil Al'},
+  {minA:486, al:'1250 kcmil Al'},
+  {minA:521, al:'1500 kcmil Al'},
+  {minA:546, al:'1750 kcmil Al'},
+  {minA:561, al:'2000 kcmil Al'},
+  {minA:9999,al:'Parallel/engineered'},
 ];
 
 const ELEC_GROUNDS = [
-  {maxOCP:15,   cuEGC:'14 AWG Cu', alEGC:'12 AWG Al'},
-  {maxOCP:20,   cuEGC:'12 AWG Cu', alEGC:'10 AWG Al'},
-  {maxOCP:60,   cuEGC:'10 AWG Cu', alEGC:'8 AWG Al'},
-  {maxOCP:100,  cuEGC:'8 AWG Cu',  alEGC:'6 AWG Al'},
-  {maxOCP:200,  cuEGC:'6 AWG Cu',  alEGC:'4 AWG Al'},
-  {maxOCP:300,  cuEGC:'4 AWG Cu',  alEGC:'2 AWG Al'},
-  {maxOCP:400,  cuEGC:'3 AWG Cu',  alEGC:'1 AWG Al'},
-  {maxOCP:500,  cuEGC:'2 AWG Cu',  alEGC:'1/0 AWG Al'},
-  {maxOCP:600,  cuEGC:'1 AWG Cu',  alEGC:'2/0 AWG Al'},
-  {maxOCP:800,  cuEGC:'1/0 AWG Cu',alEGC:'3/0 AWG Al'},
-  {maxOCP:1000, cuEGC:'2/0 AWG Cu',alEGC:'4/0 AWG Al'},
-  {maxOCP:1200, cuEGC:'3/0 AWG Cu',alEGC:'250 kcmil Al'},
-  {maxOCP:1600, cuEGC:'4/0 AWG Cu',alEGC:'350 kcmil Al'},
-  {maxOCP:2000, cuEGC:'250 kcmil Cu',alEGC:'400 kcmil Al'},
+  {maxOCP:15,   cuEGC:'14 AWG Cu',     alEGC:'12 AWG Al'},
+  {maxOCP:20,   cuEGC:'12 AWG Cu',     alEGC:'10 AWG Al'},
+  {maxOCP:60,   cuEGC:'10 AWG Cu',     alEGC:'8 AWG Al'},
+  {maxOCP:100,  cuEGC:'8 AWG Cu',      alEGC:'6 AWG Al'},
+  {maxOCP:200,  cuEGC:'6 AWG Cu',      alEGC:'4 AWG Al'},
+  {maxOCP:300,  cuEGC:'4 AWG Cu',      alEGC:'2 AWG Al'},
+  {maxOCP:400,  cuEGC:'3 AWG Cu',      alEGC:'1 AWG Al'},
+  {maxOCP:500,  cuEGC:'2 AWG Cu',      alEGC:'1/0 AWG Al'},
+  {maxOCP:600,  cuEGC:'1 AWG Cu',      alEGC:'2/0 AWG Al'},
+  {maxOCP:800,  cuEGC:'1/0 AWG Cu',    alEGC:'3/0 AWG Al'},
+  {maxOCP:1000, cuEGC:'2/0 AWG Cu',    alEGC:'4/0 AWG Al'},
+  {maxOCP:1200, cuEGC:'3/0 AWG Cu',    alEGC:'250 kcmil Al'},
+  {maxOCP:1600, cuEGC:'4/0 AWG Cu',    alEGC:'350 kcmil Al'},
+  {maxOCP:2000, cuEGC:'250 kcmil Cu',  alEGC:'400 kcmil Al'},
+  {maxOCP:2500, cuEGC:'350 kcmil Cu',  alEGC:'600 kcmil Al'},
+  {maxOCP:3000, cuEGC:'400 kcmil Cu',  alEGC:'600 kcmil Al'},
+  {maxOCP:4000, cuEGC:'500 kcmil Cu',  alEGC:'800 kcmil Al'},
 ];
 
 const ELEC_HP_LIST = [5,7.5,10,15,20,25,30,40,50,60,75,100,125,150,200,250,300,350,400,450,500];
@@ -2976,10 +3018,11 @@ function ElectricalSizingCalc({ initHp, initPhase, initVoltage }) {
   const nextStd = v => STD_OCP.find(s => s >= v) || 2000;
   const flc     = (phase === '1' ? NEC_1PH : NEC_3PH)[Number(hp)]?.[Number(voltage)] ?? null;
   const mca     = flc != null ? Math.round(flc * 1.25 * 10) / 10 : null;
-  const disconnect  = mca  != null ? nextStd(mca) : null;
+  const disconnect  = flc  != null ? Math.round(flc * 1.15 * 10) / 10 : null;
   const maxFuse     = flc  != null ? nextStd(flc * 1.75) : null;
   const maxBreaker  = flc  != null ? nextStd(flc * 2.5)  : null;
-  const cond    = mca  != null ? ELEC_CONDUCTORS.find(c => c.maxA >= mca) : null;
+  const cuCond  = mca  != null ? ELEC_CU_COND.reduce((acc, c) => mca >= c.minA ? c : acc, null) : null;
+  const alCond  = mca  != null ? ELEC_AL_COND.reduce((acc, c) => mca >= c.minA ? c : acc, null) : null;
   const maxOcp  = (maxFuse != null && maxBreaker != null) ? Math.max(maxFuse, maxBreaker) : null;
   const gnd     = maxOcp != null ? ELEC_GROUNDS.find(g => g.maxOCP >= maxOcp) : null;
 
@@ -3025,17 +3068,17 @@ function ElectricalSizingCalc({ initHp, initPhase, initVoltage }) {
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 20px'}}>
             {row('NEC Motor FLC', flc+' A')}
             {row('Min Circuit Ampacity (MCA)', mca+' A')}
-            {row('Min Disconnect Size', disconnect+' A')}
+            {row('Min Motor Disconnect Ampacity', disconnect+' A')}
             {row('Max TD Fuse (DETDF)', maxFuse+' A')}
             {row('Max Breaker (HACR/ITB)', maxBreaker+' A')}
-            {cond && row('Cu Conductors (75°C)', cond.cu)}
-            {cond && row('Al Conductors (75°C)', cond.al)}
+            {cuCond && row('Cu Conductors (75°C)', cuCond.cu)}
+            {alCond && row('Al Conductors (75°C)', alCond.al)}
             {gnd  && row('Ground — Cu (EGC)', gnd.cuEGC)}
             {gnd  && row('Ground — Al (EGC)', gnd.alEGC)}
           </div>
           <div style={{marginTop:10,fontFamily:F.body,fontSize:10,color:C.dim,lineHeight:1.5,
             borderTop:`1px solid ${C.border}`,paddingTop:8}}>
-            Use package nameplate MCA/MOCP when available. Verify final sizing with project electrician or engineer of record.
+            Disconnect: FLC × 115% (raw minimum — pick HP-rated disconnect with electrician). Use package nameplate MCA/MOCP when available. Verify final sizing with project electrician or engineer of record.
           </div>
         </div>
       ) : (
