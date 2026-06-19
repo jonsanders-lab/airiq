@@ -8562,6 +8562,9 @@ function FieldLog() {
   const [exporting,    setExporting]   = React.useState(false);
   const [weekData,     setWeekData]    = React.useState([]);
   const [dbError,      setDbError]     = React.useState(null);
+  const [companyName,  setCompanyName] = React.useState("");
+  const [contactName,  setContactName] = React.useState("");
+  const [stickerCount, setStickerCount]= React.useState(1);
   const dashTimer = React.useRef(null);
 
   React.useEffect(() => {
@@ -8649,7 +8652,7 @@ function FieldLog() {
       const r = await fetch(`/api/field-log/export?start=${start}&end=${end}`);
       const rows = await r.json();
       if (!Array.isArray(rows)) throw new Error(rows.error || 'Export failed');
-      const headers = ['Rep Name','Date','Total Stops','PM Opps','Equipment Opps','Service Leads','Piping/Install','Stickers Placed','VR Presentations','Appointments Set','Nothing','Area/Location','Notable Moment'];
+      const headers = ['Rep Name','Date','Total Stops','PM Opps','Equipment Opps','Service Leads','Piping/Install','Stickers Placed','VR Presentations','Appointments Set','Nothing','Companies','Contacts','Area/Location','Notes'];
       const csv = [
         headers.join(','),
         ...rows.map(row => [
@@ -8659,6 +8662,8 @@ function FieldLog() {
           row.pm_opps||0, row.equip_opps||0, row.service_leads||0,
           row.piping_opps||0, row.stickers||0, row.vr_pres||0,
           row.appt_set||0, row.nothing||0,
+          `"${(row.companies||'').replace(/"/g,'""')}"`,
+          `"${(row.contacts||'').replace(/"/g,'""')}"`,
           `"${(row.locations||'').replace(/"/g,'""')}"`,
           `"${(row.notable_moments||'').replace(/"/g,'""')}"`,
         ].join(','))
@@ -8678,7 +8683,11 @@ function FieldLog() {
     if (id === "nothing") {
       setSelected(prev => ({ nothing: !prev.nothing }));
     } else {
-      setSelected(prev => ({ ...prev, [id]: !prev[id], nothing: false }));
+      setSelected(prev => {
+        const next = { ...prev, [id]: !prev[id], nothing: false };
+        if (id === 'sticker' && !next.sticker) setStickerCount(1);
+        return next;
+      });
     }
   }
 
@@ -8691,11 +8700,21 @@ function FieldLog() {
       const r = await fetch('/api/field-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repName, ...selected, location: location.trim(), notableMoment: notable.trim() }),
+        body: JSON.stringify({
+          repName, ...selected,
+          stickerCount: selected.sticker ? stickerCount : 0,
+          companyName: companyName.trim(),
+          contactName: contactName.trim(),
+          location: location.trim(),
+          notableMoment: notable.trim(),
+        }),
       });
       const d = await r.json();
       if (!d.success) throw new Error(d.error || 'Unknown error');
       setSelected({});
+      setCompanyName("");
+      setContactName("");
+      setStickerCount(1);
       setLocation("");
       setNotable("");
       setMsg("✓ Stop logged!");
@@ -8726,7 +8745,7 @@ function FieldLog() {
     const map = {};
     dashboard.forEach(d => { map[d.rep_name] = d; });
     return REPS
-      .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, appt_set: 0, last_logged: null })
+      .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, service_leads: 0, piping_opps: 0, stickers: 0, vr_pres: 0, appt_set: 0, nothing: 0, last_logged: null })
       .sort((a, b) => Number(b.stops) - Number(a.stops));
   }, [dashboard]);
 
@@ -8786,21 +8805,55 @@ function FieldLog() {
           </div>
 
           
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+            <div>
+              <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>COMPANY NAME <span style={{ color:C.dim }}>(optional)</span></label>
+              <input value={companyName} onChange={e => setCompanyName(e.target.value)}
+                placeholder="Acme Manufacturing"
+                style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                  color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}/>
+            </div>
+            <div>
+              <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>CONTACT NAME <span style={{ color:C.dim }}>(optional)</span></label>
+              <input value={contactName} onChange={e => setContactName(e.target.value)}
+                placeholder="John Smith"
+                style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                  color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}/>
+            </div>
+          </div>
+
           <div style={{ marginBottom:14 }}>
             <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:8 }}>WHAT DID YOU FIND?</label>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-              {ACTIVITIES.map(a => (
-                <button key={a.id} onClick={() => toggleActivity(a.id)} style={{
-                  padding:"14px 10px",
-                  background: selected[a.id]
-                    ? `linear-gradient(135deg,${C.blue} 0%,#2D5BBF 100%)`
-                    : C.surface2,
-                  border:`1.5px solid ${selected[a.id] ? C.blueLight : C.border}`,
-                  borderRadius:8, fontFamily:F.body, fontSize:14, fontWeight:600,
-                  color: selected[a.id] ? "#fff" : C.text,
-                  cursor:"pointer", transition:"all 0.15s", textAlign:"center",
-                }}>{a.label}</button>
-              ))}
+              {ACTIVITIES.map(a => {
+                const isSticker = a.id === 'sticker';
+                const isActive  = !!selected[a.id];
+                return (
+                  <div key={a.id} style={{ position:"relative" }}>
+                    <button onClick={() => toggleActivity(a.id)} style={{
+                      width:"100%", padding:"14px 10px",
+                      background: isActive
+                        ? `linear-gradient(135deg,${C.blue} 0%,#2D5BBF 100%)`
+                        : C.surface2,
+                      border:`1.5px solid ${isActive ? C.blueLight : C.border}`,
+                      borderRadius:8, fontFamily:F.body, fontSize:14, fontWeight:600,
+                      color: isActive ? "#fff" : C.text,
+                      cursor:"pointer", transition:"all 0.15s", textAlign:"center",
+                    }}>{a.label}{isSticker && isActive ? ` ×${stickerCount}` : ""}</button>
+                    {isSticker && isActive && (
+                      <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:8, marginTop:6 }}>
+                        <button onClick={() => setStickerCount(n => Math.max(1, n-1))}
+                          style={{ width:32, height:32, borderRadius:6, border:`1px solid ${C.border}`,
+                            background:C.surface2, color:C.text, fontSize:18, cursor:"pointer", lineHeight:1 }}>−</button>
+                        <span style={{ fontFamily:F.mono, fontSize:15, color:C.text, minWidth:20, textAlign:"center" }}>{stickerCount}</span>
+                        <button onClick={() => setStickerCount(n => Math.min(10, n+1))}
+                          style={{ width:32, height:32, borderRadius:6, border:`1px solid ${C.border}`,
+                            background:C.surface2, color:C.text, fontSize:18, cursor:"pointer", lineHeight:1 }}>+</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -8818,10 +8871,10 @@ function FieldLog() {
           
           <div style={{ marginBottom:18 }}>
             <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>
-              NOTABLE MOMENT <span style={{ color:C.dim }}>(optional)</span>
+              NOTES <span style={{ color:C.dim }}>(optional)</span>
             </label>
             <textarea value={notable} onChange={e => setNotable(e.target.value)}
-              rows={2} placeholder="Hot lead, competitor spotted, anything worth flagging..."
+              rows={3} placeholder="Hot lead, objections heard, follow-up needed, anything worth capturing..."
               style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
                 color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px",
                 boxSizing:"border-box", resize:"none" }}/>
@@ -8931,10 +8984,14 @@ function FieldLog() {
                     </div>
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:4 }}>
                       {[
-                        ["STOPS",  stops,           pace],
-                        ["PM OPP", row.pm_opps,     C.blueLight],
-                        ["EQ OPP", row.equip_opps,  C.blueLight],
-                        ["APPT",   row.appt_set,    C.green],
+                        ["STOPS",    stops,                pace],
+                        ["PM OPP",   row.pm_opps,          C.blueLight],
+                        ["EQ OPP",   row.equip_opps,       C.blueLight],
+                        ["APPT SET", row.appt_set,         C.green],
+                        ["SVC LEAD", row.service_leads,    C.blueLight],
+                        ["PIPING",   row.piping_opps,      C.blueLight],
+                        ["STICKER",  row.stickers,         C.mid],
+                        ["VR PRES",  row.vr_pres,          C.mid],
                       ].map(([lbl, val, color]) => (
                         <div key={lbl} style={{ textAlign:"center" }}>
                           <div style={{ fontFamily:F.head, fontSize:22, color, lineHeight:1 }}>{val || 0}</div>
