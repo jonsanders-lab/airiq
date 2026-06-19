@@ -52,6 +52,7 @@ async function initFieldLogTable() {
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS email         TEXT`);
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS website       TEXT`);
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS card_address  TEXT`);
+  await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_field_log_rep_logged ON field_log_entries (rep_name, logged_at DESC)`);
   console.log('field_log_entries table ready');
 }
 
@@ -855,24 +856,31 @@ app.get('/api/field-log/stops/:repName/all', async (req, res) => {
   try {
     const range = req.query.range || 'all';
     let dateFilter = '';
+    let limitClause = 'LIMIT 2000';
     if (range === 'today') {
       dateFilter = `AND logged_at >= NOW()::date`;
+      limitClause = '';
     } else if (range === 'week') {
       dateFilter = `AND logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York')`;
+      limitClause = '';
     } else if (range === 'month') {
       dateFilter = `AND logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'America/New_York')`;
+      limitClause = '';
     }
     const { rows } = await pgPool.query(
       `SELECT id, logged_at, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
               location, notable_moment, company_name, contact_name, sticker_count,
-              mobile, office_phone, email, website, card_address
+              mobile, office_phone, email, website, card_address,
+              COUNT(*) OVER() AS total_count
        FROM field_log_entries
        WHERE rep_name = $1 ${dateFilter}
        ORDER BY logged_at DESC
-       LIMIT 200`,
+       ${limitClause}`,
       [req.params.repName]
     );
-    res.json(rows);
+    const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
+    const records = rows.map(({ total_count, ...r }) => r);
+    res.json({ rows: records, total });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
