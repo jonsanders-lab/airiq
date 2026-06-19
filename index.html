@@ -8580,11 +8580,18 @@ function FieldLog() {
   const [cardDetails,  setCardDetails]  = React.useState(null);
   const [cardOpen,     setCardOpen]     = React.useState(false);
   const [stLeadConfirmed, setStLeadConfirmed] = React.useState(false);
+  const [expandedStopId,   setExpandedStopId]   = React.useState(null);
+  const [stopHistoryRange, setStopHistoryRange] = React.useState("today");
+  const [historyLoading,   setHistoryLoading]   = React.useState(false);
   const dashTimer = React.useRef(null);
 
   React.useEffect(() => {
-    if (repName) { fetchTally(repName); fetchStops(repName); }
+    if (repName) fetchTally(repName);
   }, []);
+
+  React.useEffect(() => {
+    if (repName) fetchStops(repName);
+  }, [stopHistoryRange]);
 
   React.useEffect(() => {
     if (view === "leader") {
@@ -8723,6 +8730,11 @@ function FieldLog() {
           contactName: contactName.trim(),
           location: location.trim(),
           notableMoment: notable.trim(),
+          mobile:      cardDetails?.mobile  || null,
+          officePhone: cardDetails?.office  || null,
+          email:       cardDetails?.email   || null,
+          website:     cardDetails?.website || null,
+          cardAddress: cardDetails?.address || null,
         }),
       });
       const d = await r.json();
@@ -8783,11 +8795,16 @@ function FieldLog() {
 
   async function fetchStops(name) {
     if (!name) return;
+    setHistoryLoading(true);
     try {
-      const r = await fetch(`/api/field-log/stops/${encodeURIComponent(name)}`);
+      const url = stopHistoryRange === "today"
+        ? `/api/field-log/stops/${encodeURIComponent(name)}`
+        : `/api/field-log/stops/${encodeURIComponent(name)}/all?range=${stopHistoryRange}`;
+      const r = await fetch(url);
       const d = await r.json();
-      if (Array.isArray(d)) setStops(d);
+      if (Array.isArray(d)) { setStops(d); setExpandedStopId(null); }
     } catch (e) { console.error('fetchStops error:', e.message); }
+    setHistoryLoading(false);
   }
 
   function activityLabels(row) {
@@ -9197,21 +9214,35 @@ function FieldLog() {
             </div>
           )}
 
-          {(stops.length > 0 || stopSearch) && repName && (
+          {(stops.length > 0 || stopSearch || repName) && repName && (
             <div style={{ marginTop:18 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:2, color:C.mid, flex:1 }}>
-                  TODAY'S STOPS {stops.length > 0 ? `(${stops.length})` : ""}
+              <div style={{ marginBottom:8 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                  <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:2, color:C.mid, flex:1 }}>
+                    {stopHistoryRange==="today" ? "TODAY'S STOPS" : stopHistoryRange==="week" ? "THIS WEEK" : stopHistoryRange==="month" ? "THIS MONTH" : "ALL STOPS"}
+                    {stops.length > 0 ? ` (${stops.length})` : ""}{historyLoading ? " …" : ""}
+                  </div>
+                  <div style={{ display:"flex", background:C.surface2, borderRadius:6, padding:2, border:`1px solid ${C.border}` }}>
+                    {[["newest","NEWEST"],["location","BY LOCATION"]].map(([v,lbl]) => (
+                      <button key={v} onClick={() => {
+                        setStopSort(v);
+                        localStorage.setItem(`fieldlog_sort_${repName}`, v);
+                      }} style={{
+                        padding:"4px 10px", borderRadius:4, border:"none",
+                        background: stopSort===v ? C.blue : "transparent",
+                        color: stopSort===v ? "#fff" : C.mid,
+                        fontFamily:F.mono, fontSize:9, letterSpacing:1, cursor:"pointer",
+                      }}>{lbl}</button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ display:"flex", background:C.surface2, borderRadius:6, padding:2, border:`1px solid ${C.border}` }}>
-                  {[["newest","NEWEST"],["location","BY LOCATION"]].map(([v,lbl]) => (
-                    <button key={v} onClick={() => {
-                      setStopSort(v);
-                      localStorage.setItem(`fieldlog_sort_${repName}`, v);
-                    }} style={{
-                      padding:"4px 10px", borderRadius:4, border:"none",
-                      background: stopSort===v ? C.blue : "transparent",
-                      color: stopSort===v ? "#fff" : C.mid,
+                <div style={{ display:"flex", gap:4 }}>
+                  {[["today","TODAY"],["week","WEEK"],["month","MONTH"],["all","ALL TIME"]].map(([v,lbl]) => (
+                    <button key={v} onClick={() => setStopHistoryRange(v)} style={{
+                      padding:"4px 10px", borderRadius:12,
+                      border:`1px solid ${stopHistoryRange===v ? C.copper : C.border}`,
+                      background: stopHistoryRange===v ? "rgba(193,122,53,0.15)" : "transparent",
+                      color: stopHistoryRange===v ? C.copper : C.mid,
                       fontFamily:F.mono, fontSize:9, letterSpacing:1, cursor:"pointer",
                     }}>{lbl}</button>
                   ))}
@@ -9231,46 +9262,116 @@ function FieldLog() {
                       padding:"5px 0 4px", borderBottom:`1px solid ${C.border}`, marginBottom:4 }}>
                       {loc.toUpperCase()}
                     </div>
-                    {groupStops.map(s => (
-                      <div key={s.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", marginBottom:6 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:s.company_name||s.contact_name ? 4 : 0 }}>
-                          <div>
-                            {s.company_name && <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:C.text }}>{s.company_name}</div>}
-                            {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
+                    {groupStops.map(s => {
+                      const isExp = expandedStopId === s.id;
+                      const hasCard = s.mobile || s.office_phone || s.email || s.website || s.card_address;
+                      return (
+                        <div key={s.id} onClick={() => setExpandedStopId(isExp ? null : s.id)}
+                          style={{ background:C.surface, border:`1px solid ${isExp ? C.copper : C.border}`,
+                            borderRadius:8, padding:"10px 12px", marginBottom:6, cursor:"pointer" }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              {s.company_name && <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:C.text }}>{s.company_name}</div>}
+                              {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
+                            </div>
+                            <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0, marginLeft:8 }}>
+                              <span style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{formatTime(s.logged_at)}</span>
+                              <span style={{ color:C.mid, fontSize:11 }}>{isExp ? "▲" : "▼"}</span>
+                            </div>
                           </div>
-                          <div style={{ fontFamily:F.mono, fontSize:10, color:C.dim, flexShrink:0, marginLeft:8 }}>{formatTime(s.logged_at)}</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:4 }}>
+                            {activityLabels(s).map(lbl => (
+                              <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
+                                background:"rgba(59,130,246,0.12)", color:C.blueLight, border:`1px solid rgba(59,130,246,0.2)` }}>{lbl}</span>
+                            ))}
+                          </div>
+                          {!isExp && s.notable_moment && (
+                            <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, lineHeight:1.4, marginTop:4,
+                              overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
+                              {s.notable_moment}
+                            </div>
+                          )}
+                          {isExp && (
+                            <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+                              {s.notable_moment && (
+                                <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
+                                  {s.notable_moment}
+                                </div>
+                              )}
+                              {hasCard && (
+                                <div style={{ background:C.surface2, borderRadius:6, padding:"8px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+                                  <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.copper, marginBottom:2 }}>CARD DETAILS</div>
+                                  {[["MOBILE",s.mobile],["OFFICE",s.office_phone],["EMAIL",s.email],["WEBSITE",s.website],["ADDRESS",s.card_address]]
+                                    .filter(([,v])=>v).map(([label,val])=>(
+                                    <div key={label} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                                      <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:52, paddingTop:1 }}>{label}</span>
+                                      <span style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:s.notable_moment ? 6 : 0 }}>
-                          {activityLabels(s).map(lbl => (
-                            <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
-                              background:"rgba(59,130,246,0.12)", color:C.blueLight, border:`1px solid rgba(59,130,246,0.2)` }}>{lbl}</span>
-                          ))}
-                        </div>
-                        {s.notable_moment && <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, lineHeight:1.4 }}>{s.notable_moment}</div>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))
               ) : (
-                filteredStops.map(s => (
-                  <div key={s.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", marginBottom:6 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:s.company_name||s.contact_name ? 4 : 0 }}>
-                      <div>
-                        {s.company_name && <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:C.text }}>{s.company_name}</div>}
-                        {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
+                filteredStops.map(s => {
+                  const isExp = expandedStopId === s.id;
+                  const hasCard = s.mobile || s.office_phone || s.email || s.website || s.card_address;
+                  return (
+                    <div key={s.id} onClick={() => setExpandedStopId(isExp ? null : s.id)}
+                      style={{ background:C.surface, border:`1px solid ${isExp ? C.copper : C.border}`,
+                        borderRadius:8, padding:"10px 12px", marginBottom:6, cursor:"pointer" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          {s.company_name && <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:C.text }}>{s.company_name}</div>}
+                          {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0, marginLeft:8 }}>
+                          <span style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{formatTime(s.logged_at)}</span>
+                          <span style={{ color:C.mid, fontSize:11 }}>{isExp ? "▲" : "▼"}</span>
+                        </div>
                       </div>
-                      <div style={{ fontFamily:F.mono, fontSize:10, color:C.dim, flexShrink:0, marginLeft:8 }}>{formatTime(s.logged_at)}</div>
+                      {s.location && <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:0.5, color:C.mid, marginTop:4 }}>📍 {s.location}</div>}
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:4 }}>
+                        {activityLabels(s).map(lbl => (
+                          <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
+                            background:"rgba(59,130,246,0.12)", color:C.blueLight, border:`1px solid rgba(59,130,246,0.2)` }}>{lbl}</span>
+                        ))}
+                      </div>
+                      {!isExp && s.notable_moment && (
+                        <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, lineHeight:1.4, marginTop:4,
+                          overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
+                          {s.notable_moment}
+                        </div>
+                      )}
+                      {isExp && (
+                        <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+                          {s.notable_moment && (
+                            <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
+                              {s.notable_moment}
+                            </div>
+                          )}
+                          {hasCard && (
+                            <div style={{ background:C.surface2, borderRadius:6, padding:"8px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+                              <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.copper, marginBottom:2 }}>CARD DETAILS</div>
+                              {[["MOBILE",s.mobile],["OFFICE",s.office_phone],["EMAIL",s.email],["WEBSITE",s.website],["ADDRESS",s.card_address]]
+                                .filter(([,v])=>v).map(([label,val])=>(
+                                <div key={label} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                                  <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:52, paddingTop:1 }}>{label}</span>
+                                  <span style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {s.location && <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:0.5, color:C.mid, marginBottom:4 }}>📍 {s.location}</div>}
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:s.notable_moment ? 6 : 0 }}>
-                      {activityLabels(s).map(lbl => (
-                        <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
-                          background:"rgba(59,130,246,0.12)", color:C.blueLight, border:`1px solid rgba(59,130,246,0.2)` }}>{lbl}</span>
-                      ))}
-                    </div>
-                    {s.notable_moment && <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, lineHeight:1.4 }}>{s.notable_moment}</div>}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}

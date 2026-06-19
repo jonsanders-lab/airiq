@@ -47,6 +47,11 @@ async function initFieldLogTable() {
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS company_name  TEXT`);
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS contact_name  TEXT`);
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS sticker_count INTEGER DEFAULT 0`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS mobile        TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS office_phone  TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS email         TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS website       TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS card_address  TEXT`);
   console.log('field_log_entries table ready');
 }
 
@@ -738,17 +743,20 @@ app.post('/api/field-log', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
     const { repName, pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres, apptSet, nothing,
-            location, notableMoment, companyName, contactName, stickerCount } = req.body;
+            location, notableMoment, companyName, contactName, stickerCount,
+            mobile, officePhone, email, website, cardAddress } = req.body;
     if (!repName) return res.status(400).json({ error: 'repName required' });
     const sc = sticker ? Math.max(1, Number(stickerCount) || 1) : 0;
     const { rows } = await pgPool.query(
       `INSERT INTO field_log_entries
          (rep_name, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
-          location, notable_moment, company_name, contact_name, sticker_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          location, notable_moment, company_name, contact_name, sticker_count,
+          mobile, office_phone, email, website, card_address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING id, logged_at`,
       [repName, !!pmOpp, !!equipOpp, !!serviceLead, !!pipingOpp, !!sticker, !!vrPres, !!apptSet, !!nothing,
-       location || null, notableMoment || null, companyName || null, contactName || null, sc]
+       location || null, notableMoment || null, companyName || null, contactName || null, sc,
+       mobile || null, officePhone || null, email || null, website || null, cardAddress || null]
     );
     res.json({ success: true, id: rows[0].id, loggedAt: rows[0].logged_at });
   } catch (e) {
@@ -829,10 +837,39 @@ app.get('/api/field-log/stops/:repName', async (req, res) => {
   try {
     const { rows } = await pgPool.query(
       `SELECT id, logged_at, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
-              location, notable_moment, company_name, contact_name, sticker_count
+              location, notable_moment, company_name, contact_name, sticker_count,
+              mobile, office_phone, email, website, card_address
        FROM field_log_entries
        WHERE rep_name = $1 AND logged_at >= NOW()::date
        ORDER BY logged_at DESC`,
+      [req.params.repName]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/field-log/stops/:repName/all', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const range = req.query.range || 'all';
+    let dateFilter = '';
+    if (range === 'today') {
+      dateFilter = `AND logged_at >= NOW()::date`;
+    } else if (range === 'week') {
+      dateFilter = `AND logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York')`;
+    } else if (range === 'month') {
+      dateFilter = `AND logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'America/New_York')`;
+    }
+    const { rows } = await pgPool.query(
+      `SELECT id, logged_at, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
+              location, notable_moment, company_name, contact_name, sticker_count,
+              mobile, office_phone, email, website, card_address
+       FROM field_log_entries
+       WHERE rep_name = $1 ${dateFilter}
+       ORDER BY logged_at DESC
+       LIMIT 200`,
       [req.params.repName]
     );
     res.json(rows);
