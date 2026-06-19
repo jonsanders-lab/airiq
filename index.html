@@ -8764,7 +8764,7 @@ function FieldLog() {
 
   function paceColor(stops) {
     const s = Number(stops);
-    if (s >= 20) return C.green;
+    if (s >= 25) return C.green;
     if (s >= 10) return "#F59E0B";
     return C.red;
   }
@@ -9433,7 +9433,7 @@ function FieldLog() {
 
           
           <div style={{ display:"flex", gap:14, marginBottom:12 }}>
-            {[[C.green,"20+ on pace"],["#F59E0B","10–19 behind"],[C.red,"<10 low"]].map(([color,label]) => (
+            {[[C.green,"25+ on pace"],["#F59E0B","10–24 behind"],[C.red,"<10 low"]].map(([color,label]) => (
               <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
                 <div style={{ width:8, height:8, borderRadius:"50%", background:color, flexShrink:0 }}/>
                 <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:0.5, color:C.mid }}>{label}</span>
@@ -9485,7 +9485,7 @@ function FieldLog() {
               
               <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 12px 10px" }}>
                 <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:10 }}>
-                  STOPS TODAY vs. 20-STOP DAILY PACE GOAL
+                  STOPS TODAY vs. 25-STOP DAILY PACE GOAL
                 </div>
                 <div style={{ position:"relative" }}>
                   
@@ -9494,13 +9494,13 @@ function FieldLog() {
                     borderTop:`1px dashed ${C.border}`,
                     display:"flex", justifyContent:"flex-end", paddingRight:2,
                   }}>
-                    <span style={{ fontFamily:F.mono, fontSize:7, color:C.mid, lineHeight:"10px", background:C.surface, paddingLeft:3 }}>20</span>
+                    <span style={{ fontFamily:F.mono, fontSize:7, color:C.mid, lineHeight:"10px", background:C.surface, paddingLeft:3 }}>25</span>
                   </div>
                   
                   <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:124, paddingTop:12 }}>
                     {repRows.map(row => {
                       const s  = Number(row.stops);
-                      const pct = Math.min(s / 20, 1.5);
+                      const pct = Math.min(s / 25, 1.5);
                       const barH = s === 0 ? 2 : Math.max(pct * 110, 5);
                       const col  = paceColor(s);
                       return (
