@@ -8567,10 +8567,20 @@ function FieldLog() {
   const [companyName,  setCompanyName] = React.useState("");
   const [contactName,  setContactName] = React.useState("");
   const [stickerCount, setStickerCount]= React.useState(1);
+  const [stopSearch,   setStopSearch]  = React.useState("");
+  const [stops,        setStops]       = React.useState([]);
+  const [stopSort,     setStopSort]    = React.useState(() => {
+    const rep = localStorage.getItem("fieldlog_rep") || "";
+    return localStorage.getItem(`fieldlog_sort_${rep}`) || "newest";
+  });
+  const [locSuggestions, setLocSuggestions] = React.useState([]);
+  const [showLocDrop,  setShowLocDrop]  = React.useState(false);
+  const [cardLoading,  setCardLoading]  = React.useState(false);
+  const [cardMsg,      setCardMsg]      = React.useState("");
   const dashTimer = React.useRef(null);
 
   React.useEffect(() => {
-    if (repName) fetchTally(repName);
+    if (repName) { fetchTally(repName); fetchStops(repName); }
   }, []);
 
   React.useEffect(() => {
@@ -8713,6 +8723,7 @@ function FieldLog() {
       });
       const d = await r.json();
       if (!d.success) throw new Error(d.error || 'Unknown error');
+      saveLocation(location.trim());
       setSelected({});
       setCompanyName("");
       setContactName("");
@@ -8721,6 +8732,7 @@ function FieldLog() {
       setNotable("");
       setMsg("✓ Stop logged!");
       await fetchTally(repName);
+      fetchStops(repName);
       setTimeout(() => setMsg(""), 3000);
     } catch (e) {
       setMsg("Error: " + e.message);
@@ -8743,6 +8755,87 @@ function FieldLog() {
     return `${Math.floor(mins/60)}h ${mins % 60}m ago`;
   }
 
+  function formatTime(ts) {
+    if (!ts) return '';
+    return new Date(ts).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true });
+  }
+
+  function getMyLocations() {
+    if (!repName) return [];
+    try { return JSON.parse(localStorage.getItem(`airiq_fieldlog_locations_${repName}`) || '[]'); } catch { return []; }
+  }
+
+  function saveLocation(loc) {
+    if (!loc || !repName) return;
+    const key = `airiq_fieldlog_locations_${repName}`;
+    let list = getMyLocations().filter(l => l !== loc);
+    list.unshift(loc);
+    if (list.length > 50) list = list.slice(0, 50);
+    localStorage.setItem(key, JSON.stringify(list));
+  }
+
+  async function fetchStops(name) {
+    if (!name) return;
+    try {
+      const r = await fetch(`/api/field-log/stops/${encodeURIComponent(name)}`);
+      const d = await r.json();
+      if (Array.isArray(d)) setStops(d);
+    } catch (e) { console.error('fetchStops error:', e.message); }
+  }
+
+  function activityLabels(row) {
+    const out = [];
+    if (row.pm_opp)       out.push("PM Opp");
+    if (row.equip_opp)    out.push("Equip Opp");
+    if (row.service_lead) out.push("Service Lead");
+    if (row.piping_opp)   out.push("Piping");
+    if (row.sticker)      out.push(`Sticker${Number(row.sticker_count) > 1 ? ' ×'+row.sticker_count : ''}`);
+    if (row.vr_pres)      out.push("VR Pres");
+    if (row.appt_set)     out.push("Appt Set");
+    if (row.nothing)      out.push("Nothing");
+    return out;
+  }
+
+  async function scanBusinessCard(file) {
+    setCardLoading(true);
+    setCardMsg("");
+    try {
+      const b64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const mime = file.type || 'image/jpeg';
+      const r = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 256,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } },
+              { type: 'text', text: 'Extract the contact info from this business card. Return ONLY a JSON object with these exact keys: {"name":"","title":"","company":"","phone":"","email":""}. No markdown, no explanation, no code fences.' }
+            ]
+          }]
+        })
+      });
+      const d = await r.json();
+      const text = (d.content?.[0]?.text || '').replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'').trim();
+      const info = JSON.parse(text);
+      if (info.company) setCompanyName(info.company);
+      if (info.name)    setContactName(info.name);
+      setCardMsg("✓ Card scanned — review and edit if needed");
+    } catch (e) {
+      console.error('scanBusinessCard error:', e.message);
+      setCardMsg("Couldn't read card — fill in manually");
+    }
+    setCardLoading(false);
+    setTimeout(() => setCardMsg(""), 4000);
+  }
+
   const repRows = React.useMemo(() => {
     const map = {};
     dashboard.forEach(d => { map[d.rep_name] = d; });
@@ -8750,6 +8843,34 @@ function FieldLog() {
       .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, service_leads: 0, piping_opps: 0, stickers: 0, vr_pres: 0, appt_set: 0, nothing: 0, last_logged: null })
       .sort((a, b) => Number(b.stops) - Number(a.stops));
   }, [dashboard]);
+
+  const filteredStops = React.useMemo(() => {
+    const q = stopSearch.trim().toLowerCase();
+    let list = stops;
+    if (q) {
+      list = list.filter(s =>
+        (s.company_name   || '').toLowerCase().includes(q) ||
+        (s.contact_name   || '').toLowerCase().includes(q) ||
+        (s.location       || '').toLowerCase().includes(q) ||
+        (s.notable_moment || '').toLowerCase().includes(q)
+      );
+    }
+    if (stopSort === 'location') {
+      list = [...list].sort((a, b) => (a.location || '').localeCompare(b.location || ''));
+    }
+    return list;
+  }, [stops, stopSearch, stopSort]);
+
+  const stopGroups = React.useMemo(() => {
+    if (stopSort !== 'location') return null;
+    const groups = {};
+    filteredStops.forEach(s => {
+      const key = s.location || '(No Location)';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    });
+    return Object.entries(groups).sort(([a],[b]) => a.localeCompare(b));
+  }, [filteredStops, stopSort]);
 
   return (
     <div style={{ height:"100%", display:"flex", flexDirection:"column", background:C.bg }}>
@@ -8789,14 +8910,32 @@ function FieldLog() {
       {view === "rep" && (
         <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
 
-          
+
+          <div style={{ position:"relative", marginBottom:14 }}>
+            <input value={stopSearch} onChange={e => setStopSearch(e.target.value)}
+              placeholder="Search stops — company, location, contact, notes..."
+              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                color:C.text, fontFamily:F.body, fontSize:14, padding:"11px 40px 11px 14px", boxSizing:"border-box" }}/>
+            {stopSearch && (
+              <button onClick={() => setStopSearch("")} style={{
+                position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
+                background:"none", border:"none", color:C.mid, fontSize:20, cursor:"pointer", padding:0, lineHeight:1,
+              }}>×</button>
+            )}
+          </div>
+
+
           <div style={{ marginBottom:14 }}>
             <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>REP</label>
             <select value={repName} onChange={e => {
                 const v = e.target.value;
                 setRepName(v);
                 localStorage.setItem("fieldlog_rep", v);
-                if (v) fetchTally(v);
+                if (v) {
+                  fetchTally(v);
+                  fetchStops(v);
+                  setStopSort(localStorage.getItem(`fieldlog_sort_${v}`) || "newest");
+                }
               }}
               style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
                 color: repName ? C.text : C.mid, fontFamily:F.body, fontSize:16,
@@ -8822,6 +8961,26 @@ function FieldLog() {
                 style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
                   color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}/>
             </div>
+          </div>
+
+          <div style={{ marginBottom:14, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <input type="file" accept="image/*" capture="environment" id="cardInput" style={{ display:"none" }}
+              onChange={e => { if (e.target.files[0]) scanBusinessCard(e.target.files[0]); e.target.value=''; }}/>
+            <label htmlFor="cardInput" style={{
+              display:"inline-flex", alignItems:"center", gap:6,
+              cursor: cardLoading ? "not-allowed" : "pointer",
+              background:C.surface2, border:`1px solid ${C.border}`, borderRadius:8,
+              padding:"10px 14px", fontFamily:F.mono, fontSize:11, letterSpacing:1, color:C.copper,
+              opacity: cardLoading ? 0.7 : 1, userSelect:"none",
+            }}>
+              {cardLoading ? "⏳ Reading card..." : "📷 SCAN BUSINESS CARD"}
+            </label>
+            {cardMsg && (
+              <span style={{ fontFamily:F.mono, fontSize:11, letterSpacing:0.5,
+                color: cardMsg.startsWith("✓") ? C.green : C.red }}>
+                {cardMsg}
+              </span>
+            )}
           </div>
 
           <div style={{ marginBottom:14 }}>
@@ -8864,10 +9023,46 @@ function FieldLog() {
             <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>
               AREA / LOCATION <span style={{ color:C.dim }}>(optional)</span>
             </label>
-            <input value={location} onChange={e => setLocation(e.target.value)}
-              placeholder="e.g. Midtown Atlanta, Industrial Pkwy"
-              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
-                color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}/>
+            <div style={{ position:"relative" }}>
+              <input value={location}
+                onChange={e => {
+                  setLocation(e.target.value);
+                  const q = e.target.value.trim().toLowerCase();
+                  const all = getMyLocations();
+                  if (q) {
+                    const sug = all.filter(l => l.toLowerCase().includes(q)).slice(0, 8);
+                    setLocSuggestions(sug);
+                    setShowLocDrop(sug.length > 0);
+                  } else if (all.length > 0) {
+                    setLocSuggestions(all.slice(0, 8));
+                    setShowLocDrop(true);
+                  } else {
+                    setShowLocDrop(false);
+                  }
+                }}
+                onFocus={() => {
+                  const all = getMyLocations();
+                  if (all.length > 0) { setLocSuggestions(all.slice(0, 8)); setShowLocDrop(true); }
+                }}
+                onBlur={() => setTimeout(() => setShowLocDrop(false), 150)}
+                placeholder="e.g. Midtown Atlanta, Industrial Pkwy"
+                style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                  color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}/>
+              {showLocDrop && locSuggestions.length > 0 && (
+                <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:200,
+                  background:C.surface2, border:`1px solid ${C.border}`, borderRadius:"0 0 8px 8px",
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.5)", maxHeight:200, overflowY:"auto" }}>
+                  {locSuggestions.map((sug, i) => (
+                    <div key={i}
+                      onPointerDown={e => { e.preventDefault(); setLocation(sug); setShowLocDrop(false); }}
+                      style={{ padding:"10px 14px", fontFamily:F.body, fontSize:14, color:C.text,
+                        cursor:"pointer", borderBottom: i < locSuggestions.length-1 ? `1px solid ${C.border}` : "none" }}>
+                      {sug}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           
@@ -8925,6 +9120,84 @@ function FieldLog() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {(stops.length > 0 || stopSearch) && repName && (
+            <div style={{ marginTop:18 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:2, color:C.mid, flex:1 }}>
+                  TODAY'S STOPS {stops.length > 0 ? `(${stops.length})` : ""}
+                </div>
+                <div style={{ display:"flex", background:C.surface2, borderRadius:6, padding:2, border:`1px solid ${C.border}` }}>
+                  {[["newest","NEWEST"],["location","BY LOCATION"]].map(([v,lbl]) => (
+                    <button key={v} onClick={() => {
+                      setStopSort(v);
+                      localStorage.setItem(`fieldlog_sort_${repName}`, v);
+                    }} style={{
+                      padding:"4px 10px", borderRadius:4, border:"none",
+                      background: stopSort===v ? C.blue : "transparent",
+                      color: stopSort===v ? "#fff" : C.mid,
+                      fontFamily:F.mono, fontSize:9, letterSpacing:1, cursor:"pointer",
+                    }}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredStops.length === 0 && stopSearch && (
+                <div style={{ textAlign:"center", padding:"20px 0", fontFamily:F.mono, fontSize:12, color:C.mid, letterSpacing:1 }}>
+                  No stops match your search
+                </div>
+              )}
+
+              {stopSort === 'location' && stopGroups ? (
+                stopGroups.map(([loc, groupStops]) => (
+                  <div key={loc} style={{ marginBottom:10 }}>
+                    <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:2, color:C.mid,
+                      padding:"5px 0 4px", borderBottom:`1px solid ${C.border}`, marginBottom:4 }}>
+                      {loc.toUpperCase()}
+                    </div>
+                    {groupStops.map(s => (
+                      <div key={s.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", marginBottom:6 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:s.company_name||s.contact_name ? 4 : 0 }}>
+                          <div>
+                            {s.company_name && <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:C.text }}>{s.company_name}</div>}
+                            {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
+                          </div>
+                          <div style={{ fontFamily:F.mono, fontSize:10, color:C.dim, flexShrink:0, marginLeft:8 }}>{formatTime(s.logged_at)}</div>
+                        </div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:s.notable_moment ? 6 : 0 }}>
+                          {activityLabels(s).map(lbl => (
+                            <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
+                              background:"rgba(59,130,246,0.12)", color:C.blueLight, border:`1px solid rgba(59,130,246,0.2)` }}>{lbl}</span>
+                          ))}
+                        </div>
+                        {s.notable_moment && <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, lineHeight:1.4 }}>{s.notable_moment}</div>}
+                      </div>
+                    ))}
+                  </div>
+                ))
+              ) : (
+                filteredStops.map(s => (
+                  <div key={s.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", marginBottom:6 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:s.company_name||s.contact_name ? 4 : 0 }}>
+                      <div>
+                        {s.company_name && <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:C.text }}>{s.company_name}</div>}
+                        {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
+                      </div>
+                      <div style={{ fontFamily:F.mono, fontSize:10, color:C.dim, flexShrink:0, marginLeft:8 }}>{formatTime(s.logged_at)}</div>
+                    </div>
+                    {s.location && <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:0.5, color:C.mid, marginBottom:4 }}>📍 {s.location}</div>}
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:s.notable_moment ? 6 : 0 }}>
+                      {activityLabels(s).map(lbl => (
+                        <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
+                          background:"rgba(59,130,246,0.12)", color:C.blueLight, border:`1px solid rgba(59,130,246,0.2)` }}>{lbl}</span>
+                      ))}
+                    </div>
+                    {s.notable_moment && <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, lineHeight:1.4 }}>{s.notable_moment}</div>}
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>

@@ -44,6 +44,9 @@ async function initFieldLogTable() {
       notable_moment TEXT
     )
   `);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS company_name  TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS contact_name  TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS sticker_count INTEGER DEFAULT 0`);
   console.log('field_log_entries table ready');
 }
 
@@ -734,15 +737,18 @@ app.get('/api/faq', async (req, res) => {
 app.post('/api/field-log', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
-    const { repName, pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres, apptSet, nothing, location, notableMoment } = req.body;
+    const { repName, pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres, apptSet, nothing,
+            location, notableMoment, companyName, contactName, stickerCount } = req.body;
     if (!repName) return res.status(400).json({ error: 'repName required' });
+    const sc = sticker ? Math.max(1, Number(stickerCount) || 1) : 0;
     const { rows } = await pgPool.query(
       `INSERT INTO field_log_entries
-         (rep_name, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing, location, notable_moment)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         (rep_name, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
+          location, notable_moment, company_name, contact_name, sticker_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING id, logged_at`,
       [repName, !!pmOpp, !!equipOpp, !!serviceLead, !!pipingOpp, !!sticker, !!vrPres, !!apptSet, !!nothing,
-       location || null, notableMoment || null]
+       location || null, notableMoment || null, companyName || null, contactName || null, sc]
     );
     res.json({ success: true, id: rows[0].id, loggedAt: rows[0].logged_at });
   } catch (e) {
@@ -761,7 +767,7 @@ app.get('/api/field-log/today/:repName', async (req, res) => {
          SUM(equip_opp::int)::int    AS equip_opps,
          SUM(service_lead::int)::int AS service_leads,
          SUM(piping_opp::int)::int   AS piping_opps,
-         SUM(sticker::int)::int      AS stickers,
+         SUM(COALESCE(sticker_count, sticker::int))::int AS stickers,
          SUM(vr_pres::int)::int      AS vr_pres,
          SUM(appt_set::int)::int     AS appt_set,
          SUM(nothing::int)::int      AS nothing
@@ -784,7 +790,12 @@ app.get('/api/field-log/dashboard', async (req, res) => {
          COUNT(*)::int               AS stops,
          SUM(pm_opp::int)::int       AS pm_opps,
          SUM(equip_opp::int)::int    AS equip_opps,
+         SUM(service_lead::int)::int AS service_leads,
+         SUM(piping_opp::int)::int   AS piping_opps,
+         SUM(COALESCE(sticker_count, sticker::int))::int AS stickers,
+         SUM(vr_pres::int)::int      AS vr_pres,
          SUM(appt_set::int)::int     AS appt_set,
+         SUM(nothing::int)::int      AS nothing,
          MAX(logged_at)              AS last_logged
        FROM field_log_entries
        WHERE logged_at >= NOW()::date
@@ -813,6 +824,23 @@ app.get('/api/field-log/week', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/field-log/stops/:repName', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const { rows } = await pgPool.query(
+      `SELECT id, logged_at, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
+              location, notable_moment, company_name, contact_name, sticker_count
+       FROM field_log_entries
+       WHERE rep_name = $1 AND logged_at >= NOW()::date
+       ORDER BY logged_at DESC`,
+      [req.params.repName]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/field-log/export', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
@@ -827,12 +855,14 @@ app.get('/api/field-log/export', async (req, res) => {
          SUM(equip_opp::int)::int                                             AS equip_opps,
          SUM(service_lead::int)::int                                          AS service_leads,
          SUM(piping_opp::int)::int                                            AS piping_opps,
-         SUM(sticker::int)::int                                               AS stickers,
+         SUM(COALESCE(sticker_count, sticker::int))::int                        AS stickers,
          SUM(vr_pres::int)::int                                               AS vr_pres,
          SUM(appt_set::int)::int                                              AS appt_set,
          SUM(nothing::int)::int                                               AS nothing,
-         STRING_AGG(DISTINCT location, '; ') FILTER (WHERE location IS NOT NULL AND location <> '') AS locations,
-         STRING_AGG(notable_moment, ' | ')   FILTER (WHERE notable_moment IS NOT NULL AND notable_moment <> '') AS notable_moments
+         STRING_AGG(DISTINCT location, '; ')     FILTER (WHERE location     IS NOT NULL AND location     <> '') AS locations,
+         STRING_AGG(notable_moment, ' | ')        FILTER (WHERE notable_moment IS NOT NULL AND notable_moment <> '') AS notable_moments,
+         STRING_AGG(DISTINCT company_name, '; ') FILTER (WHERE company_name IS NOT NULL AND company_name <> '') AS companies,
+         STRING_AGG(DISTINCT contact_name, '; ') FILTER (WHERE contact_name IS NOT NULL AND contact_name <> '') AS contacts
        FROM (
          SELECT *, (logged_at AT TIME ZONE 'America/New_York')::date AS date_local
          FROM field_log_entries
