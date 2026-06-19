@@ -8579,6 +8579,7 @@ function FieldLog() {
   const [cardMsg,      setCardMsg]      = React.useState("");
   const [cardDetails,  setCardDetails]  = React.useState(null);
   const [cardOpen,     setCardOpen]     = React.useState(false);
+  const [stLeadConfirmed, setStLeadConfirmed] = React.useState(false);
   const dashTimer = React.useRef(null);
 
   React.useEffect(() => {
@@ -8694,6 +8695,7 @@ function FieldLog() {
   }
 
   function toggleActivity(id) {
+    setStLeadConfirmed(false);
     if (id === "nothing") {
       setSelected(prev => ({ nothing: !prev.nothing }));
     } else {
@@ -8734,6 +8736,7 @@ function FieldLog() {
       setNotable("");
       setCardDetails(null);
       setCardOpen(false);
+      setStLeadConfirmed(false);
       setMsg("✓ Stop logged!");
       await fetchTally(repName);
       fetchStops(repName);
@@ -8887,6 +8890,10 @@ function FieldLog() {
     });
     return Object.entries(groups).sort(([a],[b]) => a.localeCompare(b));
   }, [filteredStops, stopSort]);
+
+  const ST_GATE_IDS = ['pmOpp','equipOpp','serviceLead','pipingOpp','apptSet'];
+  const needsStForm = ST_GATE_IDS.some(id => selected[id]);
+  const logDisabled = submitting || (needsStForm && !stLeadConfirmed);
 
   return (
     <div style={{ height:"100%", display:"flex", flexDirection:"column", background:C.bg }}>
@@ -9124,13 +9131,34 @@ function FieldLog() {
           </div>
 
           
-          <button onClick={logStop} disabled={submitting} style={{
+          {needsStForm && (
+            <div style={{ marginBottom:12, padding:"14px 16px",
+              background:"rgba(193,122,53,0.08)", border:`1px solid rgba(193,122,53,0.35)`,
+              borderRadius:10 }}>
+              <a href="https://docs.google.com/forms/d/e/1FAIpQLSfSzGL7nR-dGftkNz50l0jCAdJmQytQzUfkSkiJz9A6RBLH8w/viewform"
+                target="_blank" rel="noopener noreferrer"
+                style={{ display:"block", fontFamily:F.mono, fontSize:12, letterSpacing:1,
+                  color:C.copper, textDecoration:"underline", marginBottom:12 }}>
+                📋 Open ST Inbound Lead Form
+              </a>
+              <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
+                <input type="checkbox" checked={stLeadConfirmed}
+                  onChange={e => setStLeadConfirmed(e.target.checked)}
+                  style={{ width:18, height:18, marginTop:2, accentColor:C.orange, cursor:"pointer", flexShrink:0 }}/>
+                <span style={{ fontFamily:F.body, fontSize:14, color:C.text, lineHeight:1.4 }}>
+                  Service Titan Inbound Lead Form Completed
+                </span>
+              </label>
+            </div>
+          )}
+
+          <button onClick={logStop} disabled={logDisabled} style={{
             width:"100%", padding:"18px 0",
-            background: submitting ? C.surface2 : `linear-gradient(135deg,${C.orange} 0%,#EA580C 100%)`,
-            border:`1.5px solid ${submitting ? C.border : C.orange}`,
+            background: logDisabled ? C.surface2 : `linear-gradient(135deg,${C.orange} 0%,#EA580C 100%)`,
+            border:`1.5px solid ${logDisabled ? C.border : C.orange}`,
             borderRadius:10, fontFamily:F.head, fontSize:28, letterSpacing:4,
-            color: submitting ? C.dim : "#fff",
-            cursor: submitting ? "not-allowed" : "pointer", transition:"all 0.15s",
+            color: logDisabled ? C.dim : "#fff",
+            cursor: logDisabled ? "not-allowed" : "pointer", transition:"all 0.15s",
           }}>{submitting ? "LOGGING..." : "LOG STOP"}</button>
 
           {msg && (
