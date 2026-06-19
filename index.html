@@ -8577,6 +8577,8 @@ function FieldLog() {
   const [showLocDrop,  setShowLocDrop]  = React.useState(false);
   const [cardLoading,  setCardLoading]  = React.useState(false);
   const [cardMsg,      setCardMsg]      = React.useState("");
+  const [cardDetails,  setCardDetails]  = React.useState(null);
+  const [cardOpen,     setCardOpen]     = React.useState(false);
   const dashTimer = React.useRef(null);
 
   React.useEffect(() => {
@@ -8730,6 +8732,8 @@ function FieldLog() {
       setStickerCount(1);
       setLocation("");
       setNotable("");
+      setCardDetails(null);
+      setCardOpen(false);
       setMsg("✓ Stop logged!");
       await fetchTally(repName);
       fetchStops(repName);
@@ -8799,6 +8803,8 @@ function FieldLog() {
   async function scanBusinessCard(file) {
     setCardLoading(true);
     setCardMsg("");
+    setCardDetails(null);
+    setCardOpen(false);
     try {
       const b64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -8812,12 +8818,12 @@ function FieldLog() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 256,
+          max_tokens: 400,
           messages: [{
             role: 'user',
             content: [
               { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } },
-              { type: 'text', text: 'Extract the contact info from this business card. Return ONLY a JSON object with these exact keys: {"name":"","title":"","company":"","phone":"","email":""}. No markdown, no explanation, no code fences.' }
+              { type: 'text', text: 'Extract all contact information from this business card. Return ONLY a JSON object with these exact keys (use empty string if not found): {"name":"","title":"","company":"","mobile":"","office":"","email":"","website":"","address":""}. No markdown, no explanation, no code fences.' }
             ]
           }]
         })
@@ -8826,7 +8832,17 @@ function FieldLog() {
       const text = (d.content?.[0]?.text || '').replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'').trim();
       const info = JSON.parse(text);
       if (info.company) setCompanyName(info.company);
-      if (info.name)    setContactName(info.name);
+      const contactStr = [info.name, info.title].filter(Boolean).join(' — ');
+      if (contactStr) setContactName(contactStr);
+      const details = {
+        mobile:  info.mobile  || '',
+        office:  info.office  || '',
+        email:   info.email   || '',
+        website: info.website || '',
+        address: info.address || '',
+      };
+      const hasDetails = Object.values(details).some(v => v);
+      if (hasDetails) { setCardDetails(details); setCardOpen(true); }
       setCardMsg("✓ Card scanned — review and edit if needed");
     } catch (e) {
       console.error('scanBusinessCard error:', e.message);
@@ -8963,23 +8979,53 @@ function FieldLog() {
             </div>
           </div>
 
-          <div style={{ marginBottom:14, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-            <input type="file" accept="image/*" capture="environment" id="cardInput" style={{ display:"none" }}
-              onChange={e => { if (e.target.files[0]) scanBusinessCard(e.target.files[0]); e.target.value=''; }}/>
-            <label htmlFor="cardInput" style={{
-              display:"inline-flex", alignItems:"center", gap:6,
-              cursor: cardLoading ? "not-allowed" : "pointer",
-              background:C.surface2, border:`1px solid ${C.border}`, borderRadius:8,
-              padding:"10px 14px", fontFamily:F.mono, fontSize:11, letterSpacing:1, color:C.copper,
-              opacity: cardLoading ? 0.7 : 1, userSelect:"none",
-            }}>
-              {cardLoading ? "⏳ Reading card..." : "📷 SCAN BUSINESS CARD"}
-            </label>
-            {cardMsg && (
-              <span style={{ fontFamily:F.mono, fontSize:11, letterSpacing:0.5,
-                color: cardMsg.startsWith("✓") ? C.green : C.red }}>
-                {cardMsg}
-              </span>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+              <input type="file" accept="image/*" capture="environment" id="cardInput" style={{ display:"none" }}
+                onChange={e => { if (e.target.files[0]) scanBusinessCard(e.target.files[0]); e.target.value=''; }}/>
+              <label htmlFor="cardInput" style={{
+                display:"inline-flex", alignItems:"center", gap:6,
+                cursor: cardLoading ? "not-allowed" : "pointer",
+                background:C.surface2, border:`1px solid ${C.border}`, borderRadius:8,
+                padding:"10px 14px", fontFamily:F.mono, fontSize:11, letterSpacing:1, color:C.copper,
+                opacity: cardLoading ? 0.7 : 1, userSelect:"none",
+              }}>
+                {cardLoading ? "⏳ Reading card..." : "📷 SCAN BUSINESS CARD"}
+              </label>
+              {cardMsg && (
+                <span style={{ fontFamily:F.mono, fontSize:11, letterSpacing:0.5,
+                  color: cardMsg.startsWith("✓") ? C.green : C.red }}>
+                  {cardMsg}
+                </span>
+              )}
+            </div>
+            {cardDetails && (
+              <div style={{ marginTop:8, border:`1px solid ${C.border}`, borderRadius:8, overflow:"hidden" }}>
+                <button onClick={() => setCardOpen(o => !o)} style={{
+                  width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between",
+                  background:C.surface2, border:"none", padding:"9px 14px", cursor:"pointer",
+                  fontFamily:F.mono, fontSize:10, letterSpacing:1.5, color:C.copper,
+                }}>
+                  <span>📋 CARD DETAILS</span>
+                  <span style={{ fontSize:14, color:C.mid }}>{cardOpen ? "▲" : "▼"}</span>
+                </button>
+                {cardOpen && (
+                  <div style={{ background:C.surface, padding:"10px 14px", display:"flex", flexDirection:"column", gap:6 }}>
+                    {[
+                      ["MOBILE",   cardDetails.mobile],
+                      ["OFFICE",   cardDetails.office],
+                      ["EMAIL",    cardDetails.email],
+                      ["WEBSITE",  cardDetails.website],
+                      ["ADDRESS",  cardDetails.address],
+                    ].filter(([,v]) => v).map(([label, val]) => (
+                      <div key={label} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                        <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:54, paddingTop:1 }}>{label}</span>
+                        <span style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
