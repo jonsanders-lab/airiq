@@ -817,24 +817,34 @@ async function mondayUpsertProspect(stopData) {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    // Search for existing item by exact company name
-    const searchData = await mondayGraphQL(
-      `query SearchItems($names: [String]) {
+    // Search for existing item by exact company name (inlined — monday.com v2 requires CompareValue! scalar, not [String])
+    const safeCompanyName = companyName.replace(/"/g, '\\"');
+    const searchQuery = `
+      query {
         boards(ids: [${MONDAY_BOARD_ID}]) {
-          items_page(
-            limit: 50,
-            query_params: { rules: [{ column_id: "name", compare_value: $names }] }
-          ) {
+          items_page(limit: 5, query_params: {
+            rules: [{ column_id: "name", compare_value: "${safeCompanyName}" }]
+          }) {
             items {
               id
               name
-              column_values { id text value }
+              column_values { id text }
             }
           }
         }
-      }`,
-      { names: [companyName] }
-    );
+      }
+    `;
+    const searchRaw = await fetch('https://api.monday.com/v2', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.MONDAY_API_KEY}`,
+        'Content-Type': 'application/json',
+        'API-Version': '2024-01',
+      },
+      body: JSON.stringify({ query: searchQuery }),
+    });
+    const searchData = await searchRaw.json();
+    if (searchData.errors) throw new Error(searchData.errors.map(e => e.message).join('; '));
 
     const items = searchData.data?.boards?.[0]?.items_page?.items || [];
 
