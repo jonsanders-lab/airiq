@@ -742,22 +742,20 @@ app.get('/api/faq', async (req, res) => {
 // ─── MONDAY.COM PROSPECTS INTEGRATION ────────────────────────────────────────
 const MONDAY_BOARD_ID = 18418669668;
 const REP_NAME_MAP = {
-  'Earl':        'Earl Bryan Livingston',
   'Devon':       'Devon Dalton',
-  'Jon L':       'Jon Landress',
-  'Tony':        'Tony G',
-  'Kyle':        'Kyle White',
-  'Nick':        'Nick Long',
+  'Earl':        'Earl Bryan Livingston',
   'Jack':        'Jack Wolchek',
-  'Jonathan B':  'Jonathan Banks',
-  'Wyatt':       'Wyatt Webster',
+  'Connor':      'Connor Smith',
+  'Dan':         'Dan Constant',
   'Dave J':      'Dave Jolly',
-  'Tristian':    'Tristian Castiglione',
-  'Javier':      'Javier Cabral',
-  'Zac':         'Zac Hoadley',
-  'Steve':       'Steve lucas',
-  'Mitch':       'Mitchell Baxter',
+  'Jon L':       'Jon Landress',
   'Chase':       'Chase Lewis',
+  'Zac':         'Zac Hoadley',
+  'Mike':        'Mike George',
+  'Jackson':     'Jackson Carrell',
+  'Tristian':    'Tristian Castiglione',
+  'David G':     'David Gonzalez',
+  'Javier':      'Javier Cabral',
   'Jon Sanders': 'Jon Sanders',
 };
 let mondayColMap  = null;
