@@ -759,7 +759,6 @@ const REP_NAME_MAP = {
   'Jon S':       'Jon Sanders',
   'Tony':        'Tony G',
   'Kyle':        'Kyle White',
-  'Jon Sanders': 'Jon Sanders',
 };
 let mondayColMap  = null;
 let mondayGroupId = null;
