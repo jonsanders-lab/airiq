@@ -823,7 +823,7 @@ async function mondayUpsertProspect(stopData) {
         boards(ids: [${MONDAY_BOARD_ID}]) {
           items_page(
             limit: 50,
-            query_params: { rules: [{ column_id: "name", compare_value: $names, compare_type: any_of }] }
+            query_params: { rules: [{ column_id: "name", compare_value: $names }] }
           ) {
             items {
               id
