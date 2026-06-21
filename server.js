@@ -928,7 +928,10 @@ async function mondayUpsertProspect(stopData) {
           colValues[mondayColMap.rep] = { personsAndTeams: [{ id: mondayUserId, kind: 'person' }] };
         }
       }
-      if (mondayColMap.status)                       colValues[mondayColMap.status]      = { label: 'Active Prospects' };
+      // TODO: Update Status labels in monday.com Prospects board to match pipeline stages
+      // Current labels: Working on it, Done, Stuck
+      // Desired labels: Active Prospects, Follow Up, Converted to Lead, Not Interested
+      if (mondayColMap.status)                       colValues[mondayColMap.status]      = { label: 'Working on it' };
       if (mondayColMap.lastVisited)                  colValues[mondayColMap.lastVisited] = { date: today };
       if (mondayColMap.outcome     && outcomeStr)    colValues[mondayColMap.outcome]     = outcomeStr;
       if (mondayColMap.notes       && notableMoment) colValues[mondayColMap.notes]       = notableMoment;
