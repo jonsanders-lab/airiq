@@ -741,8 +741,28 @@ app.get('/api/faq', async (req, res) => {
 
 // ─── MONDAY.COM PROSPECTS INTEGRATION ────────────────────────────────────────
 const MONDAY_BOARD_ID = 18418669668;
+const REP_NAME_MAP = {
+  'Earl':        'Earl Bryan Livingston',
+  'Devon':       'Devon Dalton',
+  'Jon L':       'Jon Landress',
+  'Tony':        'Tony G',
+  'Kyle':        'Kyle White',
+  'Nick':        'Nick Long',
+  'Jack':        'Jack Wolchek',
+  'Jonathan B':  'Jonathan Banks',
+  'Wyatt':       'Wyatt Webster',
+  'Dave J':      'Dave Jolly',
+  'Tristian':    'Tristian Castiglione',
+  'Javier':      'Javier Cabral',
+  'Zac':         'Zac Hoadley',
+  'Steve':       'Steve lucas',
+  'Mitch':       'Mitchell Baxter',
+  'Chase':       'Chase Lewis',
+  'Jon Sanders': 'Jon Sanders',
+};
 let mondayColMap  = null;
 let mondayGroupId = null;
+let mondayUserMap = {};
 
 async function mondayGraphQL(query, variables) {
   const body = variables ? { query, variables } : { query };
@@ -793,6 +813,14 @@ async function fetchMondayMeta() {
   console.log('Monday.com metadata cached — columns:', JSON.stringify(mondayColMap), '| group:', mondayGroupId);
 }
 
+async function fetchMondayUsers() {
+  const data = await mondayGraphQL(`query { users { id name } }`);
+  const users = data.data?.users || [];
+  mondayUserMap = {};
+  users.forEach(u => { mondayUserMap[u.name.toLowerCase()] = Number(u.id); });
+  console.log(`Monday.com users cached: ${users.length} users`);
+}
+
 async function mondayUpsertProspect(stopData) {
   try {
     if (!process.env.MONDAY_API_KEY) return;
@@ -816,6 +844,8 @@ async function mondayUpsertProspect(stopData) {
     const outcomeStr = outcomes.join(', ');
 
     const today = new Date().toISOString().slice(0, 10);
+    const mondayDisplayName = REP_NAME_MAP[repName] || repName;
+    const mondayUserId = mondayUserMap[mondayDisplayName.toLowerCase()] || null;
 
     // Search for existing item by exact company name (inlined — monday.com v2 requires CompareValue! scalar, not [String])
     const safeCompanyName = companyName.replace(/"/g, '\\"');
@@ -848,12 +878,12 @@ async function mondayUpsertProspect(stopData) {
 
     const items = searchData.data?.boards?.[0]?.items_page?.items || [];
 
-    // Exact name + rep match (case-insensitive)
+    // Exact name + rep match — compare against monday.com display name (People column returns display name as text)
     const match = items.find(item => {
       if (item.name.toLowerCase() !== companyName.toLowerCase()) return false;
       if (!mondayColMap.rep) return true;
       const repCol = item.column_values.find(cv => cv.id === mondayColMap.rep);
-      return repCol && repCol.text.toLowerCase() === repName.toLowerCase();
+      return repCol && repCol.text.toLowerCase() === mondayDisplayName.toLowerCase();
     });
 
     if (match) {
@@ -883,7 +913,7 @@ async function mondayUpsertProspect(stopData) {
       console.log(`Monday.com: updated "${companyName}" (${repName}) -- stops: ${currentCount + 1}`);
     } else {
       const colValues = {};
-      if (mondayColMap.rep)                          colValues[mondayColMap.rep]         = repName;
+      if (mondayColMap.rep && mondayUserId)           colValues[mondayColMap.rep]         = { personsAndTeams: [{ id: mondayUserId, kind: 'person' }] };
       if (mondayColMap.status)                       colValues[mondayColMap.status]      = { label: 'Active Prospects' };
       if (mondayColMap.lastVisited)                  colValues[mondayColMap.lastVisited] = { date: today };
       if (mondayColMap.outcome     && outcomeStr)    colValues[mondayColMap.outcome]     = outcomeStr;
@@ -1143,6 +1173,7 @@ app.listen(PORT, async () => {
   try { await fetchInventoryFromGmail(); } catch (e) { console.error('Initial Gmail inventory load failed:', e.message); }
   if (process.env.MONDAY_API_KEY) {
     try { await fetchMondayMeta(); } catch (e) { console.error('Monday.com meta fetch failed:', e.message); }
+    try { await fetchMondayUsers(); } catch (e) { console.error('Monday.com users fetch failed:', e.message); }
   }
 });
 
