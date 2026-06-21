@@ -756,6 +756,9 @@ const REP_NAME_MAP = {
   'Tristian':    'Tristian Castiglione',
   'David G':     'David Gonzalez',
   'Javier':      'Javier Cabral',
+  'Jon S':       'Jon Sanders',
+  'Tony':        'Tony G',
+  'Kyle':        'Kyle White',
   'Jon Sanders': 'Jon Sanders',
 };
 let mondayColMap  = null;
