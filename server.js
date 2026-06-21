@@ -1043,17 +1043,14 @@ app.get('/api/field-log/stops/:repName/all', async (req, res) => {
     const { rows } = await pgPool.query(
       `SELECT id, logged_at, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
               location, notable_moment, company_name, contact_name, sticker_count,
-              mobile, office_phone, email, website, card_address,
-              COUNT(*) OVER() AS total_count
+              mobile, office_phone, email, website, card_address
        FROM field_log_entries
        WHERE rep_name = $1 ${dateFilter}
        ORDER BY logged_at DESC
        ${limitClause}`,
       [req.params.repName]
     );
-    const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
-    const records = rows.map(({ total_count, ...r }) => r);
-    res.json({ rows: records, total });
+    res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
