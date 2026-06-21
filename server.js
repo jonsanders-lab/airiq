@@ -763,6 +763,7 @@ const REP_NAME_MAP = {
 let mondayColMap  = null;
 let mondayGroupId = null;
 let mondayUserMap = {};
+let mondayColTypes = {};
 
 async function mondayGraphQL(query, variables) {
   const body = variables ? { query, variables } : { query };
@@ -783,7 +784,7 @@ async function fetchMondayMeta() {
   const data = await mondayGraphQL(`
     query {
       boards(ids: [${MONDAY_BOARD_ID}]) {
-        columns { id title }
+        columns { id title type }
         groups  { id title }
       }
     }
@@ -792,7 +793,9 @@ async function fetchMondayMeta() {
   if (!board) throw new Error('Monday.com board not found');
 
   const byTitle = {};
-  board.columns.forEach(c => { byTitle[c.title] = c.id; });
+  const colTypeMap = {};
+  board.columns.forEach(c => { byTitle[c.title] = c.id; colTypeMap[c.id] = c.type; });
+  mondayColTypes = colTypeMap;
 
   mondayColMap = {
     rep:         byTitle['Rep']          || null,
@@ -896,8 +899,12 @@ async function mondayUpsertProspect(stopData) {
       if (mondayColMap.notes       && notableMoment) colValues[mondayColMap.notes]       = notableMoment;
       if (mondayColMap.contactName && contactName)   colValues[mondayColMap.contactName] = contactName;
       const phoneVal = mobile || officePhone;
-      if (mondayColMap.phone       && phoneVal)      colValues[mondayColMap.phone]       = phoneVal;
-      if (mondayColMap.email       && email)         colValues[mondayColMap.email]       = email;
+      if (mondayColMap.phone && phoneVal)
+        colValues[mondayColMap.phone] = mondayColTypes[mondayColMap.phone] === 'phone'
+          ? { phone: phoneVal, countryShortName: 'US' } : phoneVal;
+      if (mondayColMap.email && email)
+        colValues[mondayColMap.email] = mondayColTypes[mondayColMap.email] === 'email'
+          ? { email, text: email } : email;
       if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
       if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = currentCount + 1;
 
@@ -913,15 +920,26 @@ async function mondayUpsertProspect(stopData) {
       console.log(`Monday.com: updated "${companyName}" (${repName}) -- stops: ${currentCount + 1}`);
     } else {
       const colValues = {};
-      if (mondayColMap.rep && mondayUserId)           colValues[mondayColMap.rep]         = { personsAndTeams: [{ id: mondayUserId, kind: 'person' }] };
+      if (mondayColMap.rep) {
+        const repIsText = mondayColTypes[mondayColMap.rep] === 'text' || mondayColMap.rep.startsWith('text_');
+        if (repIsText) {
+          colValues[mondayColMap.rep] = mondayDisplayName;
+        } else if (mondayUserId) {
+          colValues[mondayColMap.rep] = { personsAndTeams: [{ id: mondayUserId, kind: 'person' }] };
+        }
+      }
       if (mondayColMap.status)                       colValues[mondayColMap.status]      = { label: 'Active Prospects' };
       if (mondayColMap.lastVisited)                  colValues[mondayColMap.lastVisited] = { date: today };
       if (mondayColMap.outcome     && outcomeStr)    colValues[mondayColMap.outcome]     = outcomeStr;
       if (mondayColMap.notes       && notableMoment) colValues[mondayColMap.notes]       = notableMoment;
       if (mondayColMap.contactName && contactName)   colValues[mondayColMap.contactName] = contactName;
       const phoneVal = mobile || officePhone;
-      if (mondayColMap.phone       && phoneVal)      colValues[mondayColMap.phone]       = phoneVal;
-      if (mondayColMap.email       && email)         colValues[mondayColMap.email]       = email;
+      if (mondayColMap.phone && phoneVal)
+        colValues[mondayColMap.phone] = mondayColTypes[mondayColMap.phone] === 'phone'
+          ? { phone: phoneVal, countryShortName: 'US' } : phoneVal;
+      if (mondayColMap.email && email)
+        colValues[mondayColMap.email] = mondayColTypes[mondayColMap.email] === 'email'
+          ? { email, text: email } : email;
       if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
       if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = 1;
 
