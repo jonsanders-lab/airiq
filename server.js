@@ -739,6 +739,170 @@ app.get('/api/faq', async (req, res) => {
   }
 });
 
+// ─── MONDAY.COM PROSPECTS INTEGRATION ────────────────────────────────────────
+const MONDAY_BOARD_ID = 18418669668;
+let mondayColMap  = null;
+let mondayGroupId = null;
+
+async function mondayGraphQL(query, variables) {
+  const body = variables ? { query, variables } : { query };
+  const res = await fetch('https://api.monday.com/v2', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${process.env.MONDAY_API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.errors) throw new Error(data.errors.map(e => e.message).join('; '));
+  return data;
+}
+
+async function fetchMondayMeta() {
+  const data = await mondayGraphQL(`
+    query {
+      boards(ids: [${MONDAY_BOARD_ID}]) {
+        columns { id title }
+        groups  { id title }
+      }
+    }
+  `);
+  const board = data.data?.boards?.[0];
+  if (!board) throw new Error('Monday.com board not found');
+
+  const byTitle = {};
+  board.columns.forEach(c => { byTitle[c.title] = c.id; });
+
+  mondayColMap = {
+    rep:         byTitle['Rep']          || null,
+    status:      byTitle['Status']       || null,
+    lastVisited: byTitle['Last Visited'] || null,
+    contactName: byTitle['Contact Name'] || null,
+    branch:      byTitle['Branch']       || null,
+    outcome:     byTitle['Outcome']      || null,
+    location:    byTitle['Location']     || null,
+    notes:       byTitle['Notes']        || null,
+    phone:       byTitle['Phone']        || null,
+    email:       byTitle['Email']        || null,
+    stopCount:   byTitle['Stop Count']   || null,
+  };
+
+  const activeGroup = board.groups.find(g => g.title.toLowerCase().includes('active prospect'));
+  mondayGroupId = activeGroup?.id || null;
+  console.log('Monday.com metadata cached — columns:', JSON.stringify(mondayColMap), '| group:', mondayGroupId);
+}
+
+async function mondayUpsertProspect(stopData) {
+  try {
+    if (!process.env.MONDAY_API_KEY) return;
+    if (!mondayColMap) await fetchMondayMeta();
+
+    const { repName, companyName, contactName, location, notableMoment,
+            pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres,
+            apptSet, nothing, stickerCount, mobile, officePhone, email } = stopData;
+
+    if (!companyName) return;
+
+    const outcomes = [];
+    if (pmOpp)       outcomes.push('Membership Opp');
+    if (equipOpp)    outcomes.push('Equipment Opp');
+    if (serviceLead) outcomes.push('Service Lead');
+    if (pipingOpp)   outcomes.push('Piping/Install');
+    if (sticker)     outcomes.push(Number(stickerCount) > 1 ? `Sticker Placed x${stickerCount}` : 'Sticker Placed');
+    if (vrPres)      outcomes.push('VR Presentation');
+    if (apptSet)     outcomes.push('Appointment Set');
+    if (nothing)     outcomes.push('Nothing');
+    const outcomeStr = outcomes.join(', ');
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Search for existing item by exact company name
+    const searchData = await mondayGraphQL(
+      `query SearchItems($names: [String]) {
+        boards(ids: [${MONDAY_BOARD_ID}]) {
+          items_page(
+            limit: 50,
+            query_params: { rules: [{ column_id: "name", compare_value: $names, compare_type: any_of }] }
+          ) {
+            items {
+              id
+              name
+              column_values { id text value }
+            }
+          }
+        }
+      }`,
+      { names: [companyName] }
+    );
+
+    const items = searchData.data?.boards?.[0]?.items_page?.items || [];
+
+    // Exact name + rep match (case-insensitive)
+    const match = items.find(item => {
+      if (item.name.toLowerCase() !== companyName.toLowerCase()) return false;
+      if (!mondayColMap.rep) return true;
+      const repCol = item.column_values.find(cv => cv.id === mondayColMap.rep);
+      return repCol && repCol.text.toLowerCase() === repName.toLowerCase();
+    });
+
+    if (match) {
+      const scCol = mondayColMap.stopCount ? match.column_values.find(cv => cv.id === mondayColMap.stopCount) : null;
+      const currentCount = scCol ? (parseInt(scCol.text, 10) || 0) : 0;
+
+      const colValues = {};
+      if (mondayColMap.lastVisited)                  colValues[mondayColMap.lastVisited] = { date: today };
+      if (mondayColMap.outcome     && outcomeStr)    colValues[mondayColMap.outcome]     = outcomeStr;
+      if (mondayColMap.notes       && notableMoment) colValues[mondayColMap.notes]       = notableMoment;
+      if (mondayColMap.contactName && contactName)   colValues[mondayColMap.contactName] = contactName;
+      const phoneVal = mobile || officePhone;
+      if (mondayColMap.phone       && phoneVal)      colValues[mondayColMap.phone]       = phoneVal;
+      if (mondayColMap.email       && email)         colValues[mondayColMap.email]       = email;
+      if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
+      if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = currentCount + 1;
+
+      await mondayGraphQL(`
+        mutation {
+          change_multiple_column_values(
+            board_id: ${MONDAY_BOARD_ID},
+            item_id: ${match.id},
+            column_values: ${JSON.stringify(JSON.stringify(colValues))}
+          ) { id }
+        }
+      `);
+      console.log(`Monday.com: updated "${companyName}" (${repName}) -- stops: ${currentCount + 1}`);
+    } else {
+      const colValues = {};
+      if (mondayColMap.rep)                          colValues[mondayColMap.rep]         = repName;
+      if (mondayColMap.status)                       colValues[mondayColMap.status]      = { label: 'Active Prospects' };
+      if (mondayColMap.lastVisited)                  colValues[mondayColMap.lastVisited] = { date: today };
+      if (mondayColMap.outcome     && outcomeStr)    colValues[mondayColMap.outcome]     = outcomeStr;
+      if (mondayColMap.notes       && notableMoment) colValues[mondayColMap.notes]       = notableMoment;
+      if (mondayColMap.contactName && contactName)   colValues[mondayColMap.contactName] = contactName;
+      const phoneVal = mobile || officePhone;
+      if (mondayColMap.phone       && phoneVal)      colValues[mondayColMap.phone]       = phoneVal;
+      if (mondayColMap.email       && email)         colValues[mondayColMap.email]       = email;
+      if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
+      if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = 1;
+
+      const groupClause = mondayGroupId ? `group_id: "${mondayGroupId}",` : '';
+      await mondayGraphQL(`
+        mutation {
+          create_item(
+            board_id: ${MONDAY_BOARD_ID},
+            ${groupClause}
+            item_name: ${JSON.stringify(companyName)},
+            column_values: ${JSON.stringify(JSON.stringify(colValues))}
+          ) { id }
+        }
+      `);
+      console.log(`Monday.com: created prospect "${companyName}" (${repName})`);
+    }
+  } catch (e) {
+    console.error('mondayUpsertProspect error:', e.message);
+  }
+}
+
 // ─── FIELD LOG ────────────────────────────────────────────────────────────────
 app.post('/api/field-log', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
@@ -760,6 +924,15 @@ app.post('/api/field-log', async (req, res) => {
        mobile || null, officePhone || null, email || null, website || null, cardAddress || null]
     );
     res.json({ success: true, id: rows[0].id, loggedAt: rows[0].logged_at });
+    if (companyName && process.env.MONDAY_API_KEY) {
+      mondayUpsertProspect({
+        repName, companyName, contactName, location, notableMoment,
+        pmOpp: !!pmOpp, equipOpp: !!equipOpp, serviceLead: !!serviceLead,
+        pipingOpp: !!pipingOpp, sticker: !!sticker, vrPres: !!vrPres,
+        apptSet: !!apptSet, nothing: !!nothing,
+        stickerCount: sc, mobile, officePhone, email,
+      }).catch(e => console.error('Monday upsert error:', e.message));
+    }
   } catch (e) {
     console.error('field-log POST error:', e.message);
     res.status(500).json({ error: e.message });
@@ -961,6 +1134,9 @@ app.listen(PORT, async () => {
   console.log(`AirIQ running on port ${PORT}`);
   try { await initFieldLogTable(); } catch (e) { console.error('Field log table init failed:', e.message); }
   try { await fetchInventoryFromGmail(); } catch (e) { console.error('Initial Gmail inventory load failed:', e.message); }
+  if (process.env.MONDAY_API_KEY) {
+    try { await fetchMondayMeta(); } catch (e) { console.error('Monday.com meta fetch failed:', e.message); }
+  }
 });
 
 // Refresh daily at 6:10am EST (11:10 UTC) — after the 5:56am ST email arrives
