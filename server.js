@@ -906,7 +906,7 @@ async function mondayUpsertProspect(stopData) {
         colValues[mondayColMap.email] = mondayColTypes[mondayColMap.email] === 'email'
           ? { email, text: email } : email;
       if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
-      if (mondayColMap.branch      && branch)        colValues[mondayColMap.branch]       = JSON.stringify({labels: [branch]});
+      if (mondayColMap.branch      && branch)        colValues[mondayColMap.branch]       = { labels: [branch] };
       if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = currentCount + 1;
 
       await mondayGraphQL(`
@@ -942,7 +942,7 @@ async function mondayUpsertProspect(stopData) {
         colValues[mondayColMap.email] = mondayColTypes[mondayColMap.email] === 'email'
           ? { email, text: email } : email;
       if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
-      if (mondayColMap.branch      && branch)        colValues[mondayColMap.branch]       = JSON.stringify({labels: [branch]});
+      if (mondayColMap.branch      && branch)        colValues[mondayColMap.branch]       = { labels: [branch] };
       if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = 1;
 
       const groupClause = mondayGroupId ? `group_id: "${mondayGroupId}",` : '';
