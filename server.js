@@ -831,7 +831,7 @@ async function mondayUpsertProspect(stopData) {
 
     const { repName, companyName, contactName, location, notableMoment,
             pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres,
-            apptSet, nothing, stickerCount, mobile, officePhone, email } = stopData;
+            apptSet, nothing, stickerCount, mobile, officePhone, email, branch } = stopData;
 
     if (!companyName) return;
 
@@ -906,6 +906,7 @@ async function mondayUpsertProspect(stopData) {
         colValues[mondayColMap.email] = mondayColTypes[mondayColMap.email] === 'email'
           ? { email, text: email } : email;
       if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
+      if (mondayColMap.branch      && branch)        colValues[mondayColMap.branch]       = JSON.stringify({labels: [branch]});
       if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = currentCount + 1;
 
       await mondayGraphQL(`
@@ -944,6 +945,7 @@ async function mondayUpsertProspect(stopData) {
         colValues[mondayColMap.email] = mondayColTypes[mondayColMap.email] === 'email'
           ? { email, text: email } : email;
       if (mondayColMap.location    && location)      colValues[mondayColMap.location]    = location;
+      if (mondayColMap.branch      && branch)        colValues[mondayColMap.branch]       = JSON.stringify({labels: [branch]});
       if (mondayColMap.stopCount)                    colValues[mondayColMap.stopCount]   = 1;
 
       const groupClause = mondayGroupId ? `group_id: "${mondayGroupId}",` : '';
@@ -970,7 +972,7 @@ app.post('/api/field-log', async (req, res) => {
   try {
     const { repName, pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres, apptSet, nothing,
             location, notableMoment, companyName, contactName, stickerCount,
-            mobile, officePhone, email, website, cardAddress } = req.body;
+            mobile, officePhone, email, website, cardAddress, branch } = req.body;
     if (!repName) return res.status(400).json({ error: 'repName required' });
     const sc = sticker ? Math.max(1, Number(stickerCount) || 1) : 0;
     const { rows } = await pgPool.query(
@@ -991,7 +993,7 @@ app.post('/api/field-log', async (req, res) => {
         pmOpp: !!pmOpp, equipOpp: !!equipOpp, serviceLead: !!serviceLead,
         pipingOpp: !!pipingOpp, sticker: !!sticker, vrPres: !!vrPres,
         apptSet: !!apptSet, nothing: !!nothing,
-        stickerCount: sc, mobile, officePhone, email,
+        stickerCount: sc, mobile, officePhone, email, branch: branch || null,
       }).catch(e => console.error('Monday upsert error:', e.message));
     }
   } catch (e) {

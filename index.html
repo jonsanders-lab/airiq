@@ -8568,6 +8568,10 @@ function FieldLog() {
   const [contactName,  setContactName] = React.useState("");
   const [stickerCount, setStickerCount]= React.useState(1);
   const [stopSearch,   setStopSearch]  = React.useState("");
+  const [branch,       setBranch]      = React.useState(() => {
+    const rep = localStorage.getItem("fieldlog_rep") || "";
+    return rep ? localStorage.getItem(`airiq_fieldlog_branch_${rep}`) || "" : "";
+  });
   const [stops,        setStops]       = React.useState([]);
   const [stopSort,     setStopSort]    = React.useState(() => {
     const rep = localStorage.getItem("fieldlog_rep") || "";
@@ -8727,6 +8731,7 @@ function FieldLog() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           repName, ...selected,
+          branch: branch || null,
           stickerCount: selected.sticker ? stickerCount : 0,
           companyName: companyName.trim(),
           contactName: contactName.trim(),
@@ -8975,6 +8980,7 @@ function FieldLog() {
                 const v = e.target.value;
                 setRepName(v);
                 localStorage.setItem("fieldlog_rep", v);
+                setBranch(v ? localStorage.getItem(`airiq_fieldlog_branch_${v}`) || "" : "");
                 if (v) {
                   fetchTally(v);
                   fetchStops(v);
@@ -8989,7 +8995,22 @@ function FieldLog() {
             </select>
           </div>
 
-          
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>BRANCH</label>
+            <select value={branch} onChange={e => {
+                const v = e.target.value;
+                setBranch(v);
+                if (repName) localStorage.setItem(`airiq_fieldlog_branch_${repName}`, v);
+              }}
+              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                color: branch ? C.text : C.mid, fontFamily:F.body, fontSize:16,
+                padding:"12px 14px", appearance:"none", boxSizing:"border-box" }}>
+              <option value="">— Select branch —</option>
+              {["Atlanta","Charlotte","Chicago","Cleveland","Dallas","Detroit","Greenville","Nashville","Tampa"].map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+
+
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
             <div>
               <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>COMPANY NAME <span style={{ color:C.dim }}>(optional)</span></label>
@@ -9303,6 +9324,7 @@ function FieldLog() {
                               <span style={{ color:C.mid, fontSize:11 }}>{isExp ? "▲" : "▼"}</span>
                             </div>
                           </div>
+                          {branch && <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:0.5, color:C.copper, marginTop:3 }}>🏢 {branch}</div>}
                           <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:4 }}>
                             {activityLabels(s).map(lbl => (
                               <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
@@ -9360,6 +9382,7 @@ function FieldLog() {
                         </div>
                       </div>
                       {s.location && <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:0.5, color:C.mid, marginTop:4 }}>📍 {s.location}</div>}
+                      {branch && <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:0.5, color:C.copper, marginTop:3 }}>🏢 {branch}</div>}
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:4 }}>
                         {activityLabels(s).map(lbl => (
                           <span key={lbl} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, padding:"3px 7px", borderRadius:10,
