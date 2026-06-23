@@ -8574,6 +8574,7 @@ function FieldLog() {
   const [msg,        setMsg]        = React.useState("");
   const [dashboard,  setDashboard]  = React.useState([]);
   const [dashLoad,   setDashLoad]   = React.useState(false);
+  const [dashRange,  setDashRange]  = React.useState("today");
   const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   const [leaderSubView, setLeaderSubView] = React.useState("list");
   const [showExport,   setShowExport]  = React.useState(false);
@@ -8609,6 +8610,7 @@ function FieldLog() {
   const [historyLoading,   setHistoryLoading]   = React.useState(false);
   const [draftBanner,      setDraftBanner]      = React.useState(false);
   const dashTimer      = React.useRef(null);
+  const dashRangeRef   = React.useRef("today");
   const saveDraftTimer = React.useRef(null);
   const draftMounted   = React.useRef(false);
 
@@ -8717,7 +8719,7 @@ function FieldLog() {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
     try {
-      const r = await fetch('/api/field-log/dashboard', { signal: ctrl.signal });
+      const r = await fetch(`/api/field-log/dashboard?range=${dashRangeRef.current}`, { signal: ctrl.signal });
       const d = await r.json();
       if (d.error) throw new Error(d.error);
       setDashboard(Array.isArray(d) ? d : []);
@@ -9525,8 +9527,10 @@ function FieldLog() {
 
           
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.text, flex:1, minWidth:0 }}>FIELD ACTIVITY — TODAY</div>
-            
+            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:3, color:C.text, flex:1, minWidth:0 }}>
+              {`FIELD ACTIVITY — ${{ today:"TODAY", week:"THIS WEEK", month:"THIS MONTH", all:"ALL TIME" }[dashRange]}`}
+            </div>
+
             <div style={{ display:"flex", background:C.surface2, borderRadius:6, padding:2, border:`1px solid ${C.border}`, flexShrink:0 }}>
               {[["list","LIST"],["graph","GRAPH"]].map(([v,lbl]) => (
                 <button key={v} onClick={() => setLeaderSubView(v)} style={{
@@ -9537,7 +9541,7 @@ function FieldLog() {
                 }}>{lbl}</button>
               ))}
             </div>
-            
+
             <button onClick={() => setShowExport(true)} style={{
               flexShrink:0, background:"rgba(193,122,53,0.18)", border:`1px solid rgba(193,122,53,0.5)`,
               borderRadius:8, padding:"6px 12px", color:C.copper,
@@ -9548,7 +9552,24 @@ function FieldLog() {
             </div>
           </div>
 
-          
+          {/* Date range filter tabs */}
+          <div style={{ display:"flex", gap:4, marginBottom:12, flexWrap:"wrap" }}>
+            {[["today","TODAY"],["week","THIS WEEK"],["month","THIS MONTH"],["all","ALL TIME"]].map(([r,lbl]) => (
+              <button key={r} onClick={() => {
+                dashRangeRef.current = r;
+                setDashRange(r);
+                fetchDashboard();
+              }} style={{
+                padding:"5px 12px", borderRadius:6, cursor:"pointer",
+                border:`1px solid ${dashRange===r ? C.copper : C.border}`,
+                background: dashRange===r ? "rgba(193,122,53,0.18)" : C.surface2,
+                color: dashRange===r ? C.copper : C.mid,
+                fontFamily:F.mono, fontSize:10, letterSpacing:1,
+              }}>{lbl}</button>
+            ))}
+          </div>
+
+
           <div style={{ display:"flex", gap:14, marginBottom:12 }}>
             {[[C.green,"25+ on pace"],["#F59E0B","10–24 behind"],[C.red,"<10 low"]].map(([color,label]) => (
               <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
@@ -9602,7 +9623,7 @@ function FieldLog() {
               
               <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 12px 10px" }}>
                 <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:10 }}>
-                  STOPS TODAY vs. 25-STOP DAILY PACE GOAL
+                  {`STOPS ${{ today:"TODAY", week:"THIS WEEK", month:"THIS MONTH", all:"ALL TIME" }[dashRange]}${dashRange==="today" ? " vs. 25-STOP DAILY PACE GOAL" : ""}`}
                 </div>
                 <div style={{ position:"relative" }}>
                   

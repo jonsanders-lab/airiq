@@ -1026,6 +1026,19 @@ app.get('/api/field-log/today/:repName', async (req, res) => {
 app.get('/api/field-log/dashboard', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
+    const range = req.query.range || 'today';
+    const TZ = 'America/New_York';
+    // Use Eastern-time date truncation so midnight is midnight in EST, not UTC
+    let whereClause;
+    if (range === 'week') {
+      whereClause = `WHERE logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+    } else if (range === 'month') {
+      whereClause = `WHERE logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+    } else if (range === 'all') {
+      whereClause = '';
+    } else {
+      whereClause = `WHERE logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+    }
     const { rows } = await pgPool.query(
       `SELECT
          rep_name,
@@ -1040,7 +1053,7 @@ app.get('/api/field-log/dashboard', async (req, res) => {
          SUM(nothing::int)::int      AS nothing,
          MAX(logged_at)              AS last_logged
        FROM field_log_entries
-       WHERE logged_at >= NOW()::date
+       ${whereClause}
        GROUP BY rep_name
        ORDER BY stops DESC`
     );
