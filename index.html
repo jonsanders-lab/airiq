@@ -8582,7 +8582,7 @@ function FieldLog() {
   const [exportStart,  setExportStart] = React.useState(() => new Date().toISOString().slice(0,10));
   const [exportEnd,    setExportEnd]   = React.useState(() => new Date().toISOString().slice(0,10));
   const [exporting,    setExporting]   = React.useState(false);
-  const [weekData,     setWeekData]    = React.useState([]);
+  const [weekData,     setWeekData]    = React.useState({bucket:'day', rows:[]});
   const [dbError,      setDbError]     = React.useState(null);
   const [companyName,  setCompanyName] = React.useState("");
   const [contactName,  setContactName] = React.useState("");
@@ -8737,9 +8737,9 @@ function FieldLog() {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
     try {
-      const r = await fetch('/api/field-log/week', { signal: ctrl.signal });
+      const r = await fetch(`/api/field-log/trend?range=${dashRangeRef.current}`, { signal: ctrl.signal });
       const d = await r.json();
-      if (!d.error) setWeekData(Array.isArray(d) ? d : []);
+      if (!d.error && d.bucket) setWeekData({ bucket: d.bucket, rows: Array.isArray(d.rows) ? d.rows : [] });
     } catch (e) {
       console.error('Field Log fetchWeekData error:', e.message);
     } finally {
@@ -8865,9 +8865,9 @@ function FieldLog() {
 
   function paceColorDark(stops) {
     const s = Number(stops);
-    if (s >= 25) return "#15803d";
-    if (s >= 10) return "#B45309";
-    return "#991B1B";
+    if (s >= 25) return "#16a34a";
+    if (s >= 10) return "#d97706";
+    return "#b91c1c";
   }
 
   function timeSince(ts) {
@@ -9566,6 +9566,7 @@ function FieldLog() {
                 dashRangeRef.current = r;
                 setDashRange(r);
                 fetchDashboard();
+                fetchWeekData();
               }} style={{
                 padding:"5px 12px", borderRadius:6, cursor:"pointer",
                 border:`1px solid ${dashRange===r ? C.copper : C.border}`,
@@ -9666,8 +9667,8 @@ function FieldLog() {
                       const oppH    = s > 0 ? Math.round((opp / s) * barH) : 0;
                       return (
                         <div key={row.rep_name} style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", height:"100%" }}>
-                          {s > 0 && <div style={{ fontFamily:F.mono, fontSize:7, color:"#C17A35", lineHeight:1, marginBottom:1 }}>{Math.round(cvr)}%</div>}
-                          <div style={{ fontFamily:F.mono, fontSize:9, color:col, lineHeight:1, marginBottom:2 }}>{s > 0 ? s : ""}</div>
+                          {s > 0 && <div style={{ fontFamily:F.mono, fontSize:11, lineHeight:1, marginBottom:3, background:"rgba(15,23,42,0.72)", borderRadius:4, padding:"1px 5px", color:"#fff" }}>{Math.round(cvr)}%</div>}
+                          <div style={{ fontFamily:F.mono, fontSize:9, color:col, lineHeight:1, marginBottom:4 }}>{s > 0 ? s : ""}</div>
                           <div style={{ width:"100%", borderRadius:"2px 2px 0 0", overflow:"hidden", height:barH, display:"flex", flexDirection:"column", transition:"height 0.5s ease" }}>
                             {s > 0 && oppH > 0 && <div style={{ width:"100%", height:oppH, background:darkCol, flexShrink:0 }}/>}
                             <div style={{ width:"100%", flex:1, background: s === 0 ? C.surface3 : col }}/>
@@ -9695,41 +9696,90 @@ function FieldLog() {
 
               
               {(()=>{
-                const today = new Date();
-                const dow = (today.getDay() + 6) % 7; // Mon=0..Sun=6
-                const numDays = Math.max(1, Math.min(dow + 1, 5));
-                const DNAMES = ['Mon','Tue','Wed','Thu','Fri'];
-                const days = [];
-                for (let i = 0; i < numDays; i++) {
-                  const d = new Date(today);
-                  d.setDate(d.getDate() - (dow - i));
-                  days.push({ label: DNAMES[i], iso: d.toISOString().slice(0,10) });
-                }
-                const wMap = {};
-                weekData.forEach(w => { wMap[w.day] = Number(w.stops); });
-                const pts = days.map(d => ({ label:d.label, v: wMap[d.iso] || 0 }));
-                const maxV = Math.max(...pts.map(p=>p.v), 1);
+                const bucket = weekData.bucket || 'day';
+                const tRows  = Array.isArray(weekData.rows) ? weekData.rows : [];
+                let pts = [], xLabel = '';
                 const W=280, H=52, PX=10, PY=8, plotW=W-PX*2, plotH=H-PY*2;
+
+                if (bucket === 'hour') {
+                  const hourMap = {};
+                  tRows.forEach(r => { hourMap[Number(r.hour)] = Number(r.stops); });
+                  const allH = tRows.map(r => Number(r.hour));
+                  const minH = allH.length > 0 ? Math.min(...allH) : 6;
+                  const maxH = allH.length > 0 ? Math.max(...allH) : new Date().getHours();
+                  for (let h = minH; h <= Math.max(maxH, minH); h++) {
+                    const lbl = h === 0 ? '12a' : h < 12 ? `${h}a` : h === 12 ? '12p' : `${h-12}p`;
+                    pts.push({ label: lbl, v: hourMap[h] || 0 });
+                  }
+                  xLabel = 'TODAY — STOPS BY HOUR';
+                } else if (dashRange === 'week') {
+                  const today = new Date();
+                  const dow = (today.getDay() + 6) % 7;
+                  const numDays = Math.max(1, Math.min(dow + 1, 5));
+                  const DNAMES = ['Mon','Tue','Wed','Thu','Fri'];
+                  const dayMap = {};
+                  tRows.forEach(r => { dayMap[r.day] = Number(r.stops); });
+                  for (let i = 0; i < numDays; i++) {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() - (dow - i));
+                    pts.push({ label: DNAMES[i], v: dayMap[d.toISOString().slice(0,10)] || 0 });
+                  }
+                  xLabel = 'THIS WEEK — STOPS BY DAY';
+                } else if (dashRange === 'month') {
+                  const today = new Date();
+                  const yr = today.getFullYear(), mo = today.getMonth(), dom = today.getDate();
+                  const dayMap = {};
+                  tRows.forEach(r => { dayMap[r.day] = Number(r.stops); });
+                  for (let d = 1; d <= dom; d++) {
+                    const iso = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const show = (d === 1 || d % 5 === 0 || d === dom);
+                    pts.push({ label: show ? String(d) : '', v: dayMap[iso] || 0 });
+                  }
+                  xLabel = 'THIS MONTH — STOPS BY DAY';
+                } else if (bucket === 'week') {
+                  const n = tRows.length;
+                  const skip = Math.max(1, Math.floor(n / 5));
+                  pts = tRows.map((r, i) => ({
+                    label: (i === 0 || i === n-1 || i % skip === 0) ? r.week.slice(5,7)+'/'+r.week.slice(8,10) : '',
+                    v: Number(r.stops),
+                  }));
+                  xLabel = 'ALL TIME — STOPS BY WEEK';
+                } else if (bucket === 'month') {
+                  const MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                  const n = tRows.length;
+                  const skip = Math.max(1, Math.ceil(n / 6));
+                  pts = tRows.map((r, i) => ({
+                    label: i % skip === 0 ? MNAMES[parseInt(r.month.slice(5,7))-1] : '',
+                    v: Number(r.stops),
+                  }));
+                  xLabel = 'ALL TIME — STOPS BY MONTH';
+                }
+
+                if (pts.length === 0) return null;
+                const maxV = Math.max(...pts.map(p=>p.v), 1);
+                const n = pts.length;
+                const showDots = n <= 15;
+                const showVals = n <= 10;
                 const coords = pts.map((p,i) => ({
-                  x: numDays===1 ? W/2 : PX + i*(plotW/(numDays-1)),
+                  x: n <= 1 ? W/2 : PX + i*(plotW/(n-1)),
                   y: PY + plotH - (p.v/maxV)*plotH,
                   ...p,
                 }));
                 const line = coords.map((c,i)=>`${i===0?'M':'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
-                const area = `${line} L${coords[coords.length-1].x.toFixed(1)},${(PY+plotH).toFixed(1)} L${coords[0].x.toFixed(1)},${(PY+plotH).toFixed(1)} Z`;
+                const area = `${line} L${coords[n-1].x.toFixed(1)},${(PY+plotH).toFixed(1)} L${coords[0].x.toFixed(1)},${(PY+plotH).toFixed(1)} Z`;
                 return (
                   <div style={{ marginTop:10, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 12px 6px" }}>
                     <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:8 }}>
-                      THIS WEEK — TOTAL TEAM STOPS / DAY
+                      {xLabel}
                     </div>
                     <svg viewBox={`0 0 ${W} ${H+16}`} width="100%" style={{ display:"block", overflow:"visible" }}>
                       <path d={area} fill="rgba(59,130,246,0.10)" stroke="none"/>
                       <path d={line} fill="none" style={{stroke:C.blueLight}} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                       {coords.map((c,i) => (
                         <g key={i}>
-                          <circle cx={c.x} cy={c.y} r="3.5" style={{fill:C.blueLight}}/>
-                          {c.v > 0 && <text x={c.x} y={c.y-7} textAnchor="middle" fontSize="9" style={{fill:C.text}}>{c.v}</text>}
-                          <text x={c.x} y={H+14} textAnchor="middle" fontSize="9" style={{fill:C.mid}}>{c.label}</text>
+                          {showDots && <circle cx={c.x} cy={c.y} r="3.5" style={{fill:C.blueLight}}/>}
+                          {showVals && c.v > 0 && <text x={c.x} y={c.y-7} textAnchor="middle" fontSize="9" style={{fill:C.text}}>{c.v}</text>}
+                          {c.label && <text x={c.x} y={H+14} textAnchor="middle" fontSize="9" style={{fill:C.mid}}>{c.label}</text>}
                         </g>
                       ))}
                     </svg>

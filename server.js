@@ -1085,6 +1085,66 @@ app.get('/api/field-log/week', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/field-log/trend', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  const range = req.query.range || 'week';
+  const TZ = 'America/New_York';
+  try {
+    let query, bucket;
+    if (range === 'today') {
+      query = `SELECT
+         EXTRACT(HOUR FROM logged_at AT TIME ZONE '${TZ}')::int AS hour,
+         COUNT(*)::int AS stops
+       FROM field_log_entries
+       WHERE logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'
+       GROUP BY 1 ORDER BY 1`;
+      bucket = 'hour';
+    } else if (range === 'week') {
+      query = `SELECT
+         (logged_at AT TIME ZONE '${TZ}')::date::text AS day,
+         COUNT(*)::int AS stops
+       FROM field_log_entries
+       WHERE logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'
+       GROUP BY 1 ORDER BY 1`;
+      bucket = 'day';
+    } else if (range === 'month') {
+      query = `SELECT
+         (logged_at AT TIME ZONE '${TZ}')::date::text AS day,
+         COUNT(*)::int AS stops
+       FROM field_log_entries
+       WHERE logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'
+       GROUP BY 1 ORDER BY 1`;
+      bucket = 'day';
+    } else {
+      // all-time: weekly if data span < 6 months, monthly if longer
+      const spanRes = await pgPool.query(
+        `SELECT MIN(logged_at) AS min_t, MAX(logged_at) AS max_t FROM field_log_entries`
+      );
+      const { min_t, max_t } = spanRes.rows[0];
+      const diffMonths = (min_t && max_t)
+        ? (new Date(max_t) - new Date(min_t)) / (1000 * 60 * 60 * 24 * 30)
+        : 0;
+      if (diffMonths < 6) {
+        query = `SELECT
+           TO_CHAR(DATE_TRUNC('week', logged_at AT TIME ZONE '${TZ}'), 'YYYY-MM-DD') AS week,
+           COUNT(*)::int AS stops
+         FROM field_log_entries
+         GROUP BY 1 ORDER BY 1`;
+        bucket = 'week';
+      } else {
+        query = `SELECT
+           TO_CHAR(DATE_TRUNC('month', logged_at AT TIME ZONE '${TZ}'), 'YYYY-MM') AS month,
+           COUNT(*)::int AS stops
+         FROM field_log_entries
+         GROUP BY 1 ORDER BY 1`;
+        bucket = 'month';
+      }
+    }
+    const { rows } = await pgPool.query(query);
+    res.json({ bucket, rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/field-log/stops/:repName', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
