@@ -1133,19 +1133,6 @@ function HelpTab() {
           }}
         />
 
-        {visible.filter(s=>s.id!=='changelog').length === 0 && qLow.length >= 2 && (
-          <div style={{fontFamily:F.body, fontSize:13, color:C.mid, textAlign:'center', padding:'48px 0'}}>
-            No sections match "{q}"
-          </div>
-        )}
-
-        {visible.filter(s=>s.id!=='changelog').map(sec => (
-          <div key={sec.id} style={sCard}>
-            <span style={sTitle}>{sec.title}</span>
-            {sec.body()}
-          </div>
-        ))}
-
         {/* ── FREQUENTLY ASKED QUESTIONS ── */}
         <div style={sCard}>
           <span style={sTitle}>💬 FREQUENTLY ASKED QUESTIONS</span>
@@ -1199,6 +1186,19 @@ function HelpTab() {
             </div>
           )}
         </div>
+
+        {visible.filter(s=>s.id!=='changelog').length === 0 && qLow.length >= 2 && (
+          <div style={{fontFamily:F.body, fontSize:13, color:C.mid, textAlign:'center', padding:'48px 0'}}>
+            No sections match "{q}"
+          </div>
+        )}
+
+        {visible.filter(s=>s.id!=='changelog').map(sec => (
+          <div key={sec.id} style={sCard}>
+            <span style={sTitle}>{sec.title}</span>
+            {sec.body()}
+          </div>
+        ))}
 
         {visible.filter(s=>s.id==='changelog').map(sec => (
           <div key={sec.id} style={sCard}>
@@ -1448,10 +1448,15 @@ function AirIQ() {
   const bottomRef      = React.useRef(null);
   const recognitionRef = React.useRef(null);
   const textareaRef    = React.useRef(null);
+  const faqsRef        = React.useRef([]);
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior:"smooth" });
   }, [messages, loading]);
+
+  React.useEffect(() => {
+    fetch('/api/faq').then(r=>r.json()).then(d=>{ if(Array.isArray(d)) faqsRef.current=d; }).catch(()=>{});
+  }, []);
 
   const stopListening = () => {
     if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null; }
@@ -1550,6 +1555,19 @@ function AirIQ() {
     }
   };
 
+  const getFaqContext = (msg) => {
+    if (faqsRef.current.length === 0) return "";
+    const words = msg.toLowerCase().split(/\W+/).filter(w => w.length >= 4);
+    if (words.length < 2) return "";
+    const matches = faqsRef.current.filter(f => {
+      const hay = (f.question + " " + f.answer).toLowerCase();
+      return words.filter(w => hay.includes(w)).length >= 2;
+    });
+    if (matches.length === 0) return "";
+    return "\n\nINTERNAL FAQ — use these answers for matching questions:\n" +
+      matches.map(f => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n");
+  };
+
   const submit = async (text) => {
     const msg = normalizeModelNumber(text || input.trim());
     if (!msg || loading) return;
@@ -1576,13 +1594,14 @@ function AirIQ() {
       description:"Look up live pricing and stock availability for equipment in ServiceTitan. Only call this when the rep explicitly asks about price, cost, stock, or availability.",
       input_schema:{ type:"object", properties:{ search_term:{ type:"string", description:"The model number or equipment name to search for" } }, required:["search_term"] }
     };
+    const faqContext    = getFaqContext(msg);
     const stInstruction = needsST ? `\n\n=== SERVICETITAN LIVE LOOKUP AVAILABLE ===\nThe rep is asking about pricing or stock for: ${searchTerms.join(", ")}. Call lookup_servicetitan_pricing now with each search term to get live data before responding.` : "";
 
     try {
       const res1 = await fetch("/api/claude", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+stInstruction,
+          model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+faqContext+stInstruction,
           messages:newMsgs.map(m=>({ role:m.role, content:m.content })),
           tools:[{ type:"web_search_20250305", name:"web_search" }, stTool],
         }),
@@ -1641,7 +1660,7 @@ function AirIQ() {
               const res2 = await fetch("/api/claude", {
                 method:"POST", headers:{"Content-Type":"application/json"},
                 body: JSON.stringify({
-                  model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+stInstruction,
+                  model:"claude-sonnet-4-6", max_tokens:2000, system:SYS+faqContext+stInstruction,
                   messages: [
                     ...newMsgs.map(m=>({ role:m.role, content:m.content })),
                     { role:"assistant", content:data1.content },
