@@ -8588,7 +8588,10 @@ function FieldLog() {
   const [expandedStopId,   setExpandedStopId]   = React.useState(null);
   const [stopHistoryRange, setStopHistoryRange] = React.useState("today");
   const [historyLoading,   setHistoryLoading]   = React.useState(false);
-  const dashTimer = React.useRef(null);
+  const [draftBanner,      setDraftBanner]      = React.useState(false);
+  const dashTimer      = React.useRef(null);
+  const saveDraftTimer = React.useRef(null);
+  const draftMounted   = React.useRef(false);
 
   React.useEffect(() => {
     if (repName) fetchTally(repName);
@@ -8608,6 +8611,70 @@ function FieldLog() {
     }
     return () => clearInterval(dashTimer.current);
   }, [view]);
+
+  // Draft restore — runs on mount only
+  React.useEffect(() => {
+    if (!repName) { draftMounted.current = true; return; }
+    try {
+      const raw = localStorage.getItem(`airiq_fieldlog_draft_${repName}`);
+      if (!raw) { draftMounted.current = true; return; }
+      const d = JSON.parse(raw);
+      if (!d) { draftMounted.current = true; return; }
+      const hasContent = d.companyName || d.contactName || d.location || d.notes ||
+        d.pmOpp || d.equipOpp || d.serviceLead || d.pipingOpp ||
+        d.stickerPlaced || d.vrPresentation || d.apptSet || d.nothing;
+      if (!hasContent) { draftMounted.current = true; return; }
+      if (d.companyName)    setCompanyName(d.companyName);
+      if (d.contactName)    setContactName(d.contactName);
+      if (d.location)       setLocation(d.location);
+      if (d.notes)          setNotable(d.notes);
+      if (d.stickerCount)   setStickerCount(d.stickerCount);
+      const sel = {};
+      if (d.pmOpp)           sel.pmOpp = true;
+      if (d.equipOpp)        sel.equipOpp = true;
+      if (d.serviceLead)     sel.serviceLead = true;
+      if (d.pipingOpp)       sel.pipingOpp = true;
+      if (d.stickerPlaced)   sel.sticker = true;
+      if (d.vrPresentation)  sel.vrPres = true;
+      if (d.apptSet)         sel.apptSet = true;
+      if (d.nothing)         sel.nothing = true;
+      if (Object.keys(sel).length > 0) setSelected(sel);
+      setDraftBanner(true);
+      setTimeout(() => setDraftBanner(false), 3000);
+    } catch (e) { console.error('draft restore error:', e.message); }
+    // Delay enabling save until after the restored state has rendered,
+    // so the save effect can't wipe the draft with empty values first.
+    setTimeout(() => { draftMounted.current = true; }, 0);
+  }, []);
+
+  // Draft auto-save — 500ms debounce on every form field change
+  React.useEffect(() => {
+    if (!draftMounted.current) return;
+    if (!repName) return;
+    clearTimeout(saveDraftTimer.current);
+    saveDraftTimer.current = setTimeout(() => {
+      const hasContent = companyName || contactName || location || notable ||
+        Object.values(selected).some(Boolean) || stickerCount > 1;
+      if (!hasContent) {
+        try { localStorage.removeItem(`airiq_fieldlog_draft_${repName}`); } catch {}
+        return;
+      }
+      try {
+        localStorage.setItem(`airiq_fieldlog_draft_${repName}`, JSON.stringify({
+          companyName, contactName, branch, location, notes: notable,
+          pmOpp:          !!selected.pmOpp,
+          equipOpp:       !!selected.equipOpp,
+          serviceLead:    !!selected.serviceLead,
+          pipingOpp:      !!selected.pipingOpp,
+          stickerPlaced:  !!selected.sticker,
+          stickerCount,
+          vrPresentation: !!selected.vrPres,
+          apptSet:        !!selected.apptSet,
+          nothing:        !!selected.nothing,
+        }));
+      } catch {}
+    }, 500);
+  }, [repName, companyName, contactName, branch, location, notable, selected, stickerCount]);
 
   async function fetchTally(name) {
     const ctrl = new AbortController();
@@ -8758,6 +8825,7 @@ function FieldLog() {
       setStLeadConfirmed(false);
       setMemberEstConfirmed(false);
       setMsg("✓ Stop logged!");
+      try { localStorage.removeItem(`airiq_fieldlog_draft_${repName}`); } catch {}
       await fetchTally(repName);
       fetchStops(repName);
       setTimeout(() => setMsg(""), 3000);
@@ -8959,6 +9027,13 @@ function FieldLog() {
       {view === "rep" && (
         <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
 
+          {draftBanner && (
+            <div style={{ marginBottom:10, padding:"10px 14px",
+              background:"rgba(34,197,94,0.10)", border:"1px solid #22c55e",
+              borderRadius:8, fontFamily:F.mono, fontSize:11, letterSpacing:0.5, color:"#22c55e" }}>
+              📋 Draft restored — your previous stop info was saved
+            </div>
+          )}
 
           <div style={{ position:"relative", marginBottom:14 }}>
             <input value={stopSearch} onChange={e => setStopSearch(e.target.value)}
