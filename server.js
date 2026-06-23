@@ -1051,7 +1051,13 @@ app.get('/api/field-log/dashboard', async (req, res) => {
          SUM(vr_pres::int)::int      AS vr_pres,
          SUM(appt_set::int)::int     AS appt_set,
          SUM(nothing::int)::int      AS nothing,
-         MAX(logged_at)              AS last_logged
+         MAX(logged_at)              AS last_logged,
+         SUM(CASE WHEN (pm_opp OR equip_opp OR service_lead OR piping_opp OR appt_set OR vr_pres) THEN 1 ELSE 0 END)::int AS opp_stops,
+         ROUND(
+           CASE WHEN COUNT(*) = 0 THEN 0::numeric
+           ELSE SUM(CASE WHEN (pm_opp OR equip_opp OR service_lead OR piping_opp OR appt_set OR vr_pres) THEN 1 ELSE 0 END)::numeric / COUNT(*) * 100
+           END, 1
+         ) AS conversion_rate
        FROM field_log_entries
        ${whereClause}
        GROUP BY rep_name

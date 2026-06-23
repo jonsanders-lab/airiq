@@ -8863,6 +8863,13 @@ function FieldLog() {
     return C.red;
   }
 
+  function paceColorDark(stops) {
+    const s = Number(stops);
+    if (s >= 25) return "#15803d";
+    if (s >= 10) return "#B45309";
+    return "#991B1B";
+  }
+
   function timeSince(ts) {
     if (!ts) return "—";
     const mins = Math.round((Date.now() - new Date(ts)) / 60000);
@@ -8973,7 +8980,7 @@ function FieldLog() {
     const map = {};
     dashboard.forEach(d => { map[d.rep_name] = d; });
     return REPS
-      .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, service_leads: 0, piping_opps: 0, stickers: 0, vr_pres: 0, appt_set: 0, nothing: 0, last_logged: null })
+      .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, service_leads: 0, piping_opps: 0, stickers: 0, vr_pres: 0, appt_set: 0, nothing: 0, last_logged: null, opp_stops: 0, conversion_rate: 0 })
       .sort((a, b) => Number(b.stops) - Number(a.stops));
   }, [dashboard]);
 
@@ -9570,13 +9577,17 @@ function FieldLog() {
           </div>
 
 
-          <div style={{ display:"flex", gap:14, marginBottom:12 }}>
+          <div style={{ display:"flex", gap:14, marginBottom:12, flexWrap:"wrap" }}>
             {[[C.green,"25+ on pace"],["#F59E0B","10–24 behind"],[C.red,"<10 low"]].map(([color,label]) => (
               <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
                 <div style={{ width:8, height:8, borderRadius:"50%", background:color, flexShrink:0 }}/>
                 <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:0.5, color:C.mid }}>{label}</span>
               </div>
             ))}
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+              <div style={{ width:8, height:8, borderRadius:1, background:"#15803d", flexShrink:0 }}/>
+              <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:0.5, color:C.mid }}>darker = opp conversions</span>
+            </div>
           </div>
 
           
@@ -9585,6 +9596,8 @@ function FieldLog() {
               {repRows.map(row => {
                 const stops = Number(row.stops);
                 const pace  = paceColor(stops);
+                const cvr   = Number(row.conversion_rate) || 0;
+                const cvrColor = cvr >= 30 ? C.green : cvr >= 15 ? "#F59E0B" : C.red;
                 return (
                   <div key={row.rep_name} style={{
                     background:C.surface, border:`1px solid ${C.border}`,
@@ -9611,6 +9624,12 @@ function FieldLog() {
                         </div>
                       ))}
                     </div>
+                    {stops > 0 && (
+                      <div style={{ marginTop:7, paddingTop:5, borderTop:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:6 }}>
+                        <span style={{ fontFamily:F.head, fontSize:18, color:cvrColor, lineHeight:1 }}>{cvr.toFixed(1)}%</span>
+                        <span style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1 }}>CVR</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -9635,20 +9654,24 @@ function FieldLog() {
                     <span style={{ fontFamily:F.mono, fontSize:7, color:C.mid, lineHeight:"10px", background:C.surface, paddingLeft:3 }}>25</span>
                   </div>
                   
-                  <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:124, paddingTop:12 }}>
+                  <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:148, paddingTop:28 }}>
                     {repRows.map(row => {
-                      const s  = Number(row.stops);
-                      const pct = Math.min(s / 25, 1.5);
-                      const barH = s === 0 ? 2 : Math.max(pct * 110, 5);
-                      const col  = paceColor(s);
+                      const s       = Number(row.stops);
+                      const opp     = Number(row.opp_stops) || 0;
+                      const pct     = Math.min(s / 25, 1.5);
+                      const barH    = s === 0 ? 2 : Math.max(pct * 110, 5);
+                      const col     = paceColor(s);
+                      const darkCol = paceColorDark(s);
+                      const cvr     = s > 0 ? (opp / s * 100) : 0;
+                      const oppH    = s > 0 ? Math.round((opp / s) * barH) : 0;
                       return (
                         <div key={row.rep_name} style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", height:"100%" }}>
+                          {s > 0 && <div style={{ fontFamily:F.mono, fontSize:7, color:"#C17A35", lineHeight:1, marginBottom:1 }}>{Math.round(cvr)}%</div>}
                           <div style={{ fontFamily:F.mono, fontSize:9, color:col, lineHeight:1, marginBottom:2 }}>{s > 0 ? s : ""}</div>
-                          <div style={{
-                            width:"100%", borderRadius:"2px 2px 0 0", transition:"height 0.5s ease",
-                            background: s === 0 ? C.surface3 : col,
-                            height: barH,
-                          }}/>
+                          <div style={{ width:"100%", borderRadius:"2px 2px 0 0", overflow:"hidden", height:barH, display:"flex", flexDirection:"column", transition:"height 0.5s ease" }}>
+                            {s > 0 && oppH > 0 && <div style={{ width:"100%", height:oppH, background:darkCol, flexShrink:0 }}/>}
+                            <div style={{ width:"100%", flex:1, background: s === 0 ? C.surface3 : col }}/>
+                          </div>
                         </div>
                       );
                     })}
