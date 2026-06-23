@@ -9586,12 +9586,15 @@ function FieldLog() {
               </div>
             ))}
             <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-              <div style={{ width:8, height:8, borderRadius:1, background:"#15803d", flexShrink:0 }}/>
+              <div style={{ width:8, height:8, borderRadius:1, background:"#16a34a", flexShrink:0 }}/>
               <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:0.5, color:C.mid }}>darker = opp conversions</span>
             </div>
           </div>
+          <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid, lineHeight:1.5, marginBottom:10, opacity:0.75 }}>
+            darker segment = stops with at least one opp (Membership, Equipment, Service Lead, Piping, Appt Set, VR Pres) — this is <span style={{ color:C.copper }}>STOP-TO-OPP RATE</span>, not closing rate
+          </div>
 
-          
+
           {leaderSubView === "list" && (
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {repRows.map(row => {
