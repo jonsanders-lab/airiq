@@ -51,7 +51,8 @@ async function initFieldLogTable() {
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS office_phone  TEXT`);
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS email         TEXT`);
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS website       TEXT`);
-  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS card_address  TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS card_address    TEXT`);
+  await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS contact_title  TEXT`);
   await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_field_log_rep_logged ON field_log_entries (rep_name, logged_at DESC)`);
   console.log('field_log_entries table ready');
 }
@@ -987,19 +988,19 @@ app.post('/api/field-log', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
     const { repName, pmOpp, equipOpp, serviceLead, pipingOpp, sticker, vrPres, apptSet, nothing,
-            location, notableMoment, companyName, contactName, stickerCount,
+            location, notableMoment, companyName, contactName, contactTitle, stickerCount,
             mobile, officePhone, email, website, cardAddress, branch } = req.body;
     if (!repName) return res.status(400).json({ error: 'repName required' });
     const sc = sticker ? Math.max(1, Number(stickerCount) || 1) : 0;
     const { rows } = await pgPool.query(
       `INSERT INTO field_log_entries
          (rep_name, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
-          location, notable_moment, company_name, contact_name, sticker_count,
+          location, notable_moment, company_name, contact_name, contact_title, sticker_count,
           mobile, office_phone, email, website, card_address)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING id, logged_at`,
       [repName, !!pmOpp, !!equipOpp, !!serviceLead, !!pipingOpp, !!sticker, !!vrPres, !!apptSet, !!nothing,
-       location || null, notableMoment || null, companyName || null, contactName || null, sc,
+       location || null, notableMoment || null, companyName || null, contactName || null, contactTitle || null, sc,
        mobile || null, officePhone || null, email || null, website || null, cardAddress || null]
     );
     res.json({ success: true, id: rows[0].id, loggedAt: rows[0].logged_at });
@@ -1325,7 +1326,8 @@ app.get('/api/field-log/export', async (req, res) => {
          rep_name,
          (logged_at AT TIME ZONE 'America/New_York')::date::text AS date,
          TO_CHAR(logged_at AT TIME ZONE 'America/New_York', 'HH12:MI AM') AS time,
-         company_name, contact_name,
+         company_name, contact_name, contact_title,
+         email, office_phone, mobile, card_address,
          location AS area_location,
          notable_moment AS notes,
          pm_opp, equip_opp, service_lead, piping_opp,
