@@ -8663,11 +8663,16 @@ function FieldLog() {
   const [dashRange,  setDashRange]  = React.useState("today");
   const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   const [leaderSubView, setLeaderSubView] = React.useState("list");
-  const [showExport,   setShowExport]  = React.useState(false);
-  const [exportRange,  setExportRange] = React.useState("today");
-  const [exportStart,  setExportStart] = React.useState(() => new Date().toISOString().slice(0,10));
-  const [exportEnd,    setExportEnd]   = React.useState(() => new Date().toISOString().slice(0,10));
-  const [exporting,    setExporting]   = React.useState(false);
+  const [showExport,      setShowExport]      = React.useState(false);
+  const [exportRange,     setExportRange]     = React.useState("today");
+  const [exportStart,     setExportStart]     = React.useState(() => new Date().toISOString().slice(0,10));
+  const [exportEnd,       setExportEnd]       = React.useState(() => new Date().toISOString().slice(0,10));
+  const [exporting,       setExporting]       = React.useState(false);
+  const [showRepExport,   setShowRepExport]   = React.useState(false);
+  const [repExportRange,  setRepExportRange]  = React.useState("week");
+  const [repExportStart,  setRepExportStart]  = React.useState(() => new Date().toISOString().slice(0,10));
+  const [repExportEnd,    setRepExportEnd]    = React.useState(() => new Date().toISOString().slice(0,10));
+  const [repExporting,    setRepExporting]    = React.useState(false);
   const [weekData,     setWeekData]    = React.useState({bucket:'day', rows:[]});
   const [dbError,      setDbError]     = React.useState(null);
   const [companyName,  setCompanyName] = React.useState("");
@@ -8890,6 +8895,47 @@ function FieldLog() {
     }
   }
 
+  function stopOutcome(row) {
+    const f = [];
+    if (row.pm_opp)       f.push('Membership');
+    if (row.equip_opp)    f.push('Equipment');
+    if (row.service_lead) f.push('Service Lead');
+    if (row.piping_opp)   f.push('Piping');
+    if (row.sticker)      f.push('Sticker');
+    if (row.vr_pres)      f.push('VR Pres');
+    if (row.appt_set)     f.push('Appt Set');
+    if (row.nothing)      f.push('Nothing');
+    return f.join(', ');
+  }
+
+  function buildStopCSV(rows, repBranch) {
+    const esc = v => `"${(String(v||'')).replace(/"/g,'""')}"`;
+    const headers = ['Rep Name','Date','Time','Company','Contact','Branch','Outcome','Sticker Count','Notes','Area/Location'];
+    return [
+      headers.join(','),
+      ...rows.map(row => [
+        esc(row.rep_name),
+        row.date||'',
+        row.time||'',
+        esc(row.company_name),
+        esc(row.contact_name),
+        esc(repBranch||''),
+        esc(stopOutcome(row)),
+        row.sticker ? (row.sticker_count||1) : 0,
+        esc(row.notes),
+        esc(row.area_location),
+      ].join(','))
+    ].join('\n');
+  }
+
+  function triggerDownload(csv, filename) {
+    const blob = new Blob([csv], { type:'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function exportCSV() {
     setExporting(true);
     try {
@@ -8910,31 +8956,37 @@ function FieldLog() {
       const r = await fetch(`/api/field-log/export?start=${start}&end=${end}`);
       const rows = await r.json();
       if (!Array.isArray(rows)) throw new Error(rows.error || 'Export failed');
-      const headers = ['Rep Name','Date','Total Stops','Membership Opps','Equipment Opps','Service Leads','Piping/Install','Stickers Placed','VR Presentations','Appointments Set','Nothing','Companies','Contacts','Area/Location','Notes'];
-      const csv = [
-        headers.join(','),
-        ...rows.map(row => [
-          `"${(row.rep_name||'').replace(/"/g,'""')}"`,
-          row.date||'',
-          row.total_stops||0,
-          row.pm_opps||0, row.equip_opps||0, row.service_leads||0,
-          row.piping_opps||0, row.stickers||0, row.vr_pres||0,
-          row.appt_set||0, row.nothing||0,
-          `"${(row.companies||'').replace(/"/g,'""')}"`,
-          `"${(row.contacts||'').replace(/"/g,'""')}"`,
-          `"${(row.locations||'').replace(/"/g,'""')}"`,
-          `"${(row.notable_moments||'').replace(/"/g,'""')}"`,
-        ].join(','))
-      ].join('\n');
-      const filename = `FieldLog_${label}_${today}.csv`;
-      const blob = new Blob([csv], { type:'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(buildStopCSV(rows, ''), `FieldLog_AllReps_${label}_${today}.csv`);
       setShowExport(false);
     } catch (e) { alert('Export failed: ' + e.message); }
     setExporting(false);
+  }
+
+  async function exportRepCSV() {
+    setRepExporting(true);
+    try {
+      const today = new Date().toISOString().slice(0,10);
+      let start = '2020-01-01', end = today, label = 'AllTime';
+      if (repExportRange === 'today') {
+        start = today; label = 'Today';
+      } else if (repExportRange === 'week') {
+        const d = new Date(); const dow = d.getDay() || 7;
+        d.setDate(d.getDate() - dow + 1);
+        start = d.toISOString().slice(0,10); label = 'Week';
+      } else if (repExportRange === 'month') {
+        start = today.slice(0,7) + '-01'; label = 'Month';
+      } else if (repExportRange === 'custom') {
+        start = repExportStart; end = repExportEnd;
+        label = `${repExportStart}_to_${repExportEnd}`;
+      }
+      const r = await fetch(`/api/field-log/export?start=${start}&end=${end}&rep=${encodeURIComponent(repName)}`);
+      const rows = await r.json();
+      if (!Array.isArray(rows)) throw new Error(rows.error || 'Export failed');
+      const safeRep = (repName||'Rep').replace(/[^a-zA-Z0-9]/g, '_');
+      triggerDownload(buildStopCSV(rows, branch), `MyStops_${safeRep}_${label}_${today}.csv`);
+      setShowRepExport(false);
+    } catch (e) { alert('Export failed: ' + e.message); }
+    setRepExporting(false);
   }
 
   function toggleActivity(id) {
@@ -9526,6 +9578,11 @@ function FieldLog() {
                       }}>{lbl}</button>
                     ))}
                   </div>
+                  <button onClick={() => setShowRepExport(true)} style={{
+                    flexShrink:0, background:"rgba(193,122,53,0.18)", border:`1px solid rgba(193,122,53,0.5)`,
+                    borderRadius:6, padding:"4px 10px", color:C.copper,
+                    fontFamily:F.mono, fontSize:9, letterSpacing:1, cursor:"pointer",
+                  }}>↓ EXPORT</button>
                 </div>
                 <div style={{ display:"flex", gap:4 }}>
                   {[["today","TODAY"],["week","WEEK"],["month","MONTH"],["all","ALL TIME"]].map(([v,lbl]) => (
@@ -10180,6 +10237,48 @@ function FieldLog() {
             </div>
           )}
 
+
+          {showRepExport && (
+            <div onClick={() => setShowRepExport(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:10020, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+              <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid ${C.copper}`, borderRadius:12, padding:24, maxWidth:360, width:"100%" }}>
+                <div style={{ fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.copper, marginBottom:4 }}>EXPORT MY STOPS</div>
+                <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:16 }}>{repName||'—'}{branch ? ` · ${branch}` : ''}</div>
+                {[["today","Today"],["week","This Week"],["month","This Month"],["all","All Time"],["custom","Custom Range"]].map(([v,lbl]) => (
+                  <label key={v} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}`, cursor:"pointer" }}>
+                    <input type="radio" name="repExportRange" checked={repExportRange===v} onChange={() => setRepExportRange(v)} style={{ accentColor:C.copper, width:16, height:16, cursor:"pointer" }}/>
+                    <span style={{ fontFamily:F.body, fontSize:15, color:C.text }}>{lbl}</span>
+                  </label>
+                ))}
+                {repExportRange === "custom" && (
+                  <div style={{ display:"flex", gap:10, marginTop:12 }}>
+                    {[["FROM",repExportStart,setRepExportStart],["TO",repExportEnd,setRepExportEnd]].map(([lbl,val,set]) => (
+                      <div key={lbl} style={{ flex:1 }}>
+                        <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:4 }}>{lbl}</div>
+                        <input type="date" value={val} onChange={e => set(e.target.value)} style={{
+                          width:"100%", background:C.surface2, border:`1px solid ${C.border}`,
+                          borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13,
+                          padding:"8px 10px", boxSizing:"border-box",
+                        }}/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:10, marginTop:20 }}>
+                  <button onClick={exportRepCSV} disabled={repExporting} style={{
+                    flex:1, padding:"13px 0",
+                    background:`linear-gradient(135deg,${C.copper},#A0632A)`,
+                    border:"none", borderRadius:8, fontFamily:F.head, fontSize:16,
+                    letterSpacing:2, color:"#fff", cursor: repExporting ? "not-allowed" : "pointer",
+                    opacity: repExporting ? 0.6 : 1,
+                  }}>{repExporting ? "EXPORTING..." : "EXPORT CSV"}</button>
+                  <button onClick={() => setShowRepExport(false)} style={{
+                    padding:"13px 16px", background:"transparent", border:`1px solid ${C.border}`,
+                    borderRadius:8, fontFamily:F.mono, fontSize:11, color:C.mid, cursor:"pointer",
+                  }}>CANCEL</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {showExport && (
             <div onClick={() => setShowExport(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:10020, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>

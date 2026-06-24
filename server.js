@@ -1315,33 +1315,26 @@ app.get('/api/field-log/stops/:repName/all', async (req, res) => {
 app.get('/api/field-log/export', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
-    const { start, end } = req.query;
+    const { start, end, rep } = req.query;
     const today = new Date().toISOString().slice(0,10);
+    const params = [start || today, end || today];
+    const repFilter = rep ? `AND rep_name = $3` : '';
+    if (rep) params.push(rep);
     const { rows } = await pgPool.query(
       `SELECT
          rep_name,
          (logged_at AT TIME ZONE 'America/New_York')::date::text AS date,
-         COUNT(*)::int                                                        AS total_stops,
-         SUM(pm_opp::int)::int                                                AS pm_opps,
-         SUM(equip_opp::int)::int                                             AS equip_opps,
-         SUM(service_lead::int)::int                                          AS service_leads,
-         SUM(piping_opp::int)::int                                            AS piping_opps,
-         SUM(COALESCE(sticker_count, sticker::int))::int                        AS stickers,
-         SUM(vr_pres::int)::int                                               AS vr_pres,
-         SUM(appt_set::int)::int                                              AS appt_set,
-         SUM(nothing::int)::int                                               AS nothing,
-         STRING_AGG(DISTINCT location, '; ')     FILTER (WHERE location     IS NOT NULL AND location     <> '') AS locations,
-         STRING_AGG(notable_moment, ' | ')        FILTER (WHERE notable_moment IS NOT NULL AND notable_moment <> '') AS notable_moments,
-         STRING_AGG(DISTINCT company_name, '; ') FILTER (WHERE company_name IS NOT NULL AND company_name <> '') AS companies,
-         STRING_AGG(DISTINCT contact_name, '; ') FILTER (WHERE contact_name IS NOT NULL AND contact_name <> '') AS contacts
-       FROM (
-         SELECT *, (logged_at AT TIME ZONE 'America/New_York')::date AS date_local
-         FROM field_log_entries
-         WHERE (logged_at AT TIME ZONE 'America/New_York')::date BETWEEN $1::date AND $2::date
-       ) sub
-       GROUP BY rep_name, date
-       ORDER BY date, rep_name`,
-      [start || today, end || today]
+         TO_CHAR(logged_at AT TIME ZONE 'America/New_York', 'HH12:MI AM') AS time,
+         company_name, contact_name,
+         location AS area_location,
+         notable_moment AS notes,
+         pm_opp, equip_opp, service_lead, piping_opp,
+         sticker, sticker_count, vr_pres, appt_set, nothing
+       FROM field_log_entries
+       WHERE (logged_at AT TIME ZONE 'America/New_York')::date BETWEEN $1::date AND $2::date
+       ${repFilter}
+       ORDER BY date ASC, rep_name ASC, logged_at ASC`,
+      params
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
