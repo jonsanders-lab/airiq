@@ -1171,7 +1171,7 @@ app.patch('/api/field-log/stop/:id', async (req, res) => {
          appt_set       = $12,
          nothing        = $13
        WHERE id = $14
-       RETURNING id, logged_at, company_name, contact_name, location, notable_moment,
+       RETURNING id, rep_name, logged_at, company_name, contact_name, location, notable_moment,
                  pm_opp, equip_opp, service_lead, piping_opp, sticker, sticker_count,
                  vr_pres, appt_set, nothing, mobile, office_phone, email, website, card_address`,
       [
@@ -1183,7 +1183,30 @@ app.patch('/api/field-log/stop/:id', async (req, res) => {
       ]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Stop not found' });
-    res.json(rows[0]);
+    const updated = rows[0];
+    res.json(updated);
+    if (updated.company_name && process.env.MONDAY_API_KEY) {
+      mondayUpsertProspect({
+        repName:       updated.rep_name,
+        companyName:   updated.company_name,
+        contactName:   updated.contact_name,
+        location:      updated.location,
+        notableMoment: updated.notable_moment,
+        pmOpp:         updated.pm_opp,
+        equipOpp:      updated.equip_opp,
+        serviceLead:   updated.service_lead,
+        pipingOpp:     updated.piping_opp,
+        sticker:       updated.sticker,
+        vrPres:        updated.vr_pres,
+        apptSet:       updated.appt_set,
+        nothing:       updated.nothing,
+        stickerCount:  updated.sticker_count,
+        mobile:        updated.mobile,
+        officePhone:   updated.office_phone,
+        email:         updated.email,
+        branch:        null,
+      }).catch(e => console.error('Monday upsert error (PATCH):', e.message));
+    }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
