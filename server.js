@@ -56,6 +56,25 @@ async function initFieldLogTable() {
   console.log('field_log_entries table ready');
 }
 
+// ─── BRANCH TIMEZONE MAP ─────────────────────────────────────────────────────
+const BRANCH_TZ = {
+  Atlanta:    'America/New_York',
+  Charlotte:  'America/New_York',
+  Tampa:      'America/New_York',
+  Greenville: 'America/New_York',
+  Cleveland:  'America/New_York',
+  Nashville:  'America/Chicago',
+  Detroit:    'America/Chicago',
+  Dallas:     'America/Chicago',
+  Chicago:    'America/Chicago',
+};
+// branch values from client are e.g. "Nashville Compressor" — match by substring
+function getTZ(branch) {
+  if (!branch) return 'America/New_York';
+  const key = Object.keys(BRANCH_TZ).find(k => branch.toLowerCase().includes(k.toLowerCase()));
+  return key ? BRANCH_TZ[key] : 'America/New_York';
+}
+
 // ─── ESTIMATES PERSISTENCE ────────────────────────────────────────────────────
 const ESTIMATES_FILE = path.join(__dirname, 'data', 'estimates.json');
 
@@ -1002,6 +1021,7 @@ app.post('/api/field-log', async (req, res) => {
 app.get('/api/field-log/today/:repName', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
+    const TZ = getTZ(req.query.branch);
     const { rows } = await pgPool.query(
       `SELECT
          COUNT(*)::int               AS stops,
@@ -1015,7 +1035,7 @@ app.get('/api/field-log/today/:repName', async (req, res) => {
          SUM(nothing::int)::int      AS nothing
        FROM field_log_entries
        WHERE rep_name = $1
-         AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`,
+         AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`,
       [req.params.repName]
     );
     res.json(rows[0]);
@@ -1242,13 +1262,14 @@ app.get('/api/field-log/all-stops', async (req, res) => {
 app.get('/api/field-log/stops/:repName', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
+    const TZ = getTZ(req.query.branch);
     const { rows } = await pgPool.query(
       `SELECT id, logged_at, pm_opp, equip_opp, service_lead, piping_opp, sticker, vr_pres, appt_set, nothing,
               location, notable_moment, company_name, contact_name, sticker_count,
               mobile, office_phone, email, website, card_address
        FROM field_log_entries
        WHERE rep_name = $1
-         AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'
+         AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'
        ORDER BY logged_at DESC`,
       [req.params.repName]
     );
@@ -1262,16 +1283,17 @@ app.get('/api/field-log/stops/:repName/all', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
     const range = req.query.range || 'all';
+    const TZ = getTZ(req.query.branch);
     let dateFilter = '';
     let limitClause = 'LIMIT 2000';
     if (range === 'today') {
-      dateFilter = `AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`;
+      dateFilter = `AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
       limitClause = '';
     } else if (range === 'week') {
-      dateFilter = `AND logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`;
+      dateFilter = `AND logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
       limitClause = '';
     } else if (range === 'month') {
-      dateFilter = `AND logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`;
+      dateFilter = `AND logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
       limitClause = '';
     }
     const { rows } = await pgPool.query(
