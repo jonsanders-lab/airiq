@@ -533,8 +533,8 @@ HTV30: 25L / 6.60 gal
 HTV40: 25L / 6.60 gal
 HTV50: 26L / 6.87 gal
 HTV60: 26L / 6.87 gal
-HTV75: 80L / 21.13 gal (estimated — confirm with service team)
-HTV100: 80L / 21.13 gal (estimated — confirm with service team)
+HTV75: 80L / 21.13 gal
+HTV100: 80L / 21.13 gal
 HTV120: 85L / 22.45 gal
 HTV150: 95L / 25.09 gal
 HTV175: 95L / 25.09 gal
@@ -8694,7 +8694,13 @@ function FieldLog() {
   const [expandedStopId,   setExpandedStopId]   = React.useState(null);
   const [stopHistoryRange, setStopHistoryRange] = React.useState("today");
   const [historyLoading,   setHistoryLoading]   = React.useState(false);
-  const [draftBanner,      setDraftBanner]      = React.useState(false);
+  const [draftBanner,          setDraftBanner]          = React.useState(false);
+  const [editingStopId,        setEditingStopId]        = React.useState(null);
+  const [editStop,             setEditStop]             = React.useState({});
+  const [editSaving,           setEditSaving]           = React.useState(false);
+  const [allLeaderStops,       setAllLeaderStops]       = React.useState([]);
+  const [allLeaderLoad,        setAllLeaderLoad]        = React.useState(false);
+  const [expandedLeaderStopId, setExpandedLeaderStopId] = React.useState(null);
   const dashTimer      = React.useRef(null);
   const dashRangeRef   = React.useRef("today");
   const saveDraftTimer = React.useRef(null);
@@ -8712,6 +8718,7 @@ function FieldLog() {
     if (view === "leader") {
       fetchDashboard();
       fetchWeekData();
+      fetchAllStops();
       dashTimer.current = setInterval(fetchDashboard, 60000);
     } else {
       clearInterval(dashTimer.current);
@@ -8830,6 +8837,56 @@ function FieldLog() {
       console.error('Field Log fetchWeekData error:', e.message);
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  async function fetchAllStops() {
+    setAllLeaderLoad(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const r = await fetch(`/api/field-log/all-stops?range=${dashRangeRef.current}`, { signal: ctrl.signal });
+      const d = await r.json();
+      if (Array.isArray(d)) { setAllLeaderStops(d); setExpandedLeaderStopId(null); }
+    } catch (e) {
+      console.error('fetchAllStops error:', e.message);
+    } finally {
+      clearTimeout(timer);
+      setAllLeaderLoad(false);
+    }
+  }
+
+  async function saveStopEdit(id) {
+    setEditSaving(true);
+    try {
+      const r = await fetch(`/api/field-log/stop/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_name:   editStop.companyName,
+          contact_name:   editStop.contactName,
+          location:       editStop.location,
+          notes:          editStop.notes,
+          pm_opp:         editStop.pmOpp,
+          equip_opp:      editStop.equipOpp,
+          service_lead:   editStop.serviceLead,
+          piping_opp:     editStop.pipingOpp,
+          sticker_placed: editStop.stickerPlaced,
+          sticker_count:  editStop.stickerCount,
+          vr_pres:        editStop.vrPres,
+          appt_set:       editStop.apptSet,
+          nothing:        editStop.nothing,
+        }),
+      });
+      const updated = await r.json();
+      if (updated.error) throw new Error(updated.error);
+      setStops(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s));
+      setEditingStopId(null);
+      setEditStop({});
+    } catch (e) {
+      console.error('saveStopEdit error:', e.message);
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -9527,25 +9584,105 @@ function FieldLog() {
                             </div>
                           )}
                           {isExp && (
-                            <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-                              {s.notable_moment && (
-                                <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
-                                  {s.notable_moment}
+                            editingStopId === s.id ? (
+                              <div onClick={e => e.stopPropagation()} style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+                                {[["Company","companyName"],["Contact","contactName"],["Location","location"]].map(([lbl,key]) => (
+                                  <div key={key} style={{ marginBottom:8 }}>
+                                    <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:3 }}>{lbl.toUpperCase()}</div>
+                                    <input value={editStop[key]||''} onChange={e => setEditStop(p=>({...p,[key]:e.target.value}))} style={{
+                                      width:"100%", background:C.surface2, border:`1px solid ${C.border}`,
+                                      borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13, padding:"7px 10px", boxSizing:"border-box",
+                                    }}/>
+                                  </div>
+                                ))}
+                                <div style={{ marginBottom:8 }}>
+                                  <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:3 }}>NOTES</div>
+                                  <textarea value={editStop.notes||''} onChange={e => setEditStop(p=>({...p,notes:e.target.value}))} rows={3} style={{
+                                    width:"100%", background:C.surface2, border:`1px solid ${C.border}`,
+                                    borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13, padding:"7px 10px", resize:"vertical", boxSizing:"border-box",
+                                  }}/>
                                 </div>
-                              )}
-                              {hasCard && (
-                                <div style={{ background:C.surface2, borderRadius:6, padding:"8px 12px", display:"flex", flexDirection:"column", gap:4 }}>
-                                  <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.copper, marginBottom:2 }}>CARD DETAILS</div>
-                                  {[["MOBILE",s.mobile],["OFFICE",s.office_phone],["EMAIL",s.email],["WEBSITE",s.website],["ADDRESS",s.card_address]]
-                                    .filter(([,v])=>v).map(([label,val])=>(
-                                    <div key={label} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-                                      <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:52, paddingTop:1 }}>{label}</span>
-                                      <span style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                                <div style={{ marginBottom:8 }}>
+                                  <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:5 }}>OUTCOMES</div>
+                                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                                    {[["pmOpp","Membership"],["equipOpp","Equip Opp"],["serviceLead","Service Lead"],
+                                      ["pipingOpp","Piping"],["stickerPlaced","Sticker"],["vrPres","VR Pres"],["apptSet","Appt Set"],["nothing","Nothing"],
+                                    ].map(([key,lbl]) => (
+                                      <button key={key} onClick={() => setEditStop(p=>({...p,[key]:!p[key]}))} style={{
+                                        padding:"5px 12px", borderRadius:8, cursor:"pointer",
+                                        border:`1px solid ${editStop[key] ? C.blue : C.border}`,
+                                        background: editStop[key] ? "rgba(59,130,246,0.18)" : C.surface2,
+                                        color: editStop[key] ? C.blueLight : C.mid, fontFamily:F.mono, fontSize:10,
+                                      }}>{lbl}</button>
+                                    ))}
+                                  </div>
+                                </div>
+                                {editStop.stickerPlaced && (
+                                  <div style={{ marginBottom:8 }}>
+                                    <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:3 }}>STICKER COUNT</div>
+                                    <div style={{ display:"flex", gap:6 }}>
+                                      {[1,2,3,4,5].map(n => (
+                                        <button key={n} onClick={() => setEditStop(p=>({...p,stickerCount:n}))} style={{
+                                          width:32, height:32, borderRadius:6, cursor:"pointer",
+                                          border:`1px solid ${editStop.stickerCount===n ? C.copper : C.border}`,
+                                          background: editStop.stickerCount===n ? "rgba(193,122,53,0.18)" : C.surface2,
+                                          color: editStop.stickerCount===n ? C.copper : C.mid, fontFamily:F.head, fontSize:16,
+                                        }}>{n}</button>
+                                      ))}
                                     </div>
-                                  ))}
+                                  </div>
+                                )}
+                                <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                                  <button onClick={() => saveStopEdit(s.id)} disabled={editSaving} style={{
+                                    flex:1, padding:"10px 0", borderRadius:8, border:"none",
+                                    background: editSaving ? C.surface3 : C.blue, color:"#fff",
+                                    fontFamily:F.mono, fontSize:11, letterSpacing:1, cursor: editSaving ? "default" : "pointer",
+                                  }}>{editSaving ? "SAVING..." : "SAVE CHANGES"}</button>
+                                  <button onClick={() => { setEditingStopId(null); setEditStop({}); }} style={{
+                                    padding:"10px 16px", borderRadius:8, border:`1px solid ${C.border}`,
+                                    background:C.surface2, color:C.mid, fontFamily:F.mono, fontSize:11, letterSpacing:1, cursor:"pointer",
+                                  }}>CANCEL</button>
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            ) : (
+                              <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+                                <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
+                                  <button onClick={e => {
+                                    e.stopPropagation();
+                                    setEditingStopId(s.id);
+                                    setEditStop({
+                                      companyName:s.company_name||'', contactName:s.contact_name||'',
+                                      location:s.location||'', notes:s.notable_moment||'',
+                                      pmOpp:!!s.pm_opp, equipOpp:!!s.equip_opp, serviceLead:!!s.service_lead,
+                                      pipingOpp:!!s.piping_opp, stickerPlaced:!!s.sticker,
+                                      stickerCount:Number(s.sticker_count)||1,
+                                      vrPres:!!s.vr_pres, apptSet:!!s.appt_set, nothing:!!s.nothing,
+                                    });
+                                  }} style={{
+                                    background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+                                    color:C.mid, fontFamily:F.mono, fontSize:9, letterSpacing:1.5,
+                                    padding:"3px 10px", cursor:"pointer",
+                                  }}>EDIT</button>
+                                </div>
+                                {s.notable_moment && (
+                                  <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
+                                    {s.notable_moment}
+                                  </div>
+                                )}
+                                {hasCard && (
+                                  <div style={{ background:C.surface2, borderRadius:6, padding:"8px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+                                    <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.copper, marginBottom:2 }}>CARD DETAILS</div>
+                                    {[["MOBILE",s.mobile],["OFFICE",s.office_phone],["EMAIL",s.email],["WEBSITE",s.website],["ADDRESS",s.card_address]]
+                                      .filter(([,v])=>v).map(([label,val])=>(
+                                      <div key={label} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                                        <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:52, paddingTop:1 }}>{label}</span>
+                                        <span style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
                           )}
                         </div>
                       );
@@ -9585,25 +9722,105 @@ function FieldLog() {
                         </div>
                       )}
                       {isExp && (
-                        <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-                          {s.notable_moment && (
-                            <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
-                              {s.notable_moment}
+                        editingStopId === s.id ? (
+                          <div onClick={e => e.stopPropagation()} style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+                            {[["Company","companyName"],["Contact","contactName"],["Location","location"]].map(([lbl,key]) => (
+                              <div key={key} style={{ marginBottom:8 }}>
+                                <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:3 }}>{lbl.toUpperCase()}</div>
+                                <input value={editStop[key]||''} onChange={e => setEditStop(p=>({...p,[key]:e.target.value}))} style={{
+                                  width:"100%", background:C.surface2, border:`1px solid ${C.border}`,
+                                  borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13, padding:"7px 10px", boxSizing:"border-box",
+                                }}/>
+                              </div>
+                            ))}
+                            <div style={{ marginBottom:8 }}>
+                              <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:3 }}>NOTES</div>
+                              <textarea value={editStop.notes||''} onChange={e => setEditStop(p=>({...p,notes:e.target.value}))} rows={3} style={{
+                                width:"100%", background:C.surface2, border:`1px solid ${C.border}`,
+                                borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13, padding:"7px 10px", resize:"vertical", boxSizing:"border-box",
+                              }}/>
                             </div>
-                          )}
-                          {hasCard && (
-                            <div style={{ background:C.surface2, borderRadius:6, padding:"8px 12px", display:"flex", flexDirection:"column", gap:4 }}>
-                              <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.copper, marginBottom:2 }}>CARD DETAILS</div>
-                              {[["MOBILE",s.mobile],["OFFICE",s.office_phone],["EMAIL",s.email],["WEBSITE",s.website],["ADDRESS",s.card_address]]
-                                .filter(([,v])=>v).map(([label,val])=>(
-                                <div key={label} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-                                  <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:52, paddingTop:1 }}>{label}</span>
-                                  <span style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                            <div style={{ marginBottom:8 }}>
+                              <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:5 }}>OUTCOMES</div>
+                              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                                {[["pmOpp","Membership"],["equipOpp","Equip Opp"],["serviceLead","Service Lead"],
+                                  ["pipingOpp","Piping"],["stickerPlaced","Sticker"],["vrPres","VR Pres"],["apptSet","Appt Set"],["nothing","Nothing"],
+                                ].map(([key,lbl]) => (
+                                  <button key={key} onClick={() => setEditStop(p=>({...p,[key]:!p[key]}))} style={{
+                                    padding:"5px 12px", borderRadius:8, cursor:"pointer",
+                                    border:`1px solid ${editStop[key] ? C.blue : C.border}`,
+                                    background: editStop[key] ? "rgba(59,130,246,0.18)" : C.surface2,
+                                    color: editStop[key] ? C.blueLight : C.mid, fontFamily:F.mono, fontSize:10,
+                                  }}>{lbl}</button>
+                                ))}
+                              </div>
+                            </div>
+                            {editStop.stickerPlaced && (
+                              <div style={{ marginBottom:8 }}>
+                                <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:3 }}>STICKER COUNT</div>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  {[1,2,3,4,5].map(n => (
+                                    <button key={n} onClick={() => setEditStop(p=>({...p,stickerCount:n}))} style={{
+                                      width:32, height:32, borderRadius:6, cursor:"pointer",
+                                      border:`1px solid ${editStop.stickerCount===n ? C.copper : C.border}`,
+                                      background: editStop.stickerCount===n ? "rgba(193,122,53,0.18)" : C.surface2,
+                                      color: editStop.stickerCount===n ? C.copper : C.mid, fontFamily:F.head, fontSize:16,
+                                    }}>{n}</button>
+                                  ))}
                                 </div>
-                              ))}
+                              </div>
+                            )}
+                            <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                              <button onClick={() => saveStopEdit(s.id)} disabled={editSaving} style={{
+                                flex:1, padding:"10px 0", borderRadius:8, border:"none",
+                                background: editSaving ? C.surface3 : C.blue, color:"#fff",
+                                fontFamily:F.mono, fontSize:11, letterSpacing:1, cursor: editSaving ? "default" : "pointer",
+                              }}>{editSaving ? "SAVING..." : "SAVE CHANGES"}</button>
+                              <button onClick={() => { setEditingStopId(null); setEditStop({}); }} style={{
+                                padding:"10px 16px", borderRadius:8, border:`1px solid ${C.border}`,
+                                background:C.surface2, color:C.mid, fontFamily:F.mono, fontSize:11, letterSpacing:1, cursor:"pointer",
+                              }}>CANCEL</button>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        ) : (
+                          <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+                            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
+                              <button onClick={e => {
+                                e.stopPropagation();
+                                setEditingStopId(s.id);
+                                setEditStop({
+                                  companyName:s.company_name||'', contactName:s.contact_name||'',
+                                  location:s.location||'', notes:s.notable_moment||'',
+                                  pmOpp:!!s.pm_opp, equipOpp:!!s.equip_opp, serviceLead:!!s.service_lead,
+                                  pipingOpp:!!s.piping_opp, stickerPlaced:!!s.sticker,
+                                  stickerCount:Number(s.sticker_count)||1,
+                                  vrPres:!!s.vr_pres, apptSet:!!s.appt_set, nothing:!!s.nothing,
+                                });
+                              }} style={{
+                                background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+                                color:C.mid, fontFamily:F.mono, fontSize:9, letterSpacing:1.5,
+                                padding:"3px 10px", cursor:"pointer",
+                              }}>EDIT</button>
+                            </div>
+                            {s.notable_moment && (
+                              <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
+                                {s.notable_moment}
+                              </div>
+                            )}
+                            {hasCard && (
+                              <div style={{ background:C.surface2, borderRadius:6, padding:"8px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+                                <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.copper, marginBottom:2 }}>CARD DETAILS</div>
+                                {[["MOBILE",s.mobile],["OFFICE",s.office_phone],["EMAIL",s.email],["WEBSITE",s.website],["ADDRESS",s.card_address]]
+                                  .filter(([,v])=>v).map(([label,val])=>(
+                                  <div key={label} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                                    <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:52, paddingTop:1 }}>{label}</span>
+                                    <span style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
                       )}
                     </div>
                   );
@@ -9653,6 +9870,7 @@ function FieldLog() {
                 setDashRange(r);
                 fetchDashboard();
                 fetchWeekData();
+                fetchAllStops();
               }} style={{
                 padding:"5px 12px", borderRadius:6, cursor:"pointer",
                 border:`1px solid ${dashRange===r ? C.copper : C.border}`,
@@ -9875,10 +10093,94 @@ function FieldLog() {
                   </div>
                 );
               })()}
+
+              {/* All stops detail list — grouped by rep */}
+              <div style={{ marginTop:16 }}>
+                <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1.5, marginBottom:10, display:"flex", alignItems:"center", gap:8 }}>
+                  <span>ALL STOPS — {`${{ today:"TODAY", week:"THIS WEEK", month:"THIS MONTH", all:"ALL TIME" }[dashRange]}`}</span>
+                  {allLeaderLoad && <span style={{ color:C.orange }}>LOADING…</span>}
+                </div>
+                {(()=>{
+                  const grouped = {};
+                  allLeaderStops.forEach(s => {
+                    if (!grouped[s.rep_name]) grouped[s.rep_name] = [];
+                    grouped[s.rep_name].push(s);
+                  });
+                  const repNames = Object.keys(grouped).sort();
+                  if (repNames.length === 0 && !allLeaderLoad) {
+                    return <div style={{ fontFamily:F.mono, fontSize:10, color:C.mid, padding:"12px 0" }}>No stops logged for this period.</div>;
+                  }
+                  return repNames.map(name => (
+                    <div key={name} style={{ marginBottom:18 }}>
+                      <div style={{ fontFamily:F.head, fontSize:15, letterSpacing:2, color:C.copper,
+                        paddingBottom:4, marginBottom:6, borderBottom:`1px solid rgba(193,122,53,0.3)` }}>
+                        {name} <span style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1 }}>({grouped[name].length} stop{grouped[name].length!==1?'s':''})</span>
+                      </div>
+                      {grouped[name].map(s => {
+                        const isLExp = expandedLeaderStopId === s.id;
+                        const hasCard = s.mobile || s.office_phone || s.email || s.website || s.card_address;
+                        const lbls = activityLabels(s);
+                        return (
+                          <div key={s.id} onClick={() => setExpandedLeaderStopId(isLExp ? null : s.id)}
+                            style={{ background:C.surface, border:`1px solid ${isLExp ? C.copper : C.border}`,
+                              borderRadius:8, padding:"9px 12px", marginBottom:5, cursor:"pointer" }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                {s.company_name && <div style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:C.text }}>{s.company_name}</div>}
+                                {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:10, color:C.mid }}>{s.contact_name}</div>}
+                              </div>
+                              <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0, marginLeft:8 }}>
+                                <span style={{ fontFamily:F.mono, fontSize:9, color:C.dim }}>{formatTime(s.logged_at)}</span>
+                                <span style={{ color:C.mid, fontSize:10 }}>{isLExp ? "▲" : "▼"}</span>
+                              </div>
+                            </div>
+                            {s.location && <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, marginTop:3 }}>📍 {s.location}</div>}
+                            {lbls.length > 0 && (
+                              <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:4 }}>
+                                {lbls.map(lbl => (
+                                  <span key={lbl} style={{ fontFamily:F.mono, fontSize:8, padding:"2px 6px", borderRadius:10,
+                                    background:"rgba(59,130,246,0.12)", color:C.blueLight, border:`1px solid rgba(59,130,246,0.2)` }}>{lbl}</span>
+                                ))}
+                              </div>
+                            )}
+                            {!isLExp && s.notable_moment && (
+                              <div style={{ fontFamily:F.body, fontSize:11, color:C.mid, lineHeight:1.4, marginTop:3,
+                                overflow:"hidden", display:"-webkit-box", WebkitLineClamp:1, WebkitBoxOrient:"vertical" }}>
+                                {s.notable_moment}
+                              </div>
+                            )}
+                            {isLExp && (
+                              <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+                                {s.notable_moment && (
+                                  <div style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
+                                    {s.notable_moment}
+                                  </div>
+                                )}
+                                {hasCard && (
+                                  <div style={{ background:C.surface2, borderRadius:6, padding:"8px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+                                    <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.copper, marginBottom:2 }}>CARD DETAILS</div>
+                                    {[["MOBILE",s.mobile],["OFFICE",s.office_phone],["EMAIL",s.email],["WEBSITE",s.website],["ADDRESS",s.card_address]]
+                                      .filter(([,v])=>v).map(([lbl,val])=>(
+                                      <div key={lbl} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                                        <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, minWidth:52, paddingTop:1 }}>{lbl}</span>
+                                        <span style={{ fontFamily:F.body, fontSize:12, color:C.text, lineHeight:1.4, wordBreak:"break-all" }}>{val}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ));
+                })()}
+              </div>
             </div>
           )}
 
-          
+
           {showExport && (
             <div onClick={() => setShowExport(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:10020, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
               <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid ${C.copper}`, borderRadius:12, padding:24, maxWidth:360, width:"100%" }}>

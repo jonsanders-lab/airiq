@@ -1145,6 +1145,76 @@ app.get('/api/field-log/trend', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.patch('/api/field-log/stop/:id', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid stop id' });
+  const {
+    company_name, contact_name, location, notes,
+    pm_opp, equip_opp, service_lead, piping_opp,
+    sticker_placed, sticker_count, vr_pres, appt_set, nothing,
+  } = req.body;
+  try {
+    const { rows } = await pgPool.query(
+      `UPDATE field_log_entries SET
+         company_name   = $1,
+         contact_name   = $2,
+         location       = $3,
+         notable_moment = $4,
+         pm_opp         = $5,
+         equip_opp      = $6,
+         service_lead   = $7,
+         piping_opp     = $8,
+         sticker        = $9,
+         sticker_count  = $10,
+         vr_pres        = $11,
+         appt_set       = $12,
+         nothing        = $13
+       WHERE id = $14
+       RETURNING id, logged_at, company_name, contact_name, location, notable_moment,
+                 pm_opp, equip_opp, service_lead, piping_opp, sticker, sticker_count,
+                 vr_pres, appt_set, nothing, mobile, office_phone, email, website, card_address`,
+      [
+        company_name || null, contact_name || null, location || null, notes || null,
+        !!pm_opp, !!equip_opp, !!service_lead, !!piping_opp,
+        !!sticker_placed, sticker_placed ? Math.max(1, Number(sticker_count) || 1) : 0,
+        !!vr_pres, !!appt_set, !!nothing,
+        id,
+      ]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Stop not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/field-log/all-stops', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  const range = req.query.range || 'today';
+  const TZ = 'America/New_York';
+  let whereClause;
+  if (range === 'week') {
+    whereClause = `WHERE logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+  } else if (range === 'month') {
+    whereClause = `WHERE logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+  } else if (range === 'all') {
+    whereClause = '';
+  } else {
+    whereClause = `WHERE logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+  }
+  try {
+    const { rows } = await pgPool.query(
+      `SELECT id, rep_name, logged_at, company_name, contact_name, location, notable_moment,
+              pm_opp, equip_opp, service_lead, piping_opp, sticker, sticker_count,
+              vr_pres, appt_set, nothing, mobile, office_phone, email, website, card_address
+       FROM field_log_entries
+       ${whereClause}
+       ORDER BY rep_name ASC, logged_at DESC
+       LIMIT 2000`
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/field-log/stops/:repName', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
