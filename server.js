@@ -1014,7 +1014,8 @@ app.get('/api/field-log/today/:repName', async (req, res) => {
          SUM(appt_set::int)::int     AS appt_set,
          SUM(nothing::int)::int      AS nothing
        FROM field_log_entries
-       WHERE rep_name = $1 AND logged_at >= NOW()::date`,
+       WHERE rep_name = $1
+         AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`,
       [req.params.repName]
     );
     res.json(rows[0]);
@@ -1077,7 +1078,7 @@ app.get('/api/field-log/week', async (req, res) => {
          (logged_at AT TIME ZONE 'America/New_York')::date::text AS day,
          COUNT(*)::int AS stops
        FROM field_log_entries
-       WHERE logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York')
+       WHERE logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'
        GROUP BY 1
        ORDER BY 1`
     );
@@ -1246,7 +1247,8 @@ app.get('/api/field-log/stops/:repName', async (req, res) => {
               location, notable_moment, company_name, contact_name, sticker_count,
               mobile, office_phone, email, website, card_address
        FROM field_log_entries
-       WHERE rep_name = $1 AND logged_at >= NOW()::date
+       WHERE rep_name = $1
+         AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'
        ORDER BY logged_at DESC`,
       [req.params.repName]
     );
@@ -1263,13 +1265,13 @@ app.get('/api/field-log/stops/:repName/all', async (req, res) => {
     let dateFilter = '';
     let limitClause = 'LIMIT 2000';
     if (range === 'today') {
-      dateFilter = `AND logged_at >= NOW()::date`;
+      dateFilter = `AND logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`;
       limitClause = '';
     } else if (range === 'week') {
-      dateFilter = `AND logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York')`;
+      dateFilter = `AND logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`;
       limitClause = '';
     } else if (range === 'month') {
-      dateFilter = `AND logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'America/New_York')`;
+      dateFilter = `AND logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`;
       limitClause = '';
     }
     const { rows } = await pgPool.query(
