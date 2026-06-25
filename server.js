@@ -448,30 +448,42 @@ app.get('/api/st/customers', async (req, res) => {
   const name = (req.query.name || '').trim();
   if (name.length < 2) return res.json({ customers: [] });
   const { ST_TENANT, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
+  console.log(`[ST customers] query="${name}" tenant=${ST_TENANT ? ST_TENANT.slice(0,6)+'…' : 'MISSING'} clientId=${ST_CLIENT_ID ? 'SET' : 'MISSING'} secret=${ST_CLIENT_SECRET ? 'SET' : 'MISSING'}`);
   if (!ST_TENANT || !ST_CLIENT_ID || !ST_CLIENT_SECRET) return res.json({ notConfigured: true, customers: [] });
   try {
     const token = await stGetToken();
+    console.log(`[ST customers] token acquired (${token.length} chars)`);
     const hdrs = { 'Authorization': `Bearer ${token}`, 'ST-App-Key': ST_CLIENT_ID };
-    const custResp = await fetch(
-      `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5`,
-      { headers: hdrs }
-    );
-    if (!custResp.ok) throw new Error(`ST customers: ${custResp.status}`);
+
+    const custUrl = `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5`;
+    console.log(`[ST customers] GET ${custUrl}`);
+    const custResp = await fetch(custUrl, { headers: hdrs });
+    if (!custResp.ok) {
+      const body = await custResp.text();
+      console.error(`[ST customers] customer search failed status=${custResp.status} body=${body}`);
+      throw new Error(`ST customers: ${custResp.status} — ${body.slice(0, 200)}`);
+    }
     const custData = await custResp.json();
+    console.log(`[ST customers] found ${(custData.data || []).length} results`);
     const customers = (custData.data || []).slice(0, 5);
 
     let lastServiceDate = null;
     if (customers.length > 0) {
       try {
-        const jobsResp = await fetch(
-          `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed`,
-          { headers: hdrs }
-        );
+        const jobsUrl = `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed`;
+        console.log(`[ST customers] GET ${jobsUrl}`);
+        const jobsResp = await fetch(jobsUrl, { headers: hdrs });
         if (jobsResp.ok) {
           const jd = await jobsResp.json();
           lastServiceDate = (jd.data || [])[0]?.completedOn || null;
+          console.log(`[ST customers] lastServiceDate=${lastServiceDate}`);
+        } else {
+          const jBody = await jobsResp.text();
+          console.warn(`[ST customers] jobs lookup failed status=${jobsResp.status} body=${jBody.slice(0,200)}`);
         }
-      } catch {}
+      } catch (je) {
+        console.warn(`[ST customers] jobs lookup threw: ${je.message}`);
+      }
     }
 
     res.json({
@@ -495,6 +507,7 @@ app.get('/api/st/customers', async (req, res) => {
       lastServiceDate,
     });
   } catch (e) {
+    console.error(`[ST customers] 500 error: ${e.message}`, e.stack);
     res.status(500).json({ error: e.message, customers: [] });
   }
 });
