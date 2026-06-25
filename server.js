@@ -420,6 +420,82 @@ app.post('/api/claude', async (req, res) => {
   }
 });
 
+// ST API token cache
+let stAccessToken = null;
+let stTokenExpiry = 0;
+
+async function stGetToken() {
+  if (stAccessToken && Date.now() < stTokenExpiry - 60000) return stAccessToken;
+  const { ST_TENANT_ID, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
+  if (!ST_TENANT_ID || !ST_CLIENT_ID || !ST_CLIENT_SECRET) throw new Error('ST credentials not configured');
+  const resp = await fetch('https://auth.servicetitan.io/connect/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=client_credentials&client_id=${encodeURIComponent(ST_CLIENT_ID)}&client_secret=${encodeURIComponent(ST_CLIENT_SECRET)}`,
+  });
+  if (!resp.ok) throw new Error(`ST auth failed: ${resp.status}`);
+  const d = await resp.json();
+  stAccessToken = d.access_token;
+  stTokenExpiry = Date.now() + (d.expires_in || 3600) * 1000;
+  return stAccessToken;
+}
+
+// ST customer lookup
+app.get('/api/st/customers', async (req, res) => {
+  const name = (req.query.name || '').trim();
+  if (name.length < 2) return res.json({ customers: [] });
+  const { ST_TENANT_ID, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
+  if (!ST_TENANT_ID || !ST_CLIENT_ID || !ST_CLIENT_SECRET) return res.json({ notConfigured: true, customers: [] });
+  try {
+    const token = await stGetToken();
+    const hdrs = { 'Authorization': `Bearer ${token}`, 'ST-App-Key': ST_CLIENT_ID };
+    const custResp = await fetch(
+      `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT_ID}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5`,
+      { headers: hdrs }
+    );
+    if (!custResp.ok) throw new Error(`ST customers: ${custResp.status}`);
+    const custData = await custResp.json();
+    const customers = (custData.data || []).slice(0, 5);
+
+    let lastServiceDate = null;
+    if (customers.length > 0) {
+      try {
+        const jobsResp = await fetch(
+          `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT_ID}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed`,
+          { headers: hdrs }
+        );
+        if (jobsResp.ok) {
+          const jd = await jobsResp.json();
+          lastServiceDate = (jd.data || [])[0]?.completedOn || null;
+        }
+      } catch {}
+    }
+
+    res.json({
+      customers: customers.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        active: c.active,
+        balance: c.balance,
+        doNotService: c.doNotService,
+        contacts: (c.contacts || []).slice(0, 3).map(ct => ({
+          name: ct.name,
+          phones: (ct.phones || []).slice(0, 2).map(p => ({ type: p.type, value: p.value })),
+          emails: (ct.emails || []).slice(0, 2).map(e => e.address),
+        })),
+        address: (() => {
+          const a = (c.addresses || []).find(x => x.type === 'ServiceLocation') || c.addresses?.[0];
+          return a ? [a.street, a.city, a.state, a.zip].filter(Boolean).join(', ') : null;
+        })(),
+      })),
+      lastServiceDate,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, customers: [] });
+  }
+});
+
 // ST pricebook proxy (unchanged)
 app.post('/api/st', async (req, res) => {
   try {
@@ -1228,6 +1304,60 @@ app.patch('/api/field-log/stop/:id', async (req, res) => {
         email:         updated.email,
         branch:        null,
       }).catch(e => console.error('Monday upsert error (PATCH):', e.message));
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+async function mondayDecrementStop(companyName) {
+  try {
+    if (!mondayColMap) await fetchMondayMeta();
+    if (!mondayColMap?.stopCount) return;
+    const safe = companyName.replace(/"/g, '\\"');
+    const searchData = await mondayGraphQL(`
+      query {
+        boards(ids: [${MONDAY_BOARD_ID}]) {
+          items_page(limit: 5, query_params: {
+            rules: [{ column_id: "name", compare_value: "${safe}" }]
+          }) { items { id column_values { id text } } }
+        }
+      }
+    `);
+    const match = (searchData.data?.boards?.[0]?.items_page?.items || [])[0];
+    if (!match) return;
+    const scCol = match.column_values.find(cv => cv.id === mondayColMap.stopCount);
+    const current = Number(scCol?.text) || 0;
+    const next = Math.max(0, current - 1);
+    const colValues = {};
+    colValues[mondayColMap.stopCount] = next;
+    await mondayGraphQL(`
+      mutation {
+        change_multiple_column_values(
+          board_id: ${MONDAY_BOARD_ID},
+          item_id: ${match.id},
+          column_values: ${JSON.stringify(JSON.stringify(colValues))}
+        ) { id }
+      }
+    `);
+    console.log(`Monday.com: decremented stop count for "${companyName}" to ${next}`);
+  } catch (e) {
+    console.error('mondayDecrementStop error:', e.message);
+  }
+}
+
+app.delete('/api/field-log/stop/:id', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid stop id' });
+  try {
+    const { rows } = await pgPool.query(
+      `DELETE FROM field_log_entries WHERE id = $1 RETURNING rep_name, company_name`,
+      [id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Stop not found' });
+    res.json({ success: true });
+    const { company_name } = rows[0];
+    if (company_name && process.env.MONDAY_API_KEY) {
+      mondayDecrementStop(company_name).catch(() => {});
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

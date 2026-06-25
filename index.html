@@ -1059,7 +1059,7 @@ function HelpTab() {
         <>
           <p style={sP}><strong style={{color:C.orange}}>Log a Stop</strong> — Tap <span style={sHint}>+ LOG STOP</span>. Enter stop type, company, contact, and notes. Tap Save. Goal: 20 stops/day.</p>
           <p style={sP}><strong style={{color:C.orange}}>Stop Types:</strong> Cold Call · Follow-Up · Service · Bid · Demo · Other</p>
-          <p style={sP}><strong style={{color:C.orange}}>Leader View</strong> — Jon, Tony, and Kyle see the full team dashboard automatically on login. Reps see their own log only.</p>
+          <p style={sP}><strong style={{color:C.orange}}>Team View</strong> — Jon, Tony, and Kyle see the full team dashboard automatically on login. Reps see their own log only.</p>
           <p style={sP}><strong style={{color:C.orange}}>GRAPH View (leader only)</strong> — Toggle LIST / GRAPH. Bar chart shows today's stop counts by rep with a 20-stop goal line. The weekly trend mini-chart shows Mon–today activity.</p>
           <p style={{...sP, marginBottom:0}}><strong style={{color:C.orange}}>CSV Export (leader only)</strong> — Tap EXPORT → choose date range (Today / Week / Month / Year / Custom) → auto-downloads a CSV with all 13 activity columns per rep per day.</p>
         </>
@@ -8690,6 +8690,10 @@ function FieldLog() {
   });
   const [locSuggestions, setLocSuggestions] = React.useState([]);
   const [showLocDrop,  setShowLocDrop]  = React.useState(false);
+  const [stLookupQuery,      setStLookupQuery]      = React.useState("");
+  const [stLookupResults,    setStLookupResults]    = React.useState(null);
+  const [stLookupLoading,    setStLookupLoading]    = React.useState(false);
+  const [deletingStopId,     setDeletingStopId]     = React.useState(null);
   const [cardLoading,        setCardLoading]        = React.useState(false);
   const [cardMsg,            setCardMsg]            = React.useState("");
   const [showContactFields,  setShowContactFields]  = React.useState(false);
@@ -8715,6 +8719,7 @@ function FieldLog() {
   const dashRangeRef   = React.useRef("today");
   const saveDraftTimer = React.useRef(null);
   const draftMounted   = React.useRef(false);
+  const stLookupTimer  = React.useRef(null);
 
   React.useEffect(() => {
     if (repName) fetchTally(repName);
@@ -9073,7 +9078,7 @@ function FieldLog() {
     const s = Number(stops);
     if (s >= 25) return "#16a34a";
     if (s >= 10) return "#d97706";
-    return "#b91c1c";
+    return "#1e3a5f"; // dark navy — visible contrast on red bars
   }
 
   function timeSince(ts) {
@@ -9128,6 +9133,46 @@ function FieldLog() {
     if (row.appt_set)     out.push("Appt Set");
     if (row.nothing)      out.push("Nothing");
     return out;
+  }
+
+  function onStLookupChange(val) {
+    setStLookupQuery(val);
+    setStLookupResults(null);
+    clearTimeout(stLookupTimer.current);
+    if (val.trim().length < 2) { setStLookupLoading(false); return; }
+    setStLookupLoading(true);
+    stLookupTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/st/customers?name=${encodeURIComponent(val.trim())}`);
+        const d = await r.json();
+        setStLookupResults(d);
+        if ((d.customers || []).length === 1) {
+          const c = d.customers[0];
+          if (c.name && !companyName) setCompanyName(c.name);
+          const ct = c.contacts?.[0];
+          if (ct?.name && !contactName) setContactName(ct.name);
+          if (ct?.emails?.[0] && !cEmail) { setCEmail(ct.emails[0]); setShowContactFields(true); }
+          const ph = ct?.phones?.find(p => /cell|mobile/i.test(p.type)) || ct?.phones?.[0];
+          if (ph?.value && !cMobile) { setCMobile(ph.value); setShowContactFields(true); }
+          if (c.address && !cCardAddress) { setCCardAddress(c.address); setShowContactFields(true); }
+        }
+      } catch(e) { setStLookupResults({ error: e.message, customers: [] }); }
+      setStLookupLoading(false);
+    }, 600);
+  }
+
+  async function deleteStop(id) {
+    if (!window.confirm("Delete this stop? This cannot be undone.")) return;
+    setDeletingStopId(id);
+    try {
+      const r = await fetch(`/api/field-log/stop/${id}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || 'Delete failed');
+      setStops(prev => prev.filter(s => s.id !== id));
+      setExpandedStopId(null);
+      await fetchTally(repName);
+    } catch(e) { alert('Could not delete stop: ' + e.message); }
+    setDeletingStopId(null);
   }
 
   async function scanBusinessCard(file) {
@@ -9226,7 +9271,7 @@ function FieldLog() {
       
       <div style={{ padding:"10px 16px 0", flexShrink:0, display:"flex", alignItems:"center", gap:8 }}>
         <div style={{ flex:1, display:"flex", background:C.surface2, borderRadius:8, padding:3, border:`1px solid ${C.border}` }}>
-          {[["rep","MY LOG"],["leader","LEADER VIEW"]].map(([v,label]) => (
+          {[["rep","MY LOG"],["leader","TEAM VIEW"]].map(([v,label]) => (
             <button key={v} onClick={() => setView(v)} style={{
               flex:1, padding:"9px 0", borderRadius:6,
               background: view===v ? C.blue : "transparent",
@@ -9315,6 +9360,88 @@ function FieldLog() {
             </select>
           </div>
 
+
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>
+              EXISTING CUSTOMER? <span style={{ color:C.dim, fontWeight:400, letterSpacing:0.5 }}>— search ServiceTitan</span>
+            </label>
+            <div style={{ position:"relative" }}>
+              <input
+                value={stLookupQuery}
+                onChange={e => onStLookupChange(e.target.value)}
+                placeholder="Type company name to check ST records..."
+                style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+                  color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}
+              />
+              {stLookupLoading && (
+                <span style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
+                  fontFamily:F.mono, fontSize:10, color:C.mid }}>searching…</span>
+              )}
+            </div>
+            {stLookupResults && !stLookupResults.notConfigured && !stLookupResults.error && (
+              <div style={{ marginTop:6, border:`1px solid ${C.border}`, borderRadius:8, overflow:"hidden" }}>
+                {(stLookupResults.customers || []).length === 0 ? (
+                  <div style={{ padding:"10px 14px", fontFamily:F.mono, fontSize:11, color:C.mid }}>
+                    Not found in ST — likely a new prospect
+                  </div>
+                ) : (stLookupResults.customers || []).map(c => (
+                  <div key={c.id} style={{ padding:"10px 14px", background:C.surface2, borderBottom:`1px solid ${C.border}` }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:4 }}>
+                      <span style={{ fontFamily:F.body, fontSize:15, fontWeight:700, color:C.text }}>{c.name}</span>
+                      <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, padding:"2px 7px", borderRadius:8,
+                        background: c.doNotService ? "rgba(239,68,68,0.15)" : c.active ? "rgba(34,197,94,0.15)" : "rgba(107,114,128,0.15)",
+                        color:      c.doNotService ? C.red : c.active ? C.green : C.mid,
+                        border:    `1px solid ${c.doNotService ? "rgba(239,68,68,0.3)" : c.active ? "rgba(34,197,94,0.3)" : C.border}`,
+                      }}>{c.doNotService ? "⛔ DO NOT SERVICE" : c.active ? "✓ ACTIVE CUSTOMER" : "INACTIVE"}</span>
+                      {c.type && <span style={{ fontFamily:F.mono, fontSize:9, color:C.mid }}>{c.type}</span>}
+                    </div>
+                    {c.balance != null && Math.abs(Number(c.balance)) > 0 && (
+                      <div style={{ fontFamily:F.mono, fontSize:10, color: Number(c.balance) > 0 ? C.red : C.green, marginBottom:3 }}>
+                        Balance: ${Math.abs(Number(c.balance)).toLocaleString('en-US',{minimumFractionDigits:2})} {Number(c.balance) > 0 ? "(owed)" : "(credit)"}
+                      </div>
+                    )}
+                    {stLookupResults.lastServiceDate && (
+                      <div style={{ fontFamily:F.mono, fontSize:10, color:C.mid, marginBottom:3 }}>
+                        Last service: {new Date(stLookupResults.lastServiceDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                      </div>
+                    )}
+                    {c.address && <div style={{ fontFamily:F.mono, fontSize:10, color:C.mid, marginBottom:3 }}>{c.address}</div>}
+                    {(c.contacts || []).filter(ct=>ct.name).map((ct,i) => (
+                      <div key={i} style={{ fontFamily:F.body, fontSize:12, color:C.text, display:"flex", flexWrap:"wrap", gap:8, marginTop:2 }}>
+                        <span style={{ fontWeight:600 }}>{ct.name}</span>
+                        {ct.phones?.[0]?.value && <span style={{ color:C.mid }}>{ct.phones[0].value}</span>}
+                        {ct.emails?.[0] && <span style={{ color:C.mid }}>{ct.emails[0]}</span>}
+                      </div>
+                    ))}
+                    <button onClick={() => {
+                      setCompanyName(c.name);
+                      const ct = c.contacts?.[0];
+                      if (ct?.name) setContactName(ct.name);
+                      if (ct?.emails?.[0]) { setCEmail(ct.emails[0]); setShowContactFields(true); }
+                      const ph = ct?.phones?.find(p => /cell|mobile/i.test(p.type||'')) || ct?.phones?.[0];
+                      if (ph?.value) { setCMobile(ph.value); setShowContactFields(true); }
+                      if (c.address) { setCCardAddress(c.address); setShowContactFields(true); }
+                      setStLookupQuery(""); setStLookupResults(null);
+                    }} style={{
+                      marginTop:8, padding:"5px 12px", borderRadius:6, cursor:"pointer",
+                      background:"rgba(193,122,53,0.18)", border:`1px solid rgba(193,122,53,0.5)`,
+                      color:C.copper, fontFamily:F.mono, fontSize:9, letterSpacing:1,
+                    }}>USE THIS CUSTOMER →</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {stLookupResults?.notConfigured && (
+              <div style={{ marginTop:4, fontFamily:F.mono, fontSize:10, color:C.dim }}>
+                ST lookup not configured — add ST_TENANT_ID / ST_CLIENT_ID / ST_CLIENT_SECRET to Railway
+              </div>
+            )}
+            {stLookupResults?.error && (
+              <div style={{ marginTop:4, fontFamily:F.mono, fontSize:10, color:C.red }}>
+                ST error: {stLookupResults.error}
+              </div>
+            )}
+          </div>
 
           <div style={{ marginBottom:14 }}>
             <input type="file" accept="image/*" capture="environment" id="cardInput" style={{ display:"none" }}
@@ -9718,7 +9845,7 @@ function FieldLog() {
                               </div>
                             ) : (
                               <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-                                <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
+                                <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:4 }}>
                                   <button onClick={e => {
                                     e.stopPropagation();
                                     setEditingStopId(s.id);
@@ -9735,6 +9862,14 @@ function FieldLog() {
                                     color:C.mid, fontFamily:F.mono, fontSize:9, letterSpacing:1.5,
                                     padding:"3px 10px", cursor:"pointer",
                                   }}>EDIT</button>
+                                  <button onClick={e => { e.stopPropagation(); deleteStop(s.id); }}
+                                    disabled={deletingStopId === s.id}
+                                    style={{
+                                      background:"none", border:`1px solid rgba(239,68,68,0.4)`, borderRadius:6,
+                                      color:C.red, fontFamily:F.mono, fontSize:9, letterSpacing:1.5,
+                                      padding:"3px 10px", cursor: deletingStopId===s.id ? "default" : "pointer",
+                                      opacity: deletingStopId===s.id ? 0.5 : 1,
+                                    }}>{deletingStopId===s.id ? "…" : "DELETE"}</button>
                                 </div>
                                 {s.notable_moment && (
                                   <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
@@ -9856,7 +9991,7 @@ function FieldLog() {
                           </div>
                         ) : (
                           <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-                            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
+                            <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:4 }}>
                               <button onClick={e => {
                                 e.stopPropagation();
                                 setEditingStopId(s.id);
@@ -9873,6 +10008,14 @@ function FieldLog() {
                                 color:C.mid, fontFamily:F.mono, fontSize:9, letterSpacing:1.5,
                                 padding:"3px 10px", cursor:"pointer",
                               }}>EDIT</button>
+                              <button onClick={e => { e.stopPropagation(); deleteStop(s.id); }}
+                                disabled={deletingStopId === s.id}
+                                style={{
+                                  background:"none", border:`1px solid rgba(239,68,68,0.4)`, borderRadius:6,
+                                  color:C.red, fontFamily:F.mono, fontSize:9, letterSpacing:1.5,
+                                  padding:"3px 10px", cursor: deletingStopId===s.id ? "default" : "pointer",
+                                  opacity: deletingStopId===s.id ? 0.5 : 1,
+                                }}>{deletingStopId===s.id ? "…" : "DELETE"}</button>
                             </div>
                             {s.notable_moment && (
                               <div style={{ fontFamily:F.body, fontSize:13, color:C.text, lineHeight:1.5, marginBottom: hasCard ? 10 : 0 }}>
@@ -10060,13 +10203,15 @@ function FieldLog() {
                   <div style={{ display:"flex", gap:3, marginTop:5, borderTop:`1px solid ${C.border}`, paddingTop:4 }}>
                     {repRows.map(row => {
                       const s = Number(row.stops);
+                      const parts = (row.rep_name || '').split(' ');
+                      const label = parts.length >= 2 ? parts[0] : row.rep_name;
                       return (
                         <div key={row.rep_name} style={{
                           flex:1, minWidth:0, textAlign:"center",
-                          fontFamily:F.mono, fontSize:7, overflow:"hidden",
+                          fontFamily:F.mono, fontSize:9, fontWeight:700, overflow:"hidden",
                           textOverflow:"ellipsis", whiteSpace:"nowrap",
                           color: s > 0 ? paceColor(s) : C.mid,
-                        }}>{row.rep_name}</div>
+                        }}>{label}</div>
                       );
                     })}
                   </div>
