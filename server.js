@@ -426,8 +426,8 @@ let stTokenExpiry = 0;
 
 async function stGetToken() {
   if (stAccessToken && Date.now() < stTokenExpiry - 60000) return stAccessToken;
-  const { ST_TENANT_ID, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
-  if (!ST_TENANT_ID || !ST_CLIENT_ID || !ST_CLIENT_SECRET) throw new Error('ST credentials not configured');
+  const { ST_TENANT, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
+  if (!ST_TENANT || !ST_CLIENT_ID || !ST_CLIENT_SECRET) throw new Error('ST credentials not configured');
   const resp = await fetch('https://auth.servicetitan.io/connect/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -441,16 +441,19 @@ async function stGetToken() {
 }
 
 // ST customer lookup
+// NOTE: makes direct calls to api.servicetitan.io — the CF Worker (PROXY_URL) is pricebook-only
+// and would need a customer-search handler added before this could route through it.
+// Requires Railway env vars: ST_TENANT, ST_CLIENT_ID, ST_CLIENT_SECRET
 app.get('/api/st/customers', async (req, res) => {
   const name = (req.query.name || '').trim();
   if (name.length < 2) return res.json({ customers: [] });
-  const { ST_TENANT_ID, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
-  if (!ST_TENANT_ID || !ST_CLIENT_ID || !ST_CLIENT_SECRET) return res.json({ notConfigured: true, customers: [] });
+  const { ST_TENANT, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
+  if (!ST_TENANT || !ST_CLIENT_ID || !ST_CLIENT_SECRET) return res.json({ notConfigured: true, customers: [] });
   try {
     const token = await stGetToken();
     const hdrs = { 'Authorization': `Bearer ${token}`, 'ST-App-Key': ST_CLIENT_ID };
     const custResp = await fetch(
-      `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT_ID}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5`,
+      `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5`,
       { headers: hdrs }
     );
     if (!custResp.ok) throw new Error(`ST customers: ${custResp.status}`);
@@ -461,7 +464,7 @@ app.get('/api/st/customers', async (req, res) => {
     if (customers.length > 0) {
       try {
         const jobsResp = await fetch(
-          `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT_ID}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed`,
+          `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed`,
           { headers: hdrs }
         );
         if (jobsResp.ok) {
