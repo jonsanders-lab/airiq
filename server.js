@@ -426,14 +426,21 @@ let stTokenExpiry = 0;
 
 async function stGetToken() {
   if (stAccessToken && Date.now() < stTokenExpiry - 60000) return stAccessToken;
-  const { ST_TENANT, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
-  if (!ST_TENANT || !ST_CLIENT_ID || !ST_CLIENT_SECRET) throw new Error('ST credentials not configured');
+  const { ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
+  if (!ST_CLIENT_ID || !ST_CLIENT_SECRET) throw new Error('ST credentials not configured');
+  const credentials = Buffer.from(`${ST_CLIENT_ID}:${ST_CLIENT_SECRET}`).toString('base64');
   const resp = await fetch('https://auth.servicetitan.io/connect/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=client_credentials&client_id=${encodeURIComponent(ST_CLIENT_ID)}&client_secret=${encodeURIComponent(ST_CLIENT_SECRET)}`,
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${credentials}`,
+    },
+    body: new URLSearchParams({ grant_type: 'client_credentials' }),
   });
-  if (!resp.ok) throw new Error(`ST auth failed: ${resp.status}`);
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`ST auth failed: ${resp.status} — ${body.slice(0, 200)}`);
+  }
   const d = await resp.json();
   stAccessToken = d.access_token;
   stTokenExpiry = Date.now() + (d.expires_in || 3600) * 1000;
@@ -447,15 +454,16 @@ async function stGetToken() {
 app.get('/api/st/customers', async (req, res) => {
   const name = (req.query.name || '').trim();
   if (name.length < 2) return res.json({ customers: [] });
-  const { ST_TENANT, ST_CLIENT_ID, ST_CLIENT_SECRET } = process.env;
-  console.log(`[ST customers] query="${name}" tenant=${ST_TENANT ? ST_TENANT.slice(0,6)+'…' : 'MISSING'} clientId=${ST_CLIENT_ID ? 'SET' : 'MISSING'} secret=${ST_CLIENT_SECRET ? 'SET' : 'MISSING'}`);
+  const { ST_TENANT, ST_CLIENT_ID, ST_CLIENT_SECRET, ST_APP_KEY } = process.env;
+  console.log(`[ST customers] query="${name}" tenant=${ST_TENANT ? ST_TENANT.slice(0,6)+'…' : 'MISSING'} clientId=${ST_CLIENT_ID ? 'SET' : 'MISSING'} secret=${ST_CLIENT_SECRET ? 'SET' : 'MISSING'} appKey=${ST_APP_KEY ? 'SET' : 'MISSING'}`);
   if (!ST_TENANT || !ST_CLIENT_ID || !ST_CLIENT_SECRET) return res.json({ notConfigured: true, customers: [] });
   try {
     const token = await stGetToken();
     console.log(`[ST customers] token acquired (${token.length} chars)`);
-    const hdrs = { 'Authorization': `Bearer ${token}`, 'ST-App-Key': ST_CLIENT_ID };
+    const appKeyParam = ST_APP_KEY ? `&appKey=${encodeURIComponent(ST_APP_KEY)}` : '';
+    const hdrs = { 'Authorization': `Bearer ${token}`, 'ST-App-Key': ST_APP_KEY || ST_CLIENT_ID };
 
-    const custUrl = `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5`;
+    const custUrl = `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5${appKeyParam}`;
     console.log(`[ST customers] GET ${custUrl}`);
     const custResp = await fetch(custUrl, { headers: hdrs });
     if (!custResp.ok) {
@@ -470,7 +478,7 @@ app.get('/api/st/customers', async (req, res) => {
     let lastServiceDate = null;
     if (customers.length > 0) {
       try {
-        const jobsUrl = `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed`;
+        const jobsUrl = `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed${appKeyParam}`;
         console.log(`[ST customers] GET ${jobsUrl}`);
         const jobsResp = await fetch(jobsUrl, { headers: hdrs });
         if (jobsResp.ok) {
