@@ -9055,21 +9055,16 @@ function FieldLog() {
     } catch (e) { console.error('fetchGoals error:', e.message); }
   }
 
-  async function exportRepInlineCSV() {
+  function exportRepInlineCSV() {
     if (!repName) return;
-    setRepInlineExporting(true);
-    try {
-      const today = new Date().toISOString().slice(0,10);
-      const safeRep = repName.replace(/[^a-zA-Z0-9]/g, '_');
-      const rangeLabel = { today:'Today', week:'Week', month:'Month', all:'AllTime', custom:`${repInlineFrom}_to_${repInlineTo}` }[repInlineRange] || repInlineRange;
-      let url = `/api/field-log/rep-export?rep_name=${encodeURIComponent(repName)}&range=${repInlineRange}&branch=${encodeURIComponent(branch||'')}`;
-      if (repInlineRange === 'custom') url += `&from=${repInlineFrom}&to=${repInlineTo}`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(await r.text());
-      const csv = await r.text();
-      triggerDownload(csv, `MyStops_${safeRep}_${rangeLabel}_${today}.csv`);
-    } catch (e) { alert('Export failed: ' + e.message); }
-    setRepInlineExporting(false);
+    let url = `/api/field-log/rep-export?rep_name=${encodeURIComponent(repName)}&range=${repInlineRange}&branch=${encodeURIComponent(branch||'')}`;
+    if (repInlineRange === 'custom') url += `&from=${repInlineFrom}&to=${repInlineTo}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async function saveStopEdit(id) {
