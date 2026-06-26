@@ -8902,6 +8902,7 @@ function FieldLog() {
   const stLookupTimer  = React.useRef(null);
   const locFetchedRef       = React.useRef(false);
   const locInputFocusedRef  = React.useRef(false);
+  const locTouchRef         = React.useRef(null);
 
   React.useEffect(() => {
     if (repName) fetchTally(repName);
@@ -9871,10 +9872,22 @@ function FieldLog() {
               {showLocDrop && locSuggestions.length > 0 && (
                 <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:200,
                   background:C.surface2, border:`1px solid ${C.border}`, borderRadius:"0 0 8px 8px",
-                  boxShadow:"0 4px 16px rgba(0,0,0,0.5)", maxHeight:200, overflowY:"auto" }}>
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.5)", maxHeight:240, overflowY:"auto",
+                  WebkitOverflowScrolling:"touch" }}>
                   {locSuggestions.map((sug, i) => (
                     <div key={i}
-                      onPointerDown={e => { e.preventDefault(); setLocation(sug); setShowLocDrop(false); setLocHighlight(-1); }}
+                      onTouchStart={e => { locTouchRef.current = { y: e.touches[0].clientY, time: Date.now() }; }}
+                      onTouchEnd={e => {
+                        if (!locTouchRef.current) return;
+                        const dy = Math.abs(e.changedTouches[0].clientY - locTouchRef.current.y);
+                        const dt = Date.now() - locTouchRef.current.time;
+                        locTouchRef.current = null;
+                        if (dy < 8 && dt < 200) {
+                          e.preventDefault();
+                          setLocation(sug); setShowLocDrop(false); setLocHighlight(-1);
+                        }
+                      }}
+                      onClick={() => { setLocation(sug); setShowLocDrop(false); setLocHighlight(-1); }}
                       style={{ padding:"10px 14px", fontFamily:F.body, fontSize:14,
                         color: i === locHighlight ? '#fff' : C.text,
                         background: i === locHighlight ? C.orange : 'transparent',
