@@ -1467,15 +1467,6 @@ app.get('/api/field-log/stops/:repName/all', async (req, res) => {
   }
 });
 
-// TEMPORARY DEBUG — remove after use
-app.get('/api/debug/rep-names', async (req, res) => {
-  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
-  try {
-    const { rows } = await pgPool.query(`SELECT DISTINCT rep_name FROM field_log_entries ORDER BY rep_name`);
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 app.get('/api/field-log/export', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
