@@ -10138,11 +10138,11 @@ function FieldLog() {
                   ["ON PACE",     `${onPace}/${repRows.length}`],
                 ].map(([lbl, val]) => (
                   <div key={lbl} style={{
-                    flex:1, background:"#0f172a", border:`1px solid ${C.border}`,
+                    flex:1, background:C.surface2, border:`1px solid ${C.border}`,
                     borderRadius:8, padding:"8px 6px", textAlign:"center",
                   }}>
-                    <div style={{ fontFamily:F.head, fontSize:20, color:"#f97316", lineHeight:1 }}>{val}</div>
-                    <div style={{ fontFamily:F.mono, fontSize:7, letterSpacing:0.5, color:"#94a3b8", marginTop:3 }}>{lbl}</div>
+                    <div style={{ fontFamily:F.head, fontSize:20, color:C.orange, lineHeight:1 }}>{val}</div>
+                    <div style={{ fontFamily:F.mono, fontSize:7, letterSpacing:0.5, color:C.mid, marginTop:3 }}>{lbl}</div>
                   </div>
                 ))}
               </div>
