@@ -9876,6 +9876,7 @@ function FieldLog() {
                   WebkitOverflowScrolling:"touch" }}>
                   {locSuggestions.map((sug, i) => (
                     <div key={i}
+                      onMouseDown={e => { e.preventDefault(); setLocation(sug); setShowLocDrop(false); setLocHighlight(-1); }}
                       onTouchStart={e => { locTouchRef.current = { y: e.touches[0].clientY, time: Date.now() }; }}
                       onTouchEnd={e => {
                         if (!locTouchRef.current) return;
@@ -9887,7 +9888,6 @@ function FieldLog() {
                           setLocation(sug); setShowLocDrop(false); setLocHighlight(-1);
                         }
                       }}
-                      onClick={() => { setLocation(sug); setShowLocDrop(false); setLocHighlight(-1); }}
                       style={{ padding:"10px 14px", fontFamily:F.body, fontSize:14,
                         color: i === locHighlight ? '#fff' : C.text,
                         background: i === locHighlight ? C.orange : 'transparent',
