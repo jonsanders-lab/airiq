@@ -10388,6 +10388,8 @@ function FieldLog() {
                 const n = pts.length;
                 const showDots = n <= 15;
                 const showVals = n <= 10;
+                const isMonth = dashRange === 'month';
+                const peakV = isMonth ? Math.max(...pts.map(p => p.v), 0) : 0;
                 const coords = pts.map((p,i) => ({
                   x: n <= 1 ? W/2 : PX + i*(plotW/(n-1)),
                   y: PY + plotH - (p.v/maxV)*plotH,
@@ -10403,13 +10405,27 @@ function FieldLog() {
                     <svg viewBox={`0 0 ${W} ${H+16}`} width="100%" style={{ display:"block", overflow:"visible" }}>
                       <path d={area} fill="rgba(59,130,246,0.10)" stroke="none"/>
                       <path d={line} fill="none" style={{stroke:C.blueLight}} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      {coords.map((c,i) => (
-                        <g key={i}>
-                          {showDots && <circle cx={c.x} cy={c.y} r="3.5" style={{fill:C.blueLight}}/>}
-                          {showVals && c.v > 0 && <text x={c.x} y={c.y-7} textAnchor="middle" fontSize="9" style={{fill:C.text}}>{c.v}</text>}
-                          {c.label && <text x={c.x} y={H+14} textAnchor="middle" fontSize="9" style={{fill:C.mid}}>{c.label}</text>}
-                        </g>
-                      ))}
+                      {coords.map((c,i) => {
+                        const isPeak = isMonth && c.v > 0 && c.v === peakV;
+                        const dotR   = isPeak ? 5.5 : 3.5;
+                        const dotCol = isPeak ? C.orange : C.blueLight;
+                        return (
+                          <g key={i}>
+                            {isMonth && c.v > 0 && (
+                              <line x1={c.x.toFixed(1)} y1={c.y.toFixed(1)} x2={c.x.toFixed(1)} y2={(PY+plotH).toFixed(1)}
+                                stroke="#cccccc" strokeWidth="1" strokeDasharray="3,3" opacity="0.4"/>
+                            )}
+                            {(showDots || isMonth) && (
+                              <circle cx={c.x} cy={c.y} r={dotR} fill={dotCol}/>
+                            )}
+                            {(isMonth ? c.v > 0 : (showVals && c.v > 0)) && (
+                              <text x={c.x} y={c.y - dotR - 3} textAnchor="middle" fontSize="10" fontWeight="bold"
+                                fill={dotCol}>{c.v}</text>
+                            )}
+                            {c.label && <text x={c.x} y={H+14} textAnchor="middle" fontSize="9" style={{fill:C.mid}}>{c.label}</text>}
+                          </g>
+                        );
+                      })}
                     </svg>
                   </div>
                 );
