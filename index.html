@@ -722,11 +722,12 @@ function getRepGoals(repName) {
     ? (Date.now() - new Date(start).getTime()) / 86400000 < 90
     : false;
   const isWed = new Date().getDay() === 3;
-  const daily = (!isWed && isNew) ? 20 : 25;
+  // Wednesday: 25 for all. Non-Wed new rep: 20. Non-Wed experienced: null (pace on 30/wk instead).
+  const daily = isWed ? 25 : isNew ? 20 : null;
   return {
     daily,
-    weekly:  isNew ? 100 : 125,
-    monthly: isNew ? 400 : 500,
+    weekly:  isNew ? 100 : 30,
+    monthly: isNew ? 420 : 130,
   };
 }
 </script>
@@ -9262,7 +9263,7 @@ function FieldLog() {
     const map = {};
     dashboard.forEach(d => { map[d.rep_name] = d; });
     return REPS
-      .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, service_leads: 0, piping_opps: 0, stickers: 0, vr_pres: 0, appt_set: 0, nothing: 0, last_logged: null, opp_stops: 0, conversion_rate: 0 })
+      .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, service_leads: 0, piping_opps: 0, stickers: 0, vr_pres: 0, appt_set: 0, nothing: 0, last_logged: null, opp_stops: 0, conversion_rate: 0, week_stops: 0 })
       .sort((a, b) => Number(b.stops) - Number(a.stops));
   }, [dashboard]);
 
@@ -10124,10 +10125,14 @@ function FieldLog() {
             const oppStops   = repRows.reduce((s, r) => s + Number(r.opp_stops || 0), 0);
             const cvrPct     = totalStops > 0 ? (oppStops / totalStops * 100).toFixed(1) : '0.0';
             const onPace     = repRows.filter(r => {
-              const s = Number(r.stops);
               const g = getRepGoals(r.rep_name);
-              const goal = dashRange === 'today' ? g.daily : dashRange === 'week' ? g.weekly : dashRange === 'month' ? g.monthly : 25;
-              return s >= goal;
+              if (dashRange === 'today') {
+                if (g.daily !== null) return Number(r.stops) >= g.daily;
+                return Number(r.week_stops || 0) >= 30;
+              }
+              if (dashRange === 'week')  return Number(r.stops) >= g.weekly;
+              if (dashRange === 'month') return Number(r.stops) >= g.monthly;
+              return false;
             }).length;
             return (
               <div style={{ display:"flex", gap:4, marginBottom:12 }}>
@@ -10191,8 +10196,14 @@ function FieldLog() {
               {repRows.map(row => {
                 const stops = Number(row.stops);
                 const rg    = getRepGoals(row.rep_name);
-                const listGoal = dashRange === 'today' ? rg.daily : dashRange === 'week' ? rg.weekly : dashRange === 'month' ? rg.monthly : 25;
-                const pace  = paceColor(stops, listGoal);
+                let listStops, listGoal;
+                if (dashRange === 'today') {
+                  if (rg.daily !== null) { listStops = stops; listGoal = rg.daily; }
+                  else { listStops = Number(row.week_stops || 0); listGoal = 30; }
+                } else if (dashRange === 'week')  { listStops = stops; listGoal = rg.weekly; }
+                else if (dashRange === 'month')   { listStops = stops; listGoal = rg.monthly; }
+                else                              { listStops = stops; listGoal = 25; }
+                const pace  = paceColor(listStops, listGoal);
                 const cvr   = Number(row.conversion_rate) || 0;
                 const cvrColor = cvr >= 30 ? C.green : cvr >= 15 ? "#F59E0B" : C.red;
                 return (
@@ -10239,7 +10250,7 @@ function FieldLog() {
               
               <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 12px 10px" }}>
                 <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:10 }}>
-                  {`STOPS ${{ today:"TODAY", week:"THIS WEEK", month:"THIS MONTH", all:"ALL TIME" }[dashRange]}${dashRange==="today" ? " vs. 20/25-STOP DAILY GOAL (varies by tenure)" : ""}`}
+                  {`STOPS ${{ today:"TODAY", week:"THIS WEEK", month:"THIS MONTH", all:"ALL TIME" }[dashRange]}${dashRange==="today" ? " — Wed: 25 all · MTThF: 20/day new / 30/wk exp" : ""}`}
                 </div>
                 <div style={{ position:"relative" }}>
                   
@@ -10256,11 +10267,18 @@ function FieldLog() {
                       const s       = Number(row.stops);
                       const opp     = Number(row.opp_stops) || 0;
                       const rg      = getRepGoals(row.rep_name);
-                      const barGoal = dashRange === 'today' ? rg.daily : dashRange === 'week' ? rg.weekly : dashRange === 'month' ? rg.monthly : 25;
-                      const pct     = Math.min(s / barGoal, 1.5);
+                      let colorStops, colorGoal, scaleGoal;
+                      if (dashRange === 'today') {
+                        scaleGoal = rg.daily || 25;
+                        if (rg.daily !== null) { colorStops = s; colorGoal = rg.daily; }
+                        else { colorStops = Number(row.week_stops || 0); colorGoal = 30; }
+                      } else if (dashRange === 'week')  { colorStops = s; colorGoal = rg.weekly;  scaleGoal = rg.weekly; }
+                      else if (dashRange === 'month')   { colorStops = s; colorGoal = rg.monthly; scaleGoal = rg.monthly; }
+                      else                              { colorStops = s; colorGoal = 25;          scaleGoal = 25; }
+                      const pct     = Math.min(s / scaleGoal, 1.5);
                       const barH    = s === 0 ? 2 : Math.max(pct * 110, 5);
-                      const col     = paceColor(s, barGoal);
-                      const darkCol = paceColorDark(s, barGoal);
+                      const col     = paceColor(colorStops, colorGoal);
+                      const darkCol = paceColorDark(colorStops, colorGoal);
                       const cvr     = s > 0 ? (opp / s * 100) : 0;
                       const oppH    = s > 0 ? Math.round((opp / s) * barH) : 0;
                       return (
@@ -10280,7 +10298,13 @@ function FieldLog() {
                     {repRows.map(row => {
                       const s = Number(row.stops);
                       const rg2 = getRepGoals(row.rep_name);
-                      const xGoal = dashRange === 'today' ? rg2.daily : dashRange === 'week' ? rg2.weekly : dashRange === 'month' ? rg2.monthly : 25;
+                      let xColorStops, xColorGoal;
+                      if (dashRange === 'today') {
+                        if (rg2.daily !== null) { xColorStops = s; xColorGoal = rg2.daily; }
+                        else { xColorStops = Number(row.week_stops || 0); xColorGoal = 30; }
+                      } else if (dashRange === 'week')  { xColorStops = s; xColorGoal = rg2.weekly; }
+                      else if (dashRange === 'month')   { xColorStops = s; xColorGoal = rg2.monthly; }
+                      else                              { xColorStops = s; xColorGoal = 25; }
                       const parts = (row.rep_name || '').split(' ');
                       const label = parts.length >= 2 ? parts[0] : row.rep_name;
                       return (
@@ -10288,7 +10312,7 @@ function FieldLog() {
                           flex:1, minWidth:0, textAlign:"center",
                           fontFamily:F.mono, fontSize:9, fontWeight:700, overflow:"hidden",
                           textOverflow:"ellipsis", whiteSpace:"nowrap",
-                          color: s > 0 ? paceColor(s, xGoal) : C.mid,
+                          color: s > 0 ? paceColor(xColorStops, xColorGoal) : C.mid,
                         }}>{label}</div>
                       );
                     })}

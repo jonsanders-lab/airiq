@@ -1161,6 +1161,9 @@ app.get('/api/field-log/dashboard', async (req, res) => {
     } else {
       whereClause = `WHERE logged_at >= DATE_TRUNC('day', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
     }
+    const weekStopsExpr = range === 'today'
+      ? `(SELECT COUNT(*)::int FROM field_log_entries w WHERE w.rep_name = fe.rep_name AND w.logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}')`
+      : `0`;
     const { rows } = await pgPool.query(
       `SELECT
          rep_name,
@@ -1179,8 +1182,9 @@ app.get('/api/field-log/dashboard', async (req, res) => {
            CASE WHEN COUNT(*) = 0 THEN 0::numeric
            ELSE SUM(CASE WHEN (pm_opp OR equip_opp OR service_lead OR piping_opp OR appt_set OR vr_pres) THEN 1 ELSE 0 END)::numeric / COUNT(*) * 100
            END, 1
-         ) AS conversion_rate
-       FROM field_log_entries
+         ) AS conversion_rate,
+         ${weekStopsExpr}::int AS week_stops
+       FROM field_log_entries fe
        ${whereClause}
        GROUP BY rep_name
        ORDER BY stops DESC`
