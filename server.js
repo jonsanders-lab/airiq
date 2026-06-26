@@ -1573,6 +1573,58 @@ app.get('/api/field-log/locations', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── STOP SEARCH ─────────────────────────────────────────────────────────────
+app.get('/api/field-log/search', async (req, res) => {
+  if (!pgPool) return res.json([]);
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) return res.json([]);
+    const param = '%' + q.trim() + '%';
+    const { rows } = await pgPool.query(
+      `SELECT id, rep_name, company_name, contact_name, contact_title,
+              email, mobile, office_phone, card_address, location,
+              logged_at, sticker, sticker_count, notable_moment,
+              pm_opp, equip_opp, service_lead, piping_opp, vr_pres, appt_set, nothing
+       FROM field_log_entries
+       WHERE company_name   ILIKE $1
+          OR contact_name   ILIKE $1
+          OR location       ILIKE $1
+          OR notable_moment ILIKE $1
+       ORDER BY logged_at DESC
+       LIMIT 20`,
+      [param]
+    );
+    function searchOutcome(row) {
+      const f = [];
+      if (row.pm_opp)       f.push('Membership Opp');
+      if (row.equip_opp)    f.push('Equipment Opp');
+      if (row.service_lead) f.push('Service Lead');
+      if (row.piping_opp)   f.push('Piping Opp');
+      if (row.appt_set)     f.push('Appt Set');
+      if (row.vr_pres)      f.push('VR Presentation');
+      if (row.sticker)      f.push('Sticker Only');
+      if (row.nothing)      f.push('Nothing Today');
+      return f.join(', ');
+    }
+    res.json(rows.map(r => ({
+      id:           r.id,
+      rep_name:     r.rep_name,
+      company:      r.company_name    || '',
+      contact_name: r.contact_name    || '',
+      title:        r.contact_title   || '',
+      email:        r.email           || '',
+      mobile:       r.mobile          || '',
+      phone:        r.office_phone    || '',
+      address:      r.card_address    || '',
+      area:         r.location        || '',
+      logged_at:    r.logged_at,
+      outcome:      searchOutcome(r),
+      sticker_count: r.sticker ? (r.sticker_count || 1) : 0,
+      notes:        r.notable_moment  || '',
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── REP CSV EXPORT ───────────────────────────────────────────────────────────
 app.get('/api/field-log/rep-export', async (req, res) => {
   if (!pgPool) return res.status(503).send('Database not configured');

@@ -8862,6 +8862,9 @@ function FieldLog() {
   });
   const [locSuggestions, setLocSuggestions] = React.useState([]);
   const [showLocDrop,  setShowLocDrop]  = React.useState(false);
+  const [stopSearchResults, setStopSearchResults] = React.useState(null);
+  const [stopSearchLoading, setStopSearchLoading] = React.useState(false);
+  const [stopSearchHovered, setStopSearchHovered] = React.useState(-1);
   const [repLocations, setRepLocations] = React.useState(null); // null = not yet fetched
   const [locHighlight, setLocHighlight] = React.useState(-1);
   const [stLookupQuery,      setStLookupQuery]      = React.useState("");
@@ -8903,6 +8906,8 @@ function FieldLog() {
   const locFetchedRef       = React.useRef(false);
   const locInputFocusedRef  = React.useRef(false);
   const locTouchRef         = React.useRef(null);
+  const stopSearchTimer     = React.useRef(null);
+  const stopFormRef         = React.useRef(null);
 
   React.useEffect(() => {
     if (repName) fetchTally(repName);
@@ -9357,6 +9362,25 @@ function FieldLog() {
     }
   }
 
+  function fillFromSearchResult(r) {
+    if (r.company)      setCompanyName(r.company);
+    if (r.contact_name) setContactName(r.contact_name);
+    const hasExtras = r.title || r.email || r.mobile || r.phone || r.address;
+    if (hasExtras) {
+      if (r.title)   setCTitle(r.title);
+      if (r.email)   setCEmail(r.email);
+      if (r.mobile)  setCMobile(r.mobile);
+      if (r.phone)   setCOfficePhone(r.phone);
+      if (r.address) setCCardAddress(r.address);
+      setShowContactFields(true);
+    }
+    if (r.area) setLocation(r.area);
+    setStopSearch("");
+    setStopSearchResults(null);
+    setStopSearchHovered(-1);
+    setTimeout(() => stopFormRef.current?.scrollIntoView({ behavior:"smooth", block:"start" }), 100);
+  }
+
   React.useEffect(() => {
     if (!Array.isArray(repLocations) || !locInputFocusedRef.current) return;
     const q = location.trim().toLowerCase();
@@ -9365,6 +9389,22 @@ function FieldLog() {
       : repLocations.slice(0, 8);
     if (sug.length > 0) { setLocSuggestions(sug); setShowLocDrop(true); }
   }, [repLocations]);
+
+  React.useEffect(() => {
+    if (stopSearchTimer.current) clearTimeout(stopSearchTimer.current);
+    const q = stopSearch.trim();
+    if (q.length < 2) { setStopSearchResults(null); setStopSearchLoading(false); return; }
+    setStopSearchLoading(true);
+    stopSearchTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/field-log/search?q=${encodeURIComponent(q)}&rep_name=${encodeURIComponent(repName || '')}`);
+        const data = await r.json();
+        setStopSearchResults(Array.isArray(data) ? data : []);
+      } catch { setStopSearchResults([]); }
+      setStopSearchLoading(false);
+    }, 400);
+    return () => { if (stopSearchTimer.current) clearTimeout(stopSearchTimer.current); };
+  }, [stopSearch]);
 
   async function fetchStops(name) {
     if (!name) return;
@@ -9570,14 +9610,68 @@ function FieldLog() {
 
           <div style={{ position:"relative", marginBottom:14 }}>
             <input value={stopSearch} onChange={e => setStopSearch(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') { setStopSearch(""); setStopSearchResults(null); } }}
               placeholder="Search stops — company, location, contact, notes..."
               style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
                 color:C.text, fontFamily:F.body, fontSize:14, padding:"11px 40px 11px 14px", boxSizing:"border-box" }}/>
             {stopSearch && (
-              <button onClick={() => setStopSearch("")} style={{
+              <button onClick={() => { setStopSearch(""); setStopSearchResults(null); }} style={{
                 position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
                 background:"none", border:"none", color:C.mid, fontSize:20, cursor:"pointer", padding:0, lineHeight:1,
               }}>×</button>
+            )}
+            {stopSearchResults !== null && (
+              <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:300,
+                background:C.surface2, border:`1px solid ${C.border}`, borderRadius:"0 0 8px 8px",
+                boxShadow:"0 4px 20px rgba(0,0,0,0.5)", maxHeight:320, overflowY:"auto",
+                WebkitOverflowScrolling:"touch" }}>
+                {stopSearchLoading && (
+                  <div style={{ padding:"16px 14px", fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:1 }}>
+                    SEARCHING...
+                  </div>
+                )}
+                {!stopSearchLoading && stopSearchResults.length === 0 && (
+                  <div style={{ padding:"16px 14px", fontFamily:F.mono, fontSize:11, color:C.mid, letterSpacing:1 }}>
+                    NO RESULTS FOUND
+                  </div>
+                )}
+                {!stopSearchLoading && stopSearchResults.map((r, i) => (
+                  <div key={r.id}
+                    onMouseEnter={() => setStopSearchHovered(i)}
+                    onMouseLeave={() => setStopSearchHovered(-1)}
+                    onMouseDown={e => { e.preventDefault(); fillFromSearchResult(r); }}
+                    onTouchStart={e => { locTouchRef.current = { y: e.touches[0].clientY, time: Date.now() }; }}
+                    onTouchEnd={e => {
+                      if (!locTouchRef.current) return;
+                      const dy = Math.abs(e.changedTouches[0].clientY - locTouchRef.current.y);
+                      const dt = Date.now() - locTouchRef.current.time;
+                      locTouchRef.current = null;
+                      if (dy < 8 && dt < 200) { e.preventDefault(); fillFromSearchResult(r); }
+                    }}
+                    style={{ padding:"12px 14px", cursor:"pointer",
+                      borderLeft:`3px solid ${i === stopSearchHovered ? C.orange : 'transparent'}`,
+                      borderBottom: i < stopSearchResults.length-1 ? `1px solid ${C.border}` : "none",
+                      background: i === stopSearchHovered ? `rgba(234,88,12,0.06)` : 'transparent',
+                      transition:"border-color 0.1s, background 0.1s" }}>
+                    <div style={{ fontFamily:F.head, fontSize:15, color:C.text, marginBottom:3 }}>
+                      {r.company || r.contact_name || '(No Company)'}
+                    </div>
+                    <div style={{ fontFamily:F.mono, fontSize:10, color:C.mid, letterSpacing:0.5, marginBottom: r.outcome ? 6 : 0 }}>
+                      {[r.area, r.logged_at ? new Date(r.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : null].filter(Boolean).join(' · ')}
+                      {r.rep_name && <span style={{ marginLeft:8, color:C.dim }}>— {r.rep_name}</span>}
+                    </div>
+                    {r.outcome && (
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                        {r.outcome.split(', ').map((tag,ti) => (
+                          <span key={ti} style={{ fontFamily:F.mono, fontSize:9, letterSpacing:0.5,
+                            padding:"2px 7px", borderRadius:10, background:`rgba(234,88,12,0.15)`,
+                            color:C.orange, border:`1px solid rgba(234,88,12,0.3)` }}>{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -9727,7 +9821,7 @@ function FieldLog() {
             )}
           </div>
 
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+          <div ref={stopFormRef} style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
             <div>
               <label style={{ display:"block", fontFamily:F.mono, fontSize:11, letterSpacing:2, color:C.mid, marginBottom:6 }}>COMPANY NAME <span style={{ color:C.dim }}>(optional)</span></label>
               <input value={companyName} onChange={e => setCompanyName(e.target.value)}
