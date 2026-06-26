@@ -726,7 +726,10 @@ function getRepGoals(repName, goalsOverride) {
     }
   }
   const start = REP_START_DATES[repName];
-  const isNew = start ? (Date.now() - new Date(start).getTime()) / 86400000 < 90 : false;
+  if (!start) {
+    return { daily: isWed ? 25 : null, weekly: 30, monthly: 130 };
+  }
+  const isNew = (Date.now() - new Date(start).getTime()) / 86400000 < 90;
   const daily = isWed ? 25 : isNew ? 20 : null;
   return { daily, weekly: isNew ? 100 : 30, monthly: isNew ? 420 : 130 };
 }
@@ -739,7 +742,10 @@ function getRepBaseGoals(repName, goalsOverride) {
     }
   }
   const start = REP_START_DATES[repName];
-  const isNew = start ? (Date.now() - new Date(start).getTime()) / 86400000 < 90 : false;
+  if (!start) {
+    return { wednesday_goal: 25, daily_goal: null, weekly_goal: 30 };
+  }
+  const isNew = (Date.now() - new Date(start).getTime()) / 86400000 < 90;
   return { wednesday_goal: 25, daily_goal: isNew ? 20 : null, weekly_goal: isNew ? 100 : 30 };
 }
 </script>
@@ -1428,7 +1434,8 @@ function GoalSettingsModal({ repRows, repGoals, onSaved, onClose }) {
             <tbody>
               {repRows.map(r => {
                 const e = edits[r.rep_name] || {};
-                const monthly = Math.round((parseInt(e.weekly_goal) || 30) * 4.3);
+                const _wk = parseInt(e.weekly_goal);
+                const monthly = (isNaN(_wk) || _wk === 0) ? 0 : Math.round(_wk * 4.3);
                 return (
                   <tr key={r.rep_name} style={{ borderBottom:`1px solid ${C.border}` }}>
                     <td style={{ padding:"8px", fontFamily:F.body, fontSize:13, color:C.text, whiteSpace:"nowrap" }}>{r.rep_name}</td>
