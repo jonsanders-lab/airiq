@@ -8862,6 +8862,8 @@ function FieldLog() {
   });
   const [locSuggestions, setLocSuggestions] = React.useState([]);
   const [showLocDrop,  setShowLocDrop]  = React.useState(false);
+  const [repLocations, setRepLocations] = React.useState(null); // null = not yet fetched
+  const [locHighlight, setLocHighlight] = React.useState(-1);
   const [stLookupQuery,      setStLookupQuery]      = React.useState("");
   const [stLookupResults,    setStLookupResults]    = React.useState(null);
   const [stLookupLoading,    setStLookupLoading]    = React.useState(false);
@@ -8898,6 +8900,7 @@ function FieldLog() {
   const saveDraftTimer = React.useRef(null);
   const draftMounted   = React.useRef(false);
   const stLookupTimer  = React.useRef(null);
+  const locFetchedRef  = React.useRef(false);
 
   React.useEffect(() => {
     if (repName) fetchTally(repName);
@@ -9333,7 +9336,34 @@ function FieldLog() {
     list.unshift(loc);
     if (list.length > 50) list = list.slice(0, 50);
     localStorage.setItem(key, JSON.stringify(list));
+    setRepLocations(prev => {
+      if (prev === null) return null;
+      const updated = [loc, ...prev.filter(l => l !== loc)];
+      return updated.slice(0, 50);
+    });
   }
+
+  async function fetchRepLocations() {
+    if (!repName || locFetchedRef.current) return;
+    locFetchedRef.current = true;
+    try {
+      const r = await fetch(`/api/field-log/locations?rep_name=${encodeURIComponent(repName)}`);
+      const data = await r.json();
+      setRepLocations(Array.isArray(data) ? data : []);
+    } catch {
+      setRepLocations([]);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!Array.isArray(repLocations) || !showLocDrop) return;
+    const q = location.trim().toLowerCase();
+    const sug = q
+      ? repLocations.filter(l => l.toLowerCase().includes(q)).slice(0, 8)
+      : repLocations.slice(0, 8);
+    setLocSuggestions(sug);
+    setShowLocDrop(sug.length > 0 || (!q && repLocations.length > 0));
+  }, [repLocations]);
 
   async function fetchStops(name) {
     if (!name) return;
@@ -9795,8 +9825,10 @@ function FieldLog() {
               <input value={location}
                 onChange={e => {
                   setLocation(e.target.value);
+                  setLocHighlight(-1);
+                  fetchRepLocations();
                   const q = e.target.value.trim().toLowerCase();
-                  const all = getMyLocations();
+                  const all = repLocations ?? getMyLocations();
                   if (q) {
                     const sug = all.filter(l => l.toLowerCase().includes(q)).slice(0, 8);
                     setLocSuggestions(sug);
@@ -9809,10 +9841,29 @@ function FieldLog() {
                   }
                 }}
                 onFocus={() => {
-                  const all = getMyLocations();
+                  fetchRepLocations();
+                  const all = repLocations ?? getMyLocations();
                   if (all.length > 0) { setLocSuggestions(all.slice(0, 8)); setShowLocDrop(true); }
                 }}
-                onBlur={() => setTimeout(() => setShowLocDrop(false), 150)}
+                onBlur={() => setTimeout(() => { setShowLocDrop(false); setLocHighlight(-1); }, 150)}
+                onKeyDown={e => {
+                  if (!showLocDrop || locSuggestions.length === 0) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setLocHighlight(h => Math.min(h + 1, locSuggestions.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setLocHighlight(h => Math.max(h - 1, 0));
+                  } else if (e.key === 'Enter' && locHighlight >= 0) {
+                    e.preventDefault();
+                    setLocation(locSuggestions[locHighlight]);
+                    setShowLocDrop(false);
+                    setLocHighlight(-1);
+                  } else if (e.key === 'Escape') {
+                    setShowLocDrop(false);
+                    setLocHighlight(-1);
+                  }
+                }}
                 placeholder="e.g. Midtown Atlanta, Industrial Pkwy"
                 style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
                   color:C.text, fontFamily:F.body, fontSize:15, padding:"11px 14px", boxSizing:"border-box" }}/>
@@ -9822,9 +9873,12 @@ function FieldLog() {
                   boxShadow:"0 4px 16px rgba(0,0,0,0.5)", maxHeight:200, overflowY:"auto" }}>
                   {locSuggestions.map((sug, i) => (
                     <div key={i}
-                      onPointerDown={e => { e.preventDefault(); setLocation(sug); setShowLocDrop(false); }}
-                      style={{ padding:"10px 14px", fontFamily:F.body, fontSize:14, color:C.text,
-                        cursor:"pointer", borderBottom: i < locSuggestions.length-1 ? `1px solid ${C.border}` : "none" }}>
+                      onPointerDown={e => { e.preventDefault(); setLocation(sug); setShowLocDrop(false); setLocHighlight(-1); }}
+                      style={{ padding:"10px 14px", fontFamily:F.body, fontSize:14,
+                        color: i === locHighlight ? '#fff' : C.text,
+                        background: i === locHighlight ? C.orange : 'transparent',
+                        cursor:"pointer",
+                        borderBottom: i < locSuggestions.length-1 ? `1px solid ${C.border}` : "none" }}>
                       {sug}
                     </div>
                   ))}

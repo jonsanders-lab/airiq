@@ -1554,6 +1554,25 @@ app.get('/api/field-log/export', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── REP LOCATION AUTOCOMPLETE ───────────────────────────────────────────────
+app.get('/api/field-log/locations', async (req, res) => {
+  if (!pgPool) return res.json([]);
+  try {
+    const { rep_name } = req.query;
+    if (!rep_name) return res.json([]);
+    const { rows } = await pgPool.query(
+      `SELECT location, MAX(logged_at) AS last_used
+       FROM field_log_entries
+       WHERE rep_name = $1 AND location IS NOT NULL AND location != ''
+       GROUP BY location
+       ORDER BY last_used DESC
+       LIMIT 50`,
+      [rep_name]
+    );
+    res.json(rows.map(r => r.location));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── REP CSV EXPORT ───────────────────────────────────────────────────────────
 app.get('/api/field-log/rep-export', async (req, res) => {
   if (!pgPool) return res.status(503).send('Database not configured');
