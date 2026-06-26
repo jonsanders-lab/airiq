@@ -8900,7 +8900,8 @@ function FieldLog() {
   const saveDraftTimer = React.useRef(null);
   const draftMounted   = React.useRef(false);
   const stLookupTimer  = React.useRef(null);
-  const locFetchedRef  = React.useRef(false);
+  const locFetchedRef       = React.useRef(false);
+  const locInputFocusedRef  = React.useRef(false);
 
   React.useEffect(() => {
     if (repName) fetchTally(repName);
@@ -9356,13 +9357,12 @@ function FieldLog() {
   }
 
   React.useEffect(() => {
-    if (!Array.isArray(repLocations) || !showLocDrop) return;
+    if (!Array.isArray(repLocations) || !locInputFocusedRef.current) return;
     const q = location.trim().toLowerCase();
     const sug = q
       ? repLocations.filter(l => l.toLowerCase().includes(q)).slice(0, 8)
       : repLocations.slice(0, 8);
-    setLocSuggestions(sug);
-    setShowLocDrop(sug.length > 0 || (!q && repLocations.length > 0));
+    if (sug.length > 0) { setLocSuggestions(sug); setShowLocDrop(true); }
   }, [repLocations]);
 
   async function fetchStops(name) {
@@ -9841,11 +9841,12 @@ function FieldLog() {
                   }
                 }}
                 onFocus={() => {
+                  locInputFocusedRef.current = true;
                   fetchRepLocations();
                   const all = repLocations ?? getMyLocations();
                   if (all.length > 0) { setLocSuggestions(all.slice(0, 8)); setShowLocDrop(true); }
                 }}
-                onBlur={() => setTimeout(() => { setShowLocDrop(false); setLocHighlight(-1); }, 150)}
+                onBlur={() => setTimeout(() => { locInputFocusedRef.current = false; setShowLocDrop(false); setLocHighlight(-1); }, 150)}
                 onKeyDown={e => {
                   if (!showLocDrop || locSuggestions.length === 0) return;
                   if (e.key === 'ArrowDown') {
