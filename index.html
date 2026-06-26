@@ -8837,6 +8837,7 @@ function FieldLog() {
   const [exportStart,     setExportStart]     = React.useState(() => new Date().toISOString().slice(0,10));
   const [exportEnd,       setExportEnd]       = React.useState(() => new Date().toISOString().slice(0,10));
   const [exporting,       setExporting]       = React.useState(false);
+  const [teamExportFormat, setTeamExportFormat] = React.useState("xlsx");
   const [showRepExport,        setShowRepExport]        = React.useState(false);
   const [showRepExportModal,   setShowRepExportModal]   = React.useState(false);
   const [repExportFormat,      setRepExportFormat]      = React.useState("xlsx");
@@ -9163,22 +9164,35 @@ function FieldLog() {
   }
 
   async function exportCSV() {
+    const today = new Date().toISOString().slice(0,10);
+    let start = today, end = today, label = 'Today';
+    if (exportRange === 'week') {
+      const d = new Date(); const dow = d.getDay() || 7;
+      d.setDate(d.getDate() - dow + 1);
+      start = d.toISOString().slice(0,10); label = 'Week';
+    } else if (exportRange === 'month') {
+      start = today.slice(0,7) + '-01'; label = 'Month';
+    } else if (exportRange === 'year') {
+      start = today.slice(0,4) + '-01-01'; label = 'Year';
+    } else if (exportRange === 'custom') {
+      start = exportStart; end = exportEnd;
+      label = `${exportStart}_to_${exportEnd}`;
+    }
+
+    if (teamExportFormat === 'xlsx') {
+      const url = `/api/field-log/export?start=${start}&end=${end}&format=xlsx`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `FieldLog_AllReps_${label}_${today}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setShowExport(false);
+      return;
+    }
+
     setExporting(true);
     try {
-      const today = new Date().toISOString().slice(0,10);
-      let start = today, end = today, label = 'Today';
-      if (exportRange === 'week') {
-        const d = new Date(); const dow = d.getDay() || 7;
-        d.setDate(d.getDate() - dow + 1);
-        start = d.toISOString().slice(0,10); label = 'Week';
-      } else if (exportRange === 'month') {
-        start = today.slice(0,7) + '-01'; label = 'Month';
-      } else if (exportRange === 'year') {
-        start = today.slice(0,4) + '-01-01'; label = 'Year';
-      } else if (exportRange === 'custom') {
-        start = exportStart; end = exportEnd;
-        label = `${exportStart}_to_${exportEnd}`;
-      }
       const r = await fetch(`/api/field-log/export?start=${start}&end=${end}`);
       const rows = await r.json();
       if (!Array.isArray(rows)) throw new Error(rows.error || 'Export failed');
@@ -10861,14 +10875,23 @@ function FieldLog() {
                     ))}
                   </div>
                 )}
-                <div style={{ display:"flex", gap:10, marginTop:20 }}>
+                <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}>
+                  <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:10 }}>FILE FORMAT</div>
+                  {[["xlsx","Excel (.xlsx)"],["csv","CSV (.csv)"]].map(([v,lbl]) => (
+                    <label key={v} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", cursor:"pointer" }}>
+                      <input type="radio" name="teamExportFormat" checked={teamExportFormat===v} onChange={() => setTeamExportFormat(v)} style={{ accentColor:C.copper, width:16, height:16, cursor:"pointer" }}/>
+                      <span style={{ fontFamily:F.body, fontSize:15, color:C.text }}>{lbl}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:10, marginTop:16 }}>
                   <button onClick={exportCSV} disabled={exporting} style={{
                     flex:1, padding:"13px 0",
                     background:`linear-gradient(135deg,${C.copper},#A0632A)`,
                     border:"none", borderRadius:8, fontFamily:F.head, fontSize:16,
                     letterSpacing:2, color:"#fff", cursor: exporting ? "not-allowed" : "pointer",
                     opacity: exporting ? 0.6 : 1,
-                  }}>{exporting ? "EXPORTING..." : "EXPORT CSV"}</button>
+                  }}>{exporting ? "EXPORTING..." : `EXPORT ${teamExportFormat.toUpperCase()}`}</button>
                   <button onClick={() => setShowExport(false)} style={{
                     padding:"13px 16px", background:"transparent", border:`1px solid ${C.border}`,
                     borderRadius:8, fontFamily:F.mono, fontSize:11, color:C.mid, cursor:"pointer",

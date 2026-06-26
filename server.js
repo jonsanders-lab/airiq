@@ -1483,7 +1483,7 @@ app.get('/api/field-log/stops/:repName/all', async (req, res) => {
 app.get('/api/field-log/export', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
-    const { start, end, rep } = req.query;
+    const { start, end, rep, format } = req.query;
     const today = new Date().toISOString().slice(0,10);
     const params = [start || today, end || today];
     const repFilter = rep ? `AND rep_name = $3` : '';
@@ -1505,6 +1505,51 @@ app.get('/api/field-log/export', async (req, res) => {
        ORDER BY date ASC, rep_name ASC, logged_at ASC`,
       params
     );
+
+    if (format === 'xlsx') {
+      function fmtDate(d) {
+        if (!d) return '';
+        const [y, m, day] = d.split('-');
+        return `${m}/${day}/${y}`;
+      }
+      function teamOutcome(row) {
+        const f = [];
+        if (row.pm_opp)       f.push('Membership Opp');
+        if (row.equip_opp)    f.push('Equipment Opp');
+        if (row.service_lead) f.push('Service Lead');
+        if (row.piping_opp)   f.push('Piping Opp');
+        if (row.appt_set)     f.push('Appt Set');
+        if (row.vr_pres)      f.push('VR Presentation');
+        if (row.sticker)      f.push('Sticker Only');
+        if (row.nothing)      f.push('Nothing Today');
+        return f.join(', ');
+      }
+      const dataRows = rows.map(row => ({
+        'Rep Name':      row.rep_name      || '',
+        'Date':          fmtDate(row.date),
+        'Time':          row.time          || '',
+        'Company':       row.company_name  || '',
+        'Contact':       row.contact_name  || '',
+        'Title':         row.contact_title || '',
+        'Email':         row.email         || '',
+        'Mobile':        row.mobile        || '',
+        'Phone':         row.office_phone  || '',
+        'Address':       row.card_address  || '',
+        'Branch':        '',
+        'Outcome':       teamOutcome(row),
+        'Sticker Count': row.sticker ? (row.sticker_count || 1) : 0,
+        'Area/Location': row.area_location || '',
+        'Notes':         row.notes         || '',
+      }));
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Stops');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="team_stops_export.xlsx"');
+      return res.send(buf);
+    }
+
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
