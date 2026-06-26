@@ -1559,32 +1559,48 @@ app.get('/api/field-log/rep-export', async (req, res) => {
       return f.join(', ');
     }
 
-    const header = 'Rep Name,Date,Time,Company,Contact,Title,Email,Mobile,Phone,Address,Branch,Outcome,Sticker Count,Area/Location,Notes';
-    const csvRows = rows.map(row => [
-      esc(row.rep_name),
-      row.date || '',
-      row.time || '',
-      esc(row.company_name),
-      esc(row.contact_name),
-      esc(row.contact_title),
-      esc(row.email),
-      esc(row.mobile),
-      esc(row.office_phone),
-      esc(row.card_address),
-      esc(branch || ''),
-      esc(outcome(row)),
-      row.sticker ? (row.sticker_count || 1) : 0,
-      esc(row.area_location),
-      esc(row.notes),
-    ].join(','));
-
+    const { format } = req.query;
+    const useXlsx = format !== 'csv';
     const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
     const safeRep = rep_name.replace(/[^a-zA-Z0-9]/g, '_');
-    const filename = `MyStops_${safeRep}_${range || 'all'}_${today}.csv`;
+    const rangeLabel = range || 'all';
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send([header, ...csvRows].join('\n'));
+    const dataRows = rows.map(row => ({
+      'Rep Name':      row.rep_name    || '',
+      'Date':          row.date        || '',
+      'Time':          row.time        || '',
+      'Company':       row.company_name  || '',
+      'Contact':       row.contact_name  || '',
+      'Title':         row.contact_title || '',
+      'Email':         row.email       || '',
+      'Mobile':        row.mobile      || '',
+      'Phone':         row.office_phone || '',
+      'Address':       row.card_address || '',
+      'Branch':        branch          || '',
+      'Outcome':       outcome(row),
+      'Sticker Count': row.sticker ? (row.sticker_count || 1) : 0,
+      'Area/Location': row.area_location || '',
+      'Notes':         row.notes       || '',
+    }));
+
+    if (useXlsx) {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(dataRows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Stops');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const filename = `MyStops_${safeRep}_${rangeLabel}_${today}.xlsx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buf);
+    } else {
+      const cols = ['Rep Name','Date','Time','Company','Contact','Title','Email','Mobile','Phone','Address','Branch','Outcome','Sticker Count','Area/Location','Notes'];
+      const esc2 = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const csvRows = dataRows.map(r => cols.map(c => typeof r[c] === 'number' ? r[c] : esc2(r[c])).join(','));
+      const filename = `MyStops_${safeRep}_${rangeLabel}_${today}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send([cols.join(','), ...csvRows].join('\n'));
+    }
   } catch (e) { res.status(500).send(e.message); }
 });
 

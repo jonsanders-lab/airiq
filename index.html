@@ -8839,6 +8839,7 @@ function FieldLog() {
   const [exporting,       setExporting]       = React.useState(false);
   const [showRepExport,        setShowRepExport]        = React.useState(false);
   const [showRepExportModal,   setShowRepExportModal]   = React.useState(false);
+  const [repExportFormat,      setRepExportFormat]      = React.useState("xlsx");
   const [repExportRange,  setRepExportRange]  = React.useState("week");
   const [repExportStart,  setRepExportStart]  = React.useState(() => new Date().toISOString().slice(0,10));
   const [repExportEnd,    setRepExportEnd]    = React.useState(() => new Date().toISOString().slice(0,10));
@@ -9058,7 +9059,7 @@ function FieldLog() {
 
   function doRepModalExport() {
     if (!repName) return;
-    let url = `/api/field-log/rep-export?rep_name=${encodeURIComponent(repName)}&range=${repExportRange}&branch=${encodeURIComponent(branch||'')}`;
+    let url = `/api/field-log/rep-export?rep_name=${encodeURIComponent(repName)}&range=${repExportRange}&branch=${encodeURIComponent(branch||'')}&format=${repExportFormat}`;
     if (repExportRange === 'custom') url += `&from=${repExportStart}&to=${repExportEnd}`;
     const a = document.createElement('a');
     a.href = url;
@@ -10289,13 +10290,22 @@ function FieldLog() {
                 ))}
               </div>
             )}
-            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+            <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}>
+              <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:10 }}>FILE FORMAT</div>
+              {[["xlsx","Excel (.xlsx)"],["csv","CSV (.csv)"]].map(([v,lbl]) => (
+                <label key={v} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", cursor:"pointer" }}>
+                  <input type="radio" name="repExportFormat" checked={repExportFormat===v} onChange={() => setRepExportFormat(v)} style={{ accentColor:C.copper, width:16, height:16, cursor:"pointer" }}/>
+                  <span style={{ fontFamily:F.body, fontSize:15, color:C.text }}>{lbl}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
               <button onClick={doRepModalExport} style={{
                 flex:1, padding:"13px 0",
                 background:`linear-gradient(135deg,${C.copper},#A0632A)`,
                 border:"none", borderRadius:8, fontFamily:F.head, fontSize:16,
                 letterSpacing:2, color:"#fff", cursor:"pointer",
-              }}>EXPORT CSV</button>
+              }}>{`EXPORT ${repExportFormat.toUpperCase()}`}</button>
               <button onClick={() => setShowRepExportModal(false)} style={{
                 padding:"13px 16px", background:"transparent", border:`1px solid ${C.border}`,
                 borderRadius:8, fontFamily:F.mono, fontSize:11, color:C.mid, cursor:"pointer",
