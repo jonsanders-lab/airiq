@@ -716,19 +716,31 @@ const REP_START_DATES = {
   'Javier':   '2026-05-11',
 };
 
-function getRepGoals(repName) {
-  const start = REP_START_DATES[repName];
-  const isNew = start
-    ? (Date.now() - new Date(start).getTime()) / 86400000 < 90
-    : false;
+function getRepGoals(repName, goalsOverride) {
   const isWed = new Date().getDay() === 3;
-  // Wednesday: 25 for all. Non-Wed new rep: 20. Non-Wed experienced: null (pace on 30/wk instead).
+  if (goalsOverride && Array.isArray(goalsOverride)) {
+    const row = goalsOverride.find(r => r.rep_name === repName);
+    if (row) {
+      const daily = isWed ? row.wednesday_goal : (row.daily_goal != null ? row.daily_goal : null);
+      return { daily, weekly: row.weekly_goal, monthly: Math.round(row.weekly_goal * 4.3) };
+    }
+  }
+  const start = REP_START_DATES[repName];
+  const isNew = start ? (Date.now() - new Date(start).getTime()) / 86400000 < 90 : false;
   const daily = isWed ? 25 : isNew ? 20 : null;
-  return {
-    daily,
-    weekly:  isNew ? 100 : 30,
-    monthly: isNew ? 420 : 130,
-  };
+  return { daily, weekly: isNew ? 100 : 30, monthly: isNew ? 420 : 130 };
+}
+
+function getRepBaseGoals(repName, goalsOverride) {
+  if (goalsOverride && Array.isArray(goalsOverride)) {
+    const row = goalsOverride.find(r => r.rep_name === repName);
+    if (row) {
+      return { wednesday_goal: row.wednesday_goal, daily_goal: row.daily_goal, weekly_goal: row.weekly_goal };
+    }
+  }
+  const start = REP_START_DATES[repName];
+  const isNew = start ? (Date.now() - new Date(start).getTime()) / 86400000 < 90 : false;
+  return { wednesday_goal: 25, daily_goal: isNew ? 20 : null, weekly_goal: isNew ? 100 : 30 };
 }
 </script>
 <script type="text/babel">
@@ -1327,6 +1339,122 @@ function HelpTab() {
           </div>
         ))}
 
+      </div>
+    </div>
+  );
+}
+
+function GoalSettingsModal({ repRows, repGoals, onSaved, onClose }) {
+  const [edits, setEdits] = React.useState(() => {
+    const m = {};
+    repRows.forEach(r => {
+      const base = getRepBaseGoals(r.rep_name, repGoals);
+      m[r.rep_name] = {
+        wednesday_goal: base.wednesday_goal != null ? String(base.wednesday_goal) : '25',
+        daily_goal:     base.daily_goal     != null ? String(base.daily_goal)     : '',
+        weekly_goal:    base.weekly_goal    != null ? String(base.weekly_goal)    : '30',
+        saving: false, saved: false,
+      };
+    });
+    return m;
+  });
+
+  function setField(repName, field, val) {
+    setEdits(prev => ({ ...prev, [repName]: { ...prev[repName], [field]: val, saved: false } }));
+  }
+
+  async function saveRep(repName) {
+    const e = edits[repName];
+    setEdits(prev => ({ ...prev, [repName]: { ...prev[repName], saving: true, saved: false } }));
+    try {
+      const body = {
+        rep_name:       repName,
+        wednesday_goal: parseInt(e.wednesday_goal) || 25,
+        daily_goal:     e.daily_goal !== '' ? (parseInt(e.daily_goal) || null) : null,
+        weekly_goal:    parseInt(e.weekly_goal) || 30,
+      };
+      const r = await fetch('/api/field-log/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      setEdits(prev => ({ ...prev, [repName]: { ...prev[repName], saving: false, saved: true } }));
+      onSaved(d);
+      setTimeout(() => setEdits(prev => ({ ...prev, [repName]: { ...prev[repName], saved: false } })), 2500);
+    } catch (err) {
+      setEdits(prev => ({ ...prev, [repName]: { ...prev[repName], saving: false } }));
+      console.error('saveRep error:', err.message);
+    }
+  }
+
+  const numInput = (repName, field, placeholder, maxW) => {
+    const e = edits[repName] || {};
+    return (
+      <input
+        type="number" min="0" max="999"
+        value={e[field] != null ? e[field] : ''}
+        placeholder={placeholder || ''}
+        onChange={ev => setField(repName, field, ev.target.value)}
+        style={{
+          width: maxW || 64, background: C.surface, border: `1px solid ${C.border}`,
+          borderRadius: 6, color: e[field] ? C.text : C.mid, fontFamily: F.mono, fontSize: 12,
+          padding: '6px 4px', textAlign: 'center', boxSizing: 'border-box',
+        }}
+      />
+    );
+  };
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:10025, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"20px 8px", overflowY:"auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid ${C.copper}`, borderRadius:12, padding:"20px 16px", maxWidth:680, width:"100%" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+          <div style={{ fontFamily:F.mono, fontSize:12, letterSpacing:2, color:C.copper }}>REP STOP GOALS</div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.mid, fontSize:24, cursor:"pointer", lineHeight:1, padding:"0 4px" }}>×</button>
+        </div>
+        <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, marginBottom:16 }}>
+          Defaults based on company policy. Customize per rep as needed.
+        </div>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead>
+              <tr style={{ borderBottom:`1px solid ${C.border}` }}>
+                {[["REP NAME","left"],["WED","center"],["DAILY\nM/T/Th/F","center"],["WEEKLY","center"],["MONTHLY\n(auto)","center"],["","center"]].map(([h,a],i) => (
+                  <th key={i} style={{ padding:"6px 8px", color:C.mid, fontFamily:F.mono, fontWeight:600, fontSize:9, letterSpacing:1, textAlign:a, whiteSpace:"pre-line" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {repRows.map(r => {
+                const e = edits[r.rep_name] || {};
+                const monthly = Math.round((parseInt(e.weekly_goal) || 30) * 4.3);
+                return (
+                  <tr key={r.rep_name} style={{ borderBottom:`1px solid ${C.border}` }}>
+                    <td style={{ padding:"8px", fontFamily:F.body, fontSize:13, color:C.text, whiteSpace:"nowrap" }}>{r.rep_name}</td>
+                    <td style={{ padding:"8px 4px", textAlign:"center" }}>{numInput(r.rep_name, 'wednesday_goal', '25', 60)}</td>
+                    <td style={{ padding:"8px 4px", textAlign:"center" }}>{numInput(r.rep_name, 'daily_goal', 'none', 72)}</td>
+                    <td style={{ padding:"8px 4px", textAlign:"center" }}>{numInput(r.rep_name, 'weekly_goal', '30', 60)}</td>
+                    <td style={{ padding:"8px", textAlign:"center", fontFamily:F.mono, fontSize:12, color:C.mid }}>{monthly}</td>
+                    <td style={{ padding:"8px 4px", textAlign:"center", minWidth:72 }}>
+                      {e.saved
+                        ? <span style={{ fontFamily:F.mono, fontSize:10, color:C.green, letterSpacing:1 }}>✓ SAVED</span>
+                        : <button onClick={() => saveRep(r.rep_name)} disabled={e.saving} style={{
+                            padding:"5px 14px", background:C.blue, border:"none", borderRadius:6,
+                            color:"#fff", fontFamily:F.mono, fontSize:10, letterSpacing:1,
+                            cursor: e.saving ? "not-allowed" : "pointer", opacity: e.saving ? 0.6 : 1,
+                          }}>{e.saving ? "..." : "SAVE"}</button>
+                      }
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontFamily:F.mono, fontSize:9, color:C.dim, marginTop:14, letterSpacing:0.5 }}>
+          Monthly auto-calculated as Weekly × 4.3. Leave Daily blank to use weekly pace only (experienced reps).
+        </div>
       </div>
     </div>
   );
@@ -8749,6 +8877,8 @@ function FieldLog() {
   const [allLeaderStops,       setAllLeaderStops]       = React.useState([]);
   const [allLeaderLoad,        setAllLeaderLoad]        = React.useState(false);
   const [expandedLeaderStopId, setExpandedLeaderStopId] = React.useState(null);
+  const [repGoals,             setRepGoals]             = React.useState([]);
+  const [showGoalModal,        setShowGoalModal]        = React.useState(false);
   const dashTimer      = React.useRef(null);
   const dashRangeRef   = React.useRef("today");
   const saveDraftTimer = React.useRef(null);
@@ -8768,6 +8898,7 @@ function FieldLog() {
       fetchDashboard();
       fetchWeekData();
       fetchAllStops();
+      fetchGoals();
       dashTimer.current = setInterval(fetchDashboard, 60000);
     } else {
       clearInterval(dashTimer.current);
@@ -8903,6 +9034,14 @@ function FieldLog() {
       clearTimeout(timer);
       setAllLeaderLoad(false);
     }
+  }
+
+  async function fetchGoals() {
+    try {
+      const r = await fetch('/api/field-log/goals');
+      const d = await r.json();
+      if (Array.isArray(d)) setRepGoals(d);
+    } catch (e) { console.error('fetchGoals error:', e.message); }
   }
 
   async function saveStopEdit(id) {
@@ -10114,6 +10253,11 @@ function FieldLog() {
               borderRadius:8, padding:"6px 12px", color:C.copper,
               fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer",
             }}>↓ EXPORT</button>
+            <button onClick={() => setShowGoalModal(true)} style={{
+              flexShrink:0, background:"transparent", border:`1px solid ${C.border}`,
+              borderRadius:8, padding:"6px 12px", color:C.mid,
+              fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer", display:"flex", alignItems:"center", gap:4,
+            }}>⚙ GOALS</button>
             <div style={{ fontFamily:F.mono, fontSize:9, color:dashLoad ? C.orange : C.mid, letterSpacing:1, flexShrink:0 }}>
               {dashLoad ? "REFRESHING..." : "AUTO-REFRESH 60s"}
             </div>
@@ -10125,10 +10269,10 @@ function FieldLog() {
             const oppStops   = repRows.reduce((s, r) => s + Number(r.opp_stops || 0), 0);
             const cvrPct     = totalStops > 0 ? (oppStops / totalStops * 100).toFixed(1) : '0.0';
             const onPace     = repRows.filter(r => {
-              const g = getRepGoals(r.rep_name);
+              const g = getRepGoals(r.rep_name, repGoals);
               if (dashRange === 'today') {
                 if (g.daily !== null) return Number(r.stops) >= g.daily;
-                return Number(r.week_stops || 0) >= 30;
+                return Number(r.week_stops || 0) >= g.weekly;
               }
               if (dashRange === 'week')  return Number(r.stops) >= g.weekly;
               if (dashRange === 'month') return Number(r.stops) >= g.monthly;
@@ -10195,7 +10339,7 @@ function FieldLog() {
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {repRows.map(row => {
                 const stops = Number(row.stops);
-                const rg    = getRepGoals(row.rep_name);
+                const rg    = getRepGoals(row.rep_name, repGoals);
                 let listStops, listGoal;
                 if (dashRange === 'today') {
                   if (rg.daily !== null) { listStops = stops; listGoal = rg.daily; }
@@ -10268,7 +10412,7 @@ function FieldLog() {
                     {repRows.map(row => {
                       const s       = Number(row.stops);
                       const opp     = Number(row.opp_stops) || 0;
-                      const rg      = getRepGoals(row.rep_name);
+                      const rg      = getRepGoals(row.rep_name, repGoals);
                       let colorStops, colorGoal, scaleGoal;
                       if (dashRange === 'today') {
                         scaleGoal = rg.daily || 25;
@@ -10299,7 +10443,7 @@ function FieldLog() {
                   <div style={{ display:"flex", gap:3, marginTop:5, borderTop:`1px solid ${C.border}`, paddingTop:4 }}>
                     {repRows.map(row => {
                       const s = Number(row.stops);
-                      const rg2 = getRepGoals(row.rep_name);
+                      const rg2 = getRepGoals(row.rep_name, repGoals);
                       let xColorStops, xColorGoal;
                       if (dashRange === 'today') {
                         if (rg2.daily !== null) { xColorStops = s; xColorGoal = rg2.daily; }
@@ -10558,6 +10702,15 @@ function FieldLog() {
                 </div>
               </div>
             </div>
+          )}
+
+          {showGoalModal && (
+            <GoalSettingsModal
+              repRows={repRows}
+              repGoals={repGoals}
+              onSaved={row => setRepGoals(prev => [...prev.filter(r => r.rep_name !== row.rep_name), row])}
+              onClose={() => setShowGoalModal(false)}
+            />
           )}
 
           {showExport && (

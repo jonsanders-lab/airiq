@@ -54,6 +54,15 @@ async function initFieldLogTable() {
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS card_address    TEXT`);
   await pgPool.query(`ALTER TABLE field_log_entries ADD COLUMN IF NOT EXISTS contact_title  TEXT`);
   await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_field_log_rep_logged ON field_log_entries (rep_name, logged_at DESC)`);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS rep_goals (
+      rep_name       TEXT PRIMARY KEY,
+      wednesday_goal INTEGER NOT NULL DEFAULT 25,
+      daily_goal     INTEGER,
+      weekly_goal    INTEGER NOT NULL DEFAULT 30,
+      updated_at     TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   console.log('field_log_entries table ready');
 }
 
@@ -1497,6 +1506,35 @@ app.get('/api/field-log/export', async (req, res) => {
       params
     );
     res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── REP GOALS ────────────────────────────────────────────────────────────────
+app.get('/api/field-log/goals', async (req, res) => {
+  if (!pgPool) return res.json([]);
+  try {
+    const { rows } = await pgPool.query('SELECT * FROM rep_goals ORDER BY rep_name');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/field-log/goals', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const { rep_name, wednesday_goal, daily_goal, weekly_goal } = req.body;
+    if (!rep_name) return res.status(400).json({ error: 'rep_name required' });
+    const { rows } = await pgPool.query(
+      `INSERT INTO rep_goals (rep_name, wednesday_goal, daily_goal, weekly_goal, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (rep_name) DO UPDATE SET
+         wednesday_goal = EXCLUDED.wednesday_goal,
+         daily_goal     = EXCLUDED.daily_goal,
+         weekly_goal    = EXCLUDED.weekly_goal,
+         updated_at     = NOW()
+       RETURNING *`,
+      [rep_name, wednesday_goal ?? 25, daily_goal ?? null, weekly_goal ?? 30]
+    );
+    res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
