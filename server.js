@@ -1509,6 +1509,85 @@ app.get('/api/field-log/export', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── REP CSV EXPORT ───────────────────────────────────────────────────────────
+app.get('/api/field-log/rep-export', async (req, res) => {
+  if (!pgPool) return res.status(503).send('Database not configured');
+  try {
+    const { rep_name, range, from: fromDate, to: toDate, branch } = req.query;
+    if (!rep_name) return res.status(400).send('rep_name required');
+    const TZ = 'America/New_York';
+
+    let dateFilter = '';
+    const params = [rep_name];
+    if (range === 'today') {
+      dateFilter = `AND (logged_at AT TIME ZONE '${TZ}')::date = (NOW() AT TIME ZONE '${TZ}')::date`;
+    } else if (range === 'week') {
+      dateFilter = `AND logged_at >= DATE_TRUNC('week', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+    } else if (range === 'month') {
+      dateFilter = `AND logged_at >= DATE_TRUNC('month', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}'`;
+    } else if (range === 'custom' && fromDate && toDate) {
+      dateFilter = `AND (logged_at AT TIME ZONE '${TZ}')::date BETWEEN $2::date AND $3::date`;
+      params.push(fromDate, toDate);
+    }
+
+    const { rows } = await pgPool.query(
+      `SELECT rep_name,
+         TO_CHAR(logged_at AT TIME ZONE '${TZ}', 'MM/DD/YYYY') AS date,
+         TO_CHAR(logged_at AT TIME ZONE '${TZ}', 'HH12:MI AM') AS time,
+         company_name, contact_name, contact_title,
+         email, mobile, office_phone, card_address,
+         location AS area_location, notable_moment AS notes,
+         pm_opp, equip_opp, service_lead, piping_opp,
+         sticker, sticker_count, vr_pres, appt_set, nothing
+       FROM field_log_entries
+       WHERE rep_name = $1 ${dateFilter}
+       ORDER BY logged_at ASC`,
+      params
+    );
+
+    const esc = v => `"${String(v || '').replace(/"/g, '""')}"`;
+    function outcome(row) {
+      const f = [];
+      if (row.pm_opp)       f.push('Membership Opp');
+      if (row.equip_opp)    f.push('Equipment Opp');
+      if (row.service_lead) f.push('Service Lead');
+      if (row.piping_opp)   f.push('Piping Opp');
+      if (row.appt_set)     f.push('Appt Set');
+      if (row.vr_pres)      f.push('VR Presentation');
+      if (row.sticker)      f.push('Sticker Only');
+      if (row.nothing)      f.push('Nothing Today');
+      return f.join(', ');
+    }
+
+    const header = 'Rep Name,Date,Time,Company,Contact,Title,Email,Mobile,Phone,Address,Branch,Outcome,Sticker Count,Area/Location,Notes';
+    const csvRows = rows.map(row => [
+      esc(row.rep_name),
+      row.date || '',
+      row.time || '',
+      esc(row.company_name),
+      esc(row.contact_name),
+      esc(row.contact_title),
+      esc(row.email),
+      esc(row.mobile),
+      esc(row.office_phone),
+      esc(row.card_address),
+      esc(branch || ''),
+      esc(outcome(row)),
+      row.sticker ? (row.sticker_count || 1) : 0,
+      esc(row.area_location),
+      esc(row.notes),
+    ].join(','));
+
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+    const safeRep = rep_name.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `MyStops_${safeRep}_${range || 'all'}_${today}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send([header, ...csvRows].join('\n'));
+  } catch (e) { res.status(500).send(e.message); }
+});
+
 // ─── REP GOALS ────────────────────────────────────────────────────────────────
 app.get('/api/field-log/goals', async (req, res) => {
   if (!pgPool) return res.json([]);

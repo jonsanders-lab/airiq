@@ -8886,6 +8886,10 @@ function FieldLog() {
   const [expandedLeaderStopId, setExpandedLeaderStopId] = React.useState(null);
   const [repGoals,             setRepGoals]             = React.useState([]);
   const [showGoalModal,        setShowGoalModal]        = React.useState(false);
+  const [repInlineRange,       setRepInlineRange]       = React.useState("today");
+  const [repInlineFrom,        setRepInlineFrom]        = React.useState(() => new Date().toISOString().slice(0,10));
+  const [repInlineTo,          setRepInlineTo]          = React.useState(() => new Date().toISOString().slice(0,10));
+  const [repInlineExporting,   setRepInlineExporting]   = React.useState(false);
   const dashTimer      = React.useRef(null);
   const dashRangeRef   = React.useRef("today");
   const saveDraftTimer = React.useRef(null);
@@ -9049,6 +9053,23 @@ function FieldLog() {
       const d = await r.json();
       if (Array.isArray(d)) setRepGoals(d);
     } catch (e) { console.error('fetchGoals error:', e.message); }
+  }
+
+  async function exportRepInlineCSV() {
+    if (!repName) return;
+    setRepInlineExporting(true);
+    try {
+      const today = new Date().toISOString().slice(0,10);
+      const safeRep = repName.replace(/[^a-zA-Z0-9]/g, '_');
+      const rangeLabel = { today:'Today', week:'Week', month:'Month', all:'AllTime', custom:`${repInlineFrom}_to_${repInlineTo}` }[repInlineRange] || repInlineRange;
+      let url = `/api/field-log/rep-export?rep_name=${encodeURIComponent(repName)}&range=${repInlineRange}&branch=${encodeURIComponent(branch||'')}`;
+      if (repInlineRange === 'custom') url += `&from=${repInlineFrom}&to=${repInlineTo}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(await r.text());
+      const csv = await r.text();
+      triggerDownload(csv, `MyStops_${safeRep}_${rangeLabel}_${today}.csv`);
+    } catch (e) { alert('Export failed: ' + e.message); }
+    setRepInlineExporting(false);
   }
 
   async function saveStopEdit(id) {
@@ -10668,6 +10689,43 @@ function FieldLog() {
             </div>
           )}
 
+
+          {repName && (
+            <div style={{ marginTop:18, padding:"14px 16px", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10 }}>
+              <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, marginBottom:10 }}>EXPORT MY STOPS</div>
+              <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:repInlineRange==="custom" ? 10 : 12 }}>
+                {[["today","TODAY"],["week","THIS WEEK"],["month","THIS MONTH"],["all","ALL TIME"],["custom","CUSTOM"]].map(([v,lbl]) => (
+                  <button key={v} onClick={() => setRepInlineRange(v)} style={{
+                    padding:"5px 12px", borderRadius:20, border:`1px solid ${repInlineRange===v ? C.orange : C.border}`,
+                    background: repInlineRange===v ? C.orangeSoft : "transparent",
+                    color: repInlineRange===v ? C.orange : C.mid,
+                    fontFamily:F.mono, fontSize:9, letterSpacing:1, cursor:"pointer",
+                  }}>{lbl}</button>
+                ))}
+              </div>
+              {repInlineRange === "custom" && (
+                <div style={{ display:"flex", gap:10, marginBottom:12 }}>
+                  {[["FROM",repInlineFrom,setRepInlineFrom],["TO",repInlineTo,setRepInlineTo]].map(([lbl,val,set]) => (
+                    <div key={lbl} style={{ flex:1 }}>
+                      <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:4 }}>{lbl}</div>
+                      <input type="date" value={val} onChange={e => set(e.target.value)} style={{
+                        width:"100%", background:C.surface, border:`1px solid ${C.border}`,
+                        borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13,
+                        padding:"7px 10px", boxSizing:"border-box",
+                      }}/>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button onClick={exportRepInlineCSV} disabled={repInlineExporting} style={{
+                width:"100%", padding:"12px 0",
+                background:`linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)`,
+                border:"none", borderRadius:8, fontFamily:F.head, fontSize:16,
+                letterSpacing:2, color:"#fff", cursor: repInlineExporting ? "not-allowed" : "pointer",
+                opacity: repInlineExporting ? 0.6 : 1,
+              }}>{repInlineExporting ? "EXPORTING..." : "↓ EXPORT CSV"}</button>
+            </div>
+          )}
 
           {showRepExport && (
             <div onClick={() => setShowRepExport(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:10020, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
