@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 16, 2026 (session 9)**
+**Last updated: June 26, 2026 (session 10)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -27,9 +27,10 @@ Railway volume mounted at /app/data for persistent storage
 - Tab 1: AirIQ — AI sales assistant with live ST pricing and inventory
 - Tab 2: Wingman — Mission Brief, Field Intel, Log a Win
 - Tab 3: Field Log — daily stop tracker
-- Tab 4: Site / IQF — IQF Site Survey form + Facility Drawing Tool
-- Tab 5: Sys Eng — 7-step system engineering tool with Design Advisor, Energy Calculator, BOM generator
-- Tab 6: Mkt Intel — placeholder
+- Tab 4: Drawing — standalone facility drawing tool (FacilityDrawing extracted from Site/IQF)
+- Tab 5: Site / IQF — IQF Site Survey form (no drawing; shows attached drawing thumbnail + PDF upload)
+- Tab 6: Sys Eng — 7-step system engineering tool with Design Advisor, Energy Calculator, BOM generator
+- Tab 7: Mkt Intel — placeholder
 
 ## KEY COMPLETED FEATURES
 - ST pricebook pricing via Cloudflare Worker proxy
@@ -93,6 +94,12 @@ Railway volume mounted at /app/data for persistent storage
 - Drain/Pipe mutual exclusion (visual): PIPE button active highlight suppressed when drainMode=true so reps see clear state; clicking PIPE still calls changeTool which sets drainMode=false
 - PDF export footer: already had branch + location from previous session; added airiq_rep_branch localStorage key as additional fallback
 - Pipe body snap (T-branch): findSnapPoint priority 2.5 — projects cursor onto pipe body (bt 5%–95%), returns {sourceEl, onBody:true}; pipe completion auto-inserts tee at body snap (reducing tee labeled 'X×Y Red. Tee' if sizes differ, regular 'X Tee' if same size); works for both straight and L-shape routing
+- MY LOG export: format selector (xlsx/csv) added to rep export modal; server builds .xlsx via XLSX package or returns JSON for client-side CSV
+- Team View export: same format selector; server builds .xlsx with MM/DD/YYYY dates; CSV path unchanged
+- DB-backed location autocomplete in Field Log: GET /api/field-log/locations; fetch-once per session; keyboard nav; touch+mouse handlers (onTouchStart/onTouchEnd + onMouseDown); locInputFocusedRef fixes first-focus async race
+- Stop search / form pre-fill: GET /api/field-log/search?q= (ILIKE across company/contact/location/notes); 400ms debounce; results panel with onMouseDown+onTouchEnd; fillFromSearchResult pre-fills form; ESC/× clear
+- GET /api/stories + POST /api/stories endpoints added; STORIES_FILE on Railway volume; Wingman LogAWin was silently failing without these
+- Drawing Tab Separation (session 10): FacilityDrawing extracted from SiteSurvey into standalone "Drawing" tab (id: drawing, icon: ✏️); App-level drawingAttachment and drawingForBOM state; Drawing toolbar: ⬇ DXF (DXF R12 export), ▶ IQF (sendToIQF callback), ▶ SYS ENG (sendToSysEng callback); SiteSurvey: shows attached drawing thumbnail with REMOVE + PDF upload zone; Sys Eng: "Analyze Drawing for BOM" card with AI analysis, editable BOM table, Copy BOM; Estimator "Send to Drawing" buttons now route to drawing tab; session loadSession() switches to drawing tab
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock
@@ -113,8 +120,7 @@ Union=x002, 90 Elbow=x003, Equal Tee=x005, End Cap=x006, Flex Hose=x055
 
 ## NEXT PRIORITIES (in order)
 1. Drawing tool polish — auto-label fittings with AIRpipe part numbers + size
-2. Drawing workflow — Site/IQF tab=as-is facility layout, Sys Eng tab=proposed system with auto-placed equipment
-3. Live ST inventory lookup (replace daily Gmail report) — report ID 1823
+2. Live ST inventory lookup (replace daily Gmail report) — report ID 1823
 4. Lead time display for out-of-stock units + Trello board link for ETA
 5. ST customer lookup + autofill contact and address
 6. Drive time calculation from branch to customer

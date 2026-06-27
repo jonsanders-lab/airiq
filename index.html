@@ -1473,6 +1473,8 @@ function App() {
   const [proposedEquipment, setProposedEquipment] = React.useState(null);
   const [drawingMode, setDrawingMode]       = React.useState('asis');
   const [drawingReset, setDrawingReset]     = React.useState(0);
+  const [drawingAttachment, setDrawingAttachment] = React.useState(null);
+  const [drawingForBOM,     setDrawingForBOM]     = React.useState(null);
   const [darkMode, setDarkMode] = React.useState(() => (localStorage.getItem('airiq_theme')||'dark')==='dark');
 
   const toggleTheme = () => {
@@ -1545,11 +1547,18 @@ function App() {
         </div>
         <div style={{ display: tab==="estimator" ? "block" : "none",
           height:"100%", overflowY:"auto" }}>
-          <Estimator setTab={setTab} setProposedEquipment={setProposedEquipment} setDrawingMode={setDrawingMode} proposedEquipment={proposedEquipment} setDrawingReset={setDrawingReset}/>
+          <Estimator setTab={setTab} setProposedEquipment={setProposedEquipment} setDrawingMode={setDrawingMode} proposedEquipment={proposedEquipment} setDrawingReset={setDrawingReset} drawingForBOM={drawingForBOM} setDrawingForBOM={setDrawingForBOM}/>
+        </div>
+        <div style={{ display: tab==="drawing" ? "flex" : "none",
+          flexDirection:"column", height:"100%", overflow:"hidden" }}>
+          <FacilityDrawing key={drawingReset} proposedEquipment={proposedEquipment}
+            drawingMode={drawingMode} setDrawingMode={setDrawingMode}
+            onSendToIQF={dataURL=>{ setDrawingAttachment(dataURL); setTab('site-design'); }}
+            onSendToSysEng={dataURL=>{ setDrawingForBOM(dataURL); setTab('estimator'); }}/>
         </div>
         <div style={{ display: tab==="site-design" ? "block" : "none",
           height:"100%", overflowY:"auto" }}>
-          <SiteSurvey proposedEquipment={proposedEquipment} setProposedEquipment={setProposedEquipment} drawingMode={drawingMode} setDrawingMode={setDrawingMode} drawingReset={drawingReset} setDrawingReset={setDrawingReset}/>
+          <SiteSurvey proposedEquipment={proposedEquipment} setProposedEquipment={setProposedEquipment} setDrawingMode={setDrawingMode} setDrawingReset={setDrawingReset} drawingAttachment={drawingAttachment} setDrawingAttachment={setDrawingAttachment} setTab={setTab}/>
         </div>
         <div style={{ display: tab==="market-intel" ? "block" : "none",
           height:"100%", overflowY:"auto" }}>
@@ -1577,6 +1586,7 @@ function App() {
             { id:"airiq",        icon:"💨", label:"AirIQ"      },
             { id:"sandbot",      icon:"🎯", label:"Recon"      },
             { id:"field-log",    icon:"📍", label:"Field Log"  },
+            { id:"drawing",      icon:"✏️", label:"Drawing"    },
             { id:"site-design",  icon:"📋", label:"Site / IQF" },
             { id:"estimator",    icon:null,  label:"Sys Eng"   },
             { id:"market-intel", icon:"📊", label:"Mkt Intel"  },
@@ -3608,7 +3618,7 @@ function FeedbackModal({ tab, onClose }) {
   );
 }
 
-function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquipment, setDrawingReset }) {
+function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquipment, setDrawingReset, drawingForBOM, setDrawingForBOM }) {
   const [job, setJob]         = React.useState({customer:"",address:"",pipeSize:"1\"",pipeColor:"Blue",totalRun:"",dropSize:"3/4\""});
   const [comps, setComps]     = React.useState([]);
   const [dryers, setDryers]   = React.useState([]);
@@ -3652,6 +3662,9 @@ function Estimator({ setTab, setProposedEquipment, setDrawingMode, proposedEquip
   const [openSections, setOpenSections] = React.useState({buildSystem:true,saveexport:false,valueJustification:false,electrical:false});
   const [tierModal,    setTierModal]    = React.useState(null);
   const [feedbackOpen, setFeedbackOpen] = React.useState(false);
+  const [bomAnalyzing, setBomAnalyzing] = React.useState(false);
+  const [bomEditRows,  setBomEditRows]  = React.useState([]);
+  const [bomParsed,    setBomParsed]    = React.useState(false);
   const toggleSection = k => setOpenSections(p=>({...p,[k]:!p[k]}));
   const secOpen       = k => !!openSections[k];
   const secHdr = (key, label, badge, step, subtitle) => (
@@ -4183,6 +4196,34 @@ No fabricated prices.`;
     setBomBusy(false);
   }
 
+  async function analyzeDrawingBOM() {
+    setBomAnalyzing(true); setBomParsed(false); setBomEditRows([]);
+    try {
+      const base64 = drawingForBOM.split(',')[1];
+      const mimeType = (drawingForBOM.split(';')[0].split(':')[1]) || 'image/png';
+      const res = await fetch("/api/claude", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-6", max_tokens:2000,
+          system:"You are analyzing a compressed air system facility drawing. Identify all visible equipment, pipe runs, fittings, and components. Return ONLY a JSON array of objects with fields: name (string), qty (string), partNumber (string or null), size (string or null), notes (string or null). No markdown, no explanation, just the JSON array.",
+          messages:[{role:"user",content:[
+            {type:"image",source:{type:"base64",media_type:mimeType,data:base64}},
+            {type:"text",text:"Analyze this drawing and return the BOM as a JSON array."}
+          ]}]
+        })
+      });
+      const d = await res.json();
+      const text = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+      const m = text.match(/\[[\s\S]*\]/);
+      if (m) {
+        const rows = JSON.parse(m[0]);
+        setBomEditRows(rows.map(r=>({name:String(r.name||""),qty:String(r.qty||""),partNumber:String(r.partNumber||""),size:String(r.size||""),notes:String(r.notes||"")})));
+        setBomParsed(true);
+      } else { alert("AI could not find a BOM in the drawing. Try a clearer image."); }
+    } catch(e) { alert("Analysis failed: "+e.message); }
+    setBomAnalyzing(false);
+  }
+
   const card = {background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:16,marginBottom:12};
   const addBtn = (label, fn) => (
     <button onClick={fn} style={{background:"none",border:`1px dashed ${C.border}`,borderRadius:7,
@@ -4291,7 +4332,58 @@ No fabricated prices.`;
       </div>
       {feedbackOpen && <FeedbackModal tab="Sys Eng" onClose={()=>setFeedbackOpen(false)}/>}
 
-      
+      {drawingForBOM && (
+        <div style={{background:C.surface,border:`1px solid ${C.copper}`,borderRadius:10,padding:16,marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <div style={{fontFamily:F.mono,fontSize:11,letterSpacing:2,color:C.copper,flex:1}}>📐 DRAWING — ANALYZE FOR BOM</div>
+            <button onClick={()=>{setDrawingForBOM(null);setBomParsed(false);setBomEditRows([]);}} style={{background:"none",border:"none",color:C.mid,fontSize:20,cursor:"pointer",lineHeight:1}}>×</button>
+          </div>
+          <img src={drawingForBOM} style={{width:"100%",maxHeight:200,objectFit:"contain",borderRadius:6,marginBottom:12,border:`1px solid ${C.border}`}} alt="Facility drawing"/>
+          {!bomParsed && (
+            <button onClick={analyzeDrawingBOM} disabled={bomAnalyzing} style={{
+              width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${C.orange},#C2540A)`,
+              border:"none",borderRadius:8,fontFamily:F.head,fontSize:15,letterSpacing:2,color:"#fff",
+              cursor:bomAnalyzing?"not-allowed":"pointer",opacity:bomAnalyzing?0.7:1,
+            }}>{bomAnalyzing?"ANALYZING...":"ANALYZE WITH AI"}</button>
+          )}
+          {bomParsed && (
+            <>
+              <div style={{overflowX:"auto",marginBottom:10}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontFamily:F.body,fontSize:13}}>
+                  <thead>
+                    <tr style={{background:C.surface2}}>
+                      {["Item","Qty","Part #","Size","Notes"].map(h=>(
+                        <th key={h} style={{padding:"6px 8px",textAlign:"left",fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid,borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bomEditRows.map((row,i)=>(
+                      <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+                        {["name","qty","partNumber","size","notes"].map(field=>(
+                          <td key={field} style={{padding:"3px 4px"}}>
+                            <input value={row[field]} onChange={e=>{const nr=[...bomEditRows];nr[i]={...nr[i],[field]:e.target.value};setBomEditRows(nr);}}
+                              style={{width:"100%",background:"transparent",border:"none",outline:"none",color:C.text,fontFamily:F.body,fontSize:12,padding:"3px 2px"}}/>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{
+                  const tsv=["Item\tQty\tPart #\tSize\tNotes",...bomEditRows.map(r=>`${r.name}\t${r.qty}\t${r.partNumber}\t${r.size}\t${r.notes}`)].join("\n");
+                  navigator.clipboard.writeText(tsv).then(()=>alert("BOM copied to clipboard")).catch(()=>alert("Copy failed — try selecting and copying manually"));
+                }} style={{flex:1,padding:"9px 0",background:C.surface2,border:`1px solid ${C.border}`,borderRadius:7,fontFamily:F.mono,fontSize:10,letterSpacing:1,color:C.mid,cursor:"pointer"}}>📋 COPY BOM</button>
+                <button onClick={analyzeDrawingBOM} disabled={bomAnalyzing} style={{padding:"9px 14px",background:"none",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:F.mono,fontSize:10,letterSpacing:1,color:C.dim,cursor:"pointer"}}>↺ RE-ANALYZE</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+
       <div style={card}>
         <Mono color={C.copper}>JOB INFO</Mono>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -4514,7 +4606,7 @@ No fabricated prices.`;
         }}>
           <span style={{fontFamily:F.mono,fontSize:10,color:C.green,letterSpacing:2,flexShrink:0}}>📐 SITE DRAWING</span>
           <span style={{fontFamily:F.body,fontSize:13,color:C.text,flex:1,minWidth:120}}>{proposedEquipment.model}{proposedEquipment.dual?' (×2)':''}</span>
-          <button onClick={()=>setTab&&setTab('site-design')} style={{
+          <button onClick={()=>setTab&&setTab('drawing')} style={{
             padding:'5px 12px',fontFamily:F.mono,fontSize:9,letterSpacing:1,
             background:'none',border:`1px solid ${C.green}`,borderRadius:5,color:C.green,cursor:'pointer',flexShrink:0,
           }}>VIEW DRAWING →</button>
@@ -4623,11 +4715,11 @@ No fabricated prices.`;
                       const hasDifferent = proposedEquipment && !isActive;
                       return (
                         <button onClick={()=>{
-                          if(isActive){setDrawingMode('proposed');setTab('site-design');return;}
+                          if(isActive){setDrawingMode('proposed');setTab('drawing');return;}
                           const hasProposed=(()=>{try{return JSON.parse(localStorage.getItem('airiq_facility_drawing_proposed')||'[]').length>0;}catch{return false;}})();
                           if(!proposedEquipment||!hasProposed){
                             try{localStorage.removeItem('airiq_facility_drawing_proposed');}catch{}
-                            setProposedEquipment(rec);setDrawingMode('proposed');setDrawingReset(n=>n+1);setTab('site-design');return;
+                            setProposedEquipment(rec);setDrawingMode('proposed');setDrawingReset(n=>n+1);setTab('drawing');return;
                           }
                           setTierModal({rec});
                         }} style={{
@@ -5432,7 +5524,7 @@ No fabricated prices.`;
                 if(rec.tankGal){const p=oldTank||{x:560,y:380,rotation:0,scale:1};newEquip.push({...p,id:idg(),type:'symbol',symbolId:'tank',label:`${rec.tankGal}G Tank`,...fdDimPatch('tank',rec.tankGal)});}
                 try{localStorage.setItem('airiq_facility_drawing_proposed',JSON.stringify([...nonEquip,...newEquip]));}catch{}
                 setDrawingReset(n=>n+1);
-                setProposedEquipment(rec);setDrawingMode('proposed');setTab('site-design');setTierModal(null);
+                setProposedEquipment(rec);setDrawingMode('proposed');setTab('drawing');setTierModal(null);
               }} style={{
                 background:`linear-gradient(135deg,${C.copper},#A0632A)`,border:'none',borderRadius:8,
                 padding:'13px 18px',fontFamily:F.head,fontSize:14,letterSpacing:2,color:'#fff',cursor:'pointer',textAlign:'left',
@@ -5442,7 +5534,7 @@ No fabricated prices.`;
               <button onClick={()=>{
                 try{localStorage.removeItem('airiq_facility_drawing_proposed');}catch{}
                 setDrawingReset(n=>n+1);
-                setProposedEquipment(tierModal.rec);setDrawingMode('proposed');setTab('site-design');setTierModal(null);
+                setProposedEquipment(tierModal.rec);setDrawingMode('proposed');setTab('drawing');setTierModal(null);
               }} style={{
                 background:'none',border:`1px solid ${C.border}`,borderRadius:8,
                 padding:'13px 18px',fontFamily:F.head,fontSize:14,letterSpacing:2,color:C.mid,cursor:'pointer',textAlign:'left',
@@ -5833,7 +5925,7 @@ function straightenPipes(els) {
   return result;
 }
 
-const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName, repName, proposedEquipment, drawingMode, setDrawingMode }, fdRef) {
+const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName, repName, proposedEquipment, drawingMode, setDrawingMode, onSendToIQF, onSendToSysEng }, fdRef) {
   const canvasRef   = React.useRef(null);
   const dragRef     = React.useRef(null);
   const pinchRef    = React.useRef(null);
@@ -7058,6 +7150,34 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
     doc.save(`site-drawing-${(customerName||'site').replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.pdf`);
   }
 
+  function doExportDXF() {
+    const G = FD.G;
+    const lines = [
+      '0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n0\nENDSEC',
+      '0\nSECTION\n2\nENTITIES',
+    ];
+    const px = v => (v/G).toFixed(4);
+    const py = v => (-v/G).toFixed(4);
+    for (const el of els) {
+      if (el.type === 'pipe' || el.type === 'wall' || el.type === 'dim') {
+        lines.push(`0\nLINE\n8\n0\n10\n${px(el.x1)}\n20\n${py(el.y1)}\n30\n0.0\n11\n${px(el.x2)}\n21\n${py(el.y2)}\n31\n0.0`);
+      } else if (el.type === 'symbol') {
+        const lbl = (el.label || el.symbolId || '').replace(/[^\x20-\x7E]/g,'');
+        lines.push(`0\nTEXT\n8\n0\n10\n${px(el.x)}\n20\n${py(el.y)}\n30\n0.0\n40\n1.0\n1\n${lbl||'?'}`);
+      } else if (el.type === 'label') {
+        const txt = (el.text || '').replace(/[^\x20-\x7E]/g,'');
+        lines.push(`0\nTEXT\n8\n0\n10\n${px(el.x)}\n20\n${py(el.y)}\n30\n0.0\n40\n0.5\n1\n${txt||'?'}`);
+      }
+    }
+    lines.push('0\nENDSEC\n0\nEOF');
+    const blob = new Blob([lines.join('\n')], {type:'application/dxf'});
+    const a = document.createElement('a');
+    a.download = `airiq_drawing_${new Date().toISOString().slice(0,10)}.dxf`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  }
+
   function applyTemplate(key) {
     if(els.length>0&&!window.confirm('This will replace your current drawing. Continue?')) return;
     mutate(()=>FD_TEMPLATES[key]());
@@ -7227,6 +7347,18 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
           style={{background:'linear-gradient(135deg,#1E3A8A,#3B6FD4)',border:'none',borderRadius:6,padding:'6px 13px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:'#fff',cursor:'pointer',minHeight:34}}>⬇ PDF</button>
         <button onClick={doExport} title="Export drawing as PNG (dark background)"
           style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:C.mid,cursor:'pointer',minHeight:34}}>⬇ PNG</button>
+        <button onClick={doExportDXF} title="Export drawing as DXF (CAD line data)"
+          style={{background:C.surface2,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:C.mid,cursor:'pointer',minHeight:34}}>⬇ DXF</button>
+        {onSendToIQF && (
+          <button onClick={()=>{const ec=buildExportCanvas();if(ec)onSendToIQF(ec.toDataURL('image/png'));}}
+            title="Attach this drawing to the Site / IQF survey"
+            style={{background:'linear-gradient(135deg,#0D4F2E,#186A40)',border:'none',borderRadius:6,padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:'#4ADE80',cursor:'pointer',minHeight:34,whiteSpace:'nowrap'}}>▶ IQF</button>
+        )}
+        {onSendToSysEng && (
+          <button onClick={()=>{const ec=buildExportCanvas();if(ec)onSendToSysEng(ec.toDataURL('image/png'));}}
+            title="Send drawing to Sys Eng for AI BOM analysis"
+            style={{background:'linear-gradient(135deg,#1E3A8A,#2D55B0)',border:'none',borderRadius:6,padding:'6px 11px',fontFamily:F.body,fontSize:12,letterSpacing:0.3,color:'#93C5FD',cursor:'pointer',minHeight:34,whiteSpace:'nowrap'}}>▶ SYS ENG</button>
+        )}
         <button onClick={()=>setIsFullscreen(f=>!f)}
           style={{...btnBase, marginLeft:'auto', color:isFullscreen?C.copper:C.mid, borderColor:isFullscreen?C.copper:C.border}}
           title={isFullscreen?'Exit fullscreen (Esc)':'Expand to fullscreen'}>
@@ -7510,7 +7642,7 @@ const FacilityDrawing = React.forwardRef(function FacilityDrawing({ customerName
   );
 });
 
-function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setDrawingMode, drawingReset, setDrawingReset }) {
+function SiteSurvey({ proposedEquipment, setProposedEquipment, setDrawingMode, setDrawingReset, drawingAttachment, setDrawingAttachment, setTab }) {
   const LS_KEY = "airiq_site_survey_draft";
   const today = new Date().toISOString().slice(0,10);
   const BLANK_FORM = {
@@ -7557,10 +7689,9 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
   const [showPast, setShowPast]   = React.useState(false);
   const [pastList, setPastList]   = React.useState([]);
   const [pastLoading, setPastLoading] = React.useState(false);
-  const [savedData, setSavedData]       = React.useState(null);
-  const [drawingOpen, setDrawingOpen]   = React.useState(false);
-  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
-  const drawingRef                      = React.useRef(null);
+  const [savedData, setSavedData]         = React.useState(null);
+  const [feedbackOpen, setFeedbackOpen]   = React.useState(false);
+  const [externalDrawingPDF, setExternalDrawingPDF] = React.useState(null);
   const SESSIONS_KEY = 'airiq_sessions';
   const [sessions, setSessions]         = React.useState(()=>{ try{return JSON.parse(localStorage.getItem(SESSIONS_KEY)||'[]');}catch{return[];} });
   const [showSessions, setShowSessions] = React.useState(false);
@@ -7616,7 +7747,7 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
     const mode = (s.proposedDrawing||[]).length > 0 ? 'proposed' : 'asis';
     if (setDrawingMode) setDrawingMode(mode);
     if (setDrawingReset) setDrawingReset(n=>n+1);
-    setDrawingOpen(true);
+    if (setTab) setTab('drawing');
     setShowSessions(false);
   }
 
@@ -7637,11 +7768,6 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
       const choice = window.confirm('Save current session before starting fresh?\n\nOK = Save first\nCancel = Discard and start fresh');
       if (choice) { saveSession(); }
     }
-    try { localStorage.removeItem('airiq_facility_drawing_draft'); } catch(e) {}
-    try { localStorage.removeItem('airiq_facility_drawing_proposed'); } catch(e) {}
-    if (setProposedEquipment) setProposedEquipment(null);
-    if (setDrawingMode) setDrawingMode('asis');
-    if (setDrawingReset) setDrawingReset(n=>n+1);
   }
 
   React.useEffect(() => {
@@ -7650,9 +7776,6 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
     }
   }, [form.pipeSize]);
 
-  React.useEffect(() => {
-    if (drawingMode === 'proposed') setDrawingOpen(true);
-  }, [drawingMode]);
 
   const sectionDone = [
     !!(form.date && form.rep && form.branch && form.customer),
@@ -7747,6 +7870,12 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
     h("APPROVAL");
     add("Manager Approval",yn(data.managerApproval)); add("Notes",data.approvalNotes);
 
+    if(data.drawingAttached||data.externalDrawingPDFName){
+      h("ATTACHMENTS");
+      if(data.drawingAttached) lines.push("• Facility drawing created in AirIQ (see attached)");
+      if(data.externalDrawingPDFName) lines.push(`• Uploaded site drawing PDF: ${data.externalDrawingPDFName}`);
+    }
+
     return lines.join("\n");
   }
 
@@ -7776,8 +7905,8 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
     setBusy(true); setSaveMsg("");
     try {
       const snapshot = {...form};
-      const drawingDataURL = drawingRef.current?.getDataURL();
-      if (drawingDataURL) snapshot.drawingDataURL = drawingDataURL;
+      if (drawingAttachment) snapshot.drawingAttached = true;
+      if (externalDrawingPDF) snapshot.externalDrawingPDFName = externalDrawingPDF.name;
       const res = await fetch("/api/estimates", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({type:"site-survey", data:snapshot, savedAt:new Date().toISOString()})
@@ -7997,29 +8126,34 @@ function SiteSurvey({ proposedEquipment, setProposedEquipment, drawingMode, setD
         </div>
       </div>
 
-      
-      <div style={{marginBottom:12}}>
-        <div onClick={()=>setDrawingOpen(o=>!o)} style={{
-          display:'flex',justifyContent:'space-between',alignItems:'center',
-          cursor:'pointer',userSelect:'none',
-          background:`linear-gradient(135deg,rgba(193,122,53,0.08) 0%,${C.surface} 60%)`,
-          border:`1.5px solid ${C.copper}`,borderLeft:`4px solid ${C.copper}`,
-          borderRadius:drawingOpen?'10px 10px 0 0':10,
-          padding:'14px 16px',marginBottom:0,
-        }}>
-          <div>
-            <div style={{fontFamily:F.head,fontSize:20,letterSpacing:3,color:C.copper,lineHeight:1}}>📐 FACILITY DRAWING TOOL</div>
-            <div style={{fontFamily:F.body,fontSize:11,color:C.mid,marginTop:3}}>Sketch the facility — pipe runs, equipment placement, drops</div>
+
+      {drawingAttachment && (
+        <div style={{marginBottom:12,background:C.surface,border:`1px solid ${C.copper}`,borderRadius:10,padding:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{fontFamily:F.mono,fontSize:10,letterSpacing:2,color:C.copper,flex:1}}>📐 ATTACHED DRAWING</span>
+            <button onClick={()=>setDrawingAttachment(null)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 10px",fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid,cursor:"pointer"}}>REMOVE</button>
           </div>
-          <span style={{color:C.copper,fontSize:18,marginLeft:12,flexShrink:0}}>{drawingOpen?'▲':'▼'}</span>
+          <img src={drawingAttachment} style={{width:"100%",borderRadius:6,maxHeight:200,objectFit:"contain"}} alt="Facility drawing"/>
         </div>
-        <div style={{overflow:'hidden',maxHeight:drawingOpen?'9999px':'0',transition:'max-height 0.3s ease'}}>
-          <FacilityDrawing key={drawingReset} ref={drawingRef} customerName={form.customer} repName={form.rep}
-            proposedEquipment={proposedEquipment} drawingMode={drawingMode} setDrawingMode={setDrawingMode}/>
-        </div>
+      )}
+
+      <div style={{marginBottom:12,background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:12}}>
+        <div style={{fontFamily:F.mono,fontSize:10,letterSpacing:2,color:C.mid,marginBottom:8}}>UPLOAD SITE DRAWING (PDF)</div>
+        {externalDrawingPDF ? (
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontFamily:F.body,fontSize:13,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {externalDrawingPDF.name}</span>
+            <button onClick={()=>setExternalDrawingPDF(null)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 10px",fontFamily:F.mono,fontSize:9,letterSpacing:1,color:C.mid,cursor:"pointer",flexShrink:0}}>REMOVE</button>
+          </div>
+        ) : (
+          <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"14px 16px",border:`1px dashed ${C.border}`,borderRadius:8,cursor:"pointer",color:C.mid}}>
+            <span style={{fontSize:22}}>📄</span>
+            <span style={{fontFamily:F.mono,fontSize:10,letterSpacing:1}}>TAP TO UPLOAD PDF</span>
+            <input type="file" accept=".pdf" onChange={e=>{if(e.target.files[0])setExternalDrawingPDF(e.target.files[0]);}} style={{display:"none"}}/>
+          </label>
+        )}
       </div>
 
-      
+
       <SurveyCard title={SECTION_TITLES[0]} done={sectionDone[0]} open={open.includes(0)} onToggle={()=>toggleSection(0)}>
         <FieldRow label="DATE">
           <input type="date" value={form.date} onChange={e=>f("date",e.target.value)} style={inS}/>
