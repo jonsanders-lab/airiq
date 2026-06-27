@@ -104,6 +104,24 @@ function writeEstimates(list) {
   fs.writeFileSync(ESTIMATES_FILE, JSON.stringify(list, null, 2), 'utf8');
 }
 
+const STORIES_FILE = path.join(__dirname, 'data', 'stories.json');
+
+function ensureStoriesFile() {
+  const dir = path.join(__dirname, 'data');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(STORIES_FILE)) fs.writeFileSync(STORIES_FILE, '[]', 'utf8');
+}
+
+function readStories() {
+  ensureStoriesFile();
+  try { return JSON.parse(fs.readFileSync(STORIES_FILE, 'utf8')); } catch { return []; }
+}
+
+function writeStories(list) {
+  ensureStoriesFile();
+  fs.writeFileSync(STORIES_FILE, JSON.stringify(list, null, 2), 'utf8');
+}
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static('.'));
@@ -597,6 +615,19 @@ app.post('/api/estimates', async (req, res) => {
     appendToSheet(buildSheetRow(req.body)); // fire-and-forget; never blocks response
   }
   res.json(record);
+});
+
+app.get('/api/stories', (req, res) => {
+  const list = readStories();
+  res.json({ stories: list.slice().reverse() }); // newest first
+});
+
+app.post('/api/stories', (req, res) => {
+  const list = readStories();
+  const story = { id: Date.now().toString(), created_at: new Date().toISOString(), ...req.body };
+  list.push(story);
+  writeStories(list);
+  res.json({ success: true, story });
 });
 
 app.get('/api/sheets/setup', async (req, res) => {
