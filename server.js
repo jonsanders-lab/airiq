@@ -844,7 +844,7 @@ const FAQ_SHEET_TAB = 'Sheet1';
 let faqCache = { items: null, fetchedAt: 0 };
 
 async function fetchFaqSheet() {
-  if (faqCache.items && (Date.now() - faqCache.fetchedAt) < 10 * 60 * 1000) {
+  if (faqCache.items && (Date.now() - faqCache.fetchedAt) < 60 * 1000) {
     return faqCache.items;
   }
   const keyJson = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
