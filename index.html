@@ -10848,8 +10848,7 @@ function FieldLog() {
                       } else if (dashRange === 'week')  { xColorStops = s; xColorGoal = rg2.weekly; }
                       else if (dashRange === 'month')   { xColorStops = s; xColorGoal = rg2.monthly; }
                       else                              { xColorStops = s; xColorGoal = 25; }
-                      const parts = (row.rep_name || '').split(' ');
-                      const label = parts.length >= 2 ? parts[0] : row.rep_name;
+                      const label = row.rep_name || '';
                       return (
                         <div key={row.rep_name} style={{
                           flex:1, minWidth:0, textAlign:"center",
