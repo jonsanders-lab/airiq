@@ -432,7 +432,7 @@ app.post('/api/claude', async (req, res) => {
   const claudeHeaders = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'Connection': 'keep-alive',
+    'Accept-Encoding': 'identity',
     'x-api-key': process.env.ANTHROPIC_API_KEY,
     'anthropic-version': '2023-06-01',
     'anthropic-beta': 'web-search-2025-03-05'
