@@ -429,20 +429,35 @@ app.post('/api/parse-docx', async (req, res) => {
 
 // Claude proxy
 app.post('/api/claude', async (req, res) => {
-  try {
+  const claudeHeaders = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Connection': 'keep-alive',
+    'x-api-key': process.env.ANTHROPIC_API_KEY,
+    'anthropic-version': '2023-06-01',
+    'anthropic-beta': 'web-search-2025-03-05'
+  };
+  const claudeBody = JSON.stringify(req.body);
+  async function attemptClaude() {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05'
-      },
-      body: JSON.stringify(req.body)
+      headers: claudeHeaders,
+      body: claudeBody,
     });
-    const data = await response.json();
+    return response.json();
+  }
+  try {
+    let data;
+    try {
+      data = await attemptClaude();
+    } catch (e1) {
+      console.error('claude fetch attempt 1 failed:', e1);
+      await new Promise(r => setTimeout(r, 1000));
+      data = await attemptClaude();
+    }
     res.json(data);
   } catch (e) {
+    console.error('claude fetch failed after retry:', e);
     res.status(500).json({ error: e.message });
   }
 });
