@@ -706,7 +706,6 @@ const REP_START_DATES = {
   'Zac':      '2026-01-12',
   'Devon':    '2024-09-30',
   'Earl':     '2024-03-04',
-  'Jack':     '2025-07-28',
   'Kyle':     '2025-02-24',
   'Dave J':   '2024-12-09',
   'Chase':    '2026-03-16',
@@ -1354,7 +1353,7 @@ function HelpTab() {
   );
 }
 
-function GoalSettingsModal({ repRows, repGoals, onSaved, onClose }) {
+function GoalSettingsModal({ repRows, repGoals, onSaved, onClose, showInactiveReps, setShowInactiveReps }) {
   const [edits, setEdits] = React.useState(() => {
     const m = {};
     repRows.forEach(r => {
@@ -1465,6 +1464,17 @@ function GoalSettingsModal({ repRows, repGoals, onSaved, onClose }) {
         </div>
         <div style={{ fontFamily:F.mono, fontSize:9, color:C.dim, marginTop:14, letterSpacing:0.5 }}>
           Monthly auto-calculated as Weekly × 4.3. Leave Daily blank to use weekly pace only (experienced reps).
+        </div>
+        <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}>
+          <label style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer", userSelect:"none" }}>
+            <input
+              type="checkbox"
+              checked={!!showInactiveReps}
+              onChange={e => setShowInactiveReps(e.target.checked)}
+              style={{ width:16, height:16, accentColor:C.copper, cursor:"pointer", flexShrink:0 }}
+            />
+            <span style={{ fontFamily:F.body, fontSize:13, color:C.mid }}>Show inactive reps in Team View</span>
+          </label>
         </div>
       </div>
     </div>
@@ -2752,7 +2762,7 @@ const REEL_OPTS = [
 
 const REPS = [
   "Tony Gilleland","Jon Landress","Zac Hoadley","Devon Dalton","Earl Livingston",
-  "Jack Wolchek","Kyle White","Dave Jolly","Chase Lewis","Mike George",
+  "Kyle White","Dave Jolly","Chase Lewis","Mike George",
   "Jackson Carrell","Jon Sanders","Tristian Castiglione","Connor Smith",
   "Dan Constant","David Gonzalez","Javi Cabral",
 ];
@@ -8940,7 +8950,8 @@ function MarketIntel() {
 }
 
 function FieldLog() {
-  const REPS = ["Jon S","Tony","Kyle","Dan","Zac","Dave J","Chase","Devon","Earl","David G","Javier","Jon L","Jackson","Mike","Jack","Tristian","Connor"];
+  const REPS = ["Jon S","Tony","Kyle","Dan","Zac","Dave J","Chase","Devon","Earl","David G","Javier","Jon L","Jackson","Mike","Tristian","Connor"];
+  const INACTIVE_REPS = ["Jack"];
   const ACTIVITIES = [
     { id:"pmOpp",       label:"Membership Opp"   },
     { id:"equipOpp",    label:"Equipment Opp"    },
@@ -9032,6 +9043,7 @@ function FieldLog() {
   const [expandedLeaderStopId, setExpandedLeaderStopId] = React.useState(null);
   const [repGoals,             setRepGoals]             = React.useState([]);
   const [showGoalModal,        setShowGoalModal]        = React.useState(false);
+  const [showInactiveReps,     setShowInactiveReps]     = React.useState(false);
   const [repInlineRange,       setRepInlineRange]       = React.useState("today");
   const [repInlineFrom,        setRepInlineFrom]        = React.useState(() => new Date().toISOString().slice(0,10));
   const [repInlineTo,          setRepInlineTo]          = React.useState(() => new Date().toISOString().slice(0,10));
@@ -9662,10 +9674,12 @@ function FieldLog() {
   const repRows = React.useMemo(() => {
     const map = {};
     dashboard.forEach(d => { map[d.rep_name] = d; });
-    return REPS
+    const activeNames = REPS;
+    const names = showInactiveReps ? [...activeNames, ...INACTIVE_REPS] : activeNames;
+    return names
       .map(name => map[name] || { rep_name: name, stops: 0, pm_opps: 0, equip_opps: 0, service_leads: 0, piping_opps: 0, stickers: 0, vr_pres: 0, appt_set: 0, nothing: 0, last_logged: null, opp_stops: 0, conversion_rate: 0, week_stops: 0 })
       .sort((a, b) => Number(b.stops) - Number(a.stops));
-  }, [dashboard]);
+  }, [dashboard, showInactiveReps]);
 
   const filteredStops = React.useMemo(() => {
     const q = stopSearch.trim().toLowerCase();
@@ -10852,14 +10866,15 @@ function FieldLog() {
                       } else if (dashRange === 'week')  { xColorStops = s; xColorGoal = rg2.weekly; }
                       else if (dashRange === 'month')   { xColorStops = s; xColorGoal = rg2.monthly; }
                       else                              { xColorStops = s; xColorGoal = 25; }
+                      const isInactive = INACTIVE_REPS.includes(row.rep_name);
                       const label = row.rep_name || '';
                       return (
                         <div key={row.rep_name} style={{
                           flex:1, minWidth:0, textAlign:"center",
                           fontFamily:F.mono, fontSize:9, fontWeight:700, overflow:"hidden",
                           textOverflow:"ellipsis", whiteSpace:"nowrap",
-                          color: s > 0 ? (dashRange === 'all' ? '#7C3AED' : paceColor(xColorStops, xColorGoal)) : C.mid,
-                        }}>{label}</div>
+                          color: isInactive ? C.dim : (s > 0 ? (dashRange === 'all' ? '#7C3AED' : paceColor(xColorStops, xColorGoal)) : C.mid),
+                        }}>{label}{isInactive && <span style={{fontWeight:400,opacity:0.6}}> (inactive)</span>}</div>
                       );
                     })}
                   </div>
@@ -11147,6 +11162,8 @@ function FieldLog() {
               repGoals={repGoals}
               onSaved={row => setRepGoals(prev => [...prev.filter(r => r.rep_name !== row.rep_name), row])}
               onClose={() => setShowGoalModal(false)}
+              showInactiveReps={showInactiveReps}
+              setShowInactiveReps={setShowInactiveReps}
             />
           )}
 
