@@ -144,10 +144,54 @@ const SHEET_HEADERS = [
   'Drawing Checklist Complete','Manager Approval','Notes','Submitted At','Site Drawing',
 ];
 
+// ─── RETRY HELPER ────────────────────────────────────────────────────────────
+async function retryFetch(fn, retries = 3, delays = [1000, 5000, 30000]) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try { return await fn(); } catch (err) {
+      lastErr = err;
+      if (attempt < retries) {
+        console.log(`Retrying attempt ${attempt + 2} of ${retries + 1}...`);
+        await new Promise(r => setTimeout(r, delays[attempt] ?? delays[delays.length - 1]));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // In-memory inventory cache
 let inventoryCache = [];
 let lastCacheUpdate = null;
 let isFetching = false;
+let inventoryFromFallback = false;
+let fallbackCacheDate = null;
+
+const INVENTORY_CACHE_FILE = path.join('/app/data', 'inventory_cache.json');
+
+function writeInventoryFallback(items) {
+  try {
+    const dir = '/app/data';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(INVENTORY_CACHE_FILE, JSON.stringify({ items, writtenAt: new Date().toISOString() }), 'utf8');
+    console.log('Inventory fallback cache written:', items.length, 'rows');
+  } catch (e) { console.error('Failed to write inventory fallback cache:', e.message); }
+}
+
+function loadInventoryFallback() {
+  try {
+    if (!fs.existsSync(INVENTORY_CACHE_FILE)) return false;
+    const { items, writtenAt } = JSON.parse(fs.readFileSync(INVENTORY_CACHE_FILE, 'utf8'));
+    if (items && items.length > 0) {
+      inventoryCache = items;
+      lastCacheUpdate = writtenAt;
+      inventoryFromFallback = true;
+      fallbackCacheDate = writtenAt;
+      console.log('Inventory loaded from fallback cache, rows:', items.length);
+      return true;
+    }
+  } catch (e) { console.error('Failed to load inventory fallback cache:', e.message); }
+  return false;
+}
 
 // ─── GMAIL INVENTORY LOADER ───────────────────────────────────────────────────
 // Reads the daily "Hodge Compressor Inventory" email from Gmail,
@@ -375,6 +419,9 @@ async function fetchInventoryFromGmail() {
 
     inventoryCache = parsed;
     lastCacheUpdate = new Date().toISOString();
+    inventoryFromFallback = false;
+    fallbackCacheDate = null;
+    if (parsed.length > 0) writeInventoryFallback(parsed);
     console.log(`Inventory cache loaded from Gmail: ${parsed.length} equipment items at ${lastCacheUpdate}`);
 
     if (parsed.length > 0) {
@@ -462,14 +509,7 @@ app.post('/api/claude', async (req, res) => {
     return response.json();
   }
   try {
-    let data;
-    try {
-      data = await attemptClaude();
-    } catch (e1) {
-      console.error('claude fetch attempt 1 failed:', e1);
-      await new Promise(r => setTimeout(r, 1000));
-      data = await attemptClaude();
-    }
+    const data = await retryFetch(() => attemptClaude());
     res.json(data);
   } catch (e) {
     console.error('claude fetch failed after retry:', e);
@@ -578,15 +618,17 @@ app.get('/api/st/customers', async (req, res) => {
   }
 });
 
-// ST pricebook proxy (unchanged)
+// ST pricebook proxy
 app.post('/api/st', async (req, res) => {
   try {
-    const response = await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
-      body: JSON.stringify(req.body)
+    const data = await retryFetch(async () => {
+      const response = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
+        body: JSON.stringify(req.body)
+      });
+      return response.json();
     });
-    const data = await response.json();
     res.json(data);
   } catch (e) {
     console.error('st proxy error:', e);
@@ -597,8 +639,9 @@ app.post('/api/st', async (req, res) => {
 // Inventory lookup from cache
 app.get('/api/inventory', (req, res) => {
   const term = (req.query.q || '').trim();
+  const meta = { cacheAge: lastCacheUpdate, totalCached: inventoryCache.length, fromFallback: inventoryFromFallback, fallbackDate: fallbackCacheDate };
   if (!term) {
-    return res.json({ items: [], cacheAge: lastCacheUpdate, totalCached: inventoryCache.length });
+    return res.json({ items: [], ...meta });
   }
   const matches = searchInventoryCache(term);
   const byCode = {};
@@ -614,7 +657,7 @@ app.get('/api/inventory', (req, res) => {
     rawRows:   item.rows,
   }));
 
-  res.json({ items: results, cacheAge: lastCacheUpdate, totalCached: inventoryCache.length });
+  res.json({ items: results, ...meta });
 });
 
 // Force inventory refresh from Gmail
@@ -798,16 +841,147 @@ app.post('/api/market-intel/log', async (req, res) => {
   }
 });
 
-// ─── HEALTH CHECK ────────────────────────────────────────────────────────────
-app.get('/api/health', async (req, res) => {
-  if (!pgPool) return res.json({ status: 'ok', db: 'not configured', timestamp: new Date() });
+// ─── HEALTH CHECK SYSTEM ─────────────────────────────────────────────────────
+let healthCache = null;
+let prevHealthStatus = {};
+
+async function sendSlackAlert(text) {
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+  if (!webhookUrl || webhookUrl === 'SLACK_WEBHOOK_PLACEHOLDER') return;
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (e) { console.error('Slack alert failed:', e.message); }
+}
+
+async function checkAnthropic() {
+  const t0 = Date.now();
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity',
+        'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+    });
+    return { status: resp.status < 500 ? 'up' : 'down', latencyMs: Date.now() - t0 };
+  } catch (e) { return { status: 'down', latencyMs: Date.now() - t0, error: e.message }; }
+}
+
+async function checkGmail() {
+  const t0 = Date.now();
+  try {
+    const oauth2Client = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET);
+    oauth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    await gmail.users.getProfile({ userId: 'me' });
+    return { status: 'up', latencyMs: Date.now() - t0 };
+  } catch (e) { return { status: 'down', latencyMs: Date.now() - t0, error: e.message }; }
+}
+
+async function checkMonday() {
+  if (!process.env.MONDAY_API_KEY) return { status: 'down', latencyMs: 0, error: 'Not configured' };
+  const t0 = Date.now();
+  try {
+    const data = await mondayGraphQL(`query { me { id } }`);
+    return { status: data.data?.me?.id ? 'up' : 'down', latencyMs: Date.now() - t0 };
+  } catch (e) { return { status: 'down', latencyMs: Date.now() - t0, error: e.message }; }
+}
+
+async function checkServiceTitan() {
+  const t0 = Date.now();
+  try {
+    const resp = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
+      body: JSON.stringify({ health: true }),
+    });
+    return { status: resp.status < 500 ? 'up' : 'down', latencyMs: Date.now() - t0 };
+  } catch (e) { return { status: 'down', latencyMs: Date.now() - t0, error: e.message }; }
+}
+
+async function checkPostgres() {
+  const t0 = Date.now();
+  if (!pgPool) return { status: 'down', latencyMs: 0, error: 'Not configured' };
   try {
     await pgPool.query('SELECT 1');
-    res.json({ status: 'ok', db: 'connected', timestamp: new Date() });
-  } catch (e) {
-    console.error('Health check DB error:', e.message);
-    res.status(503).json({ status: 'error', db: 'disconnected', error: e.message });
+    return { status: 'up', latencyMs: Date.now() - t0 };
+  } catch (e) { return { status: 'down', latencyMs: Date.now() - t0, error: e.message }; }
+}
+
+async function runHealthCheck() {
+  const results = await Promise.allSettled([
+    checkAnthropic(), checkGmail(), checkMonday(), checkServiceTitan(), checkPostgres(),
+  ]);
+  const [anthropic, gmail, monday, servicetitan, postgres] = results.map(r =>
+    r.status === 'fulfilled' ? r.value : { status: 'down', latencyMs: 0, error: r.reason?.message }
+  );
+  const services = { anthropic, gmail, monday, servicetitan, postgres };
+  const downCount = Object.values(services).filter(s => s.status === 'down').length;
+  const overallStatus = downCount === 0 ? 'healthy' : downCount >= 3 ? 'down' : 'degraded';
+
+  for (const [name, svc] of Object.entries(services)) {
+    const prev = prevHealthStatus[name];
+    if (prev && prev !== svc.status) {
+      if (svc.status === 'down') sendSlackAlert(`🔴 *AirIQ Alert:* ${name} is DOWN`);
+      else if (prev === 'down') sendSlackAlert(`🟢 *AirIQ Recovery:* ${name} is back UP`);
+    }
+    prevHealthStatus[name] = svc.status;
   }
+
+  healthCache = { status: overallStatus, services, checkedAt: new Date().toISOString() };
+  console.log(`Health check: ${overallStatus} — ${JSON.stringify(Object.fromEntries(Object.entries(services).map(([k,v])=>[k,v.status])))}`);
+  return healthCache;
+}
+
+app.get('/api/health', (req, res) => {
+  if (!healthCache) return res.json({ status: 'starting', checkedAt: null });
+  res.json(healthCache);
+});
+
+app.get('/status', (req, res) => {
+  const h = healthCache;
+  if (!h) return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>AirIQ Status</title><style>body{background:#0a1628;color:#fff;font-family:sans-serif;padding:40px}</style></head><body><h1 style="color:#f97316">AirIQ Status</h1><p>Health check not yet run — will refresh in 5 seconds.</p></body></html>`);
+
+  const dot = s => { if (!s) return '🔴'; if (s.status === 'up') return s.latencyMs > 2000 ? '🟡' : '🟢'; return '🔴'; };
+  const rows = Object.entries(h.services).map(([name, s]) =>
+    `<tr><td>${dot(s)}&nbsp;&nbsp;${name.charAt(0).toUpperCase()+name.slice(1)}</td>` +
+    `<td style="color:${s.status==='up'?'#4ade80':'#f87171'};font-weight:bold">${s.status.toUpperCase()}</td>` +
+    `<td>${s.latencyMs != null ? s.latencyMs+'&nbsp;ms' : '—'}</td>` +
+    `<td style="color:#94a3b8;font-size:12px">${s.error||''}</td></tr>`
+  ).join('');
+  const statusColor = h.status === 'healthy' ? '#4ade80' : h.status === 'degraded' ? '#fbbf24' : '#f87171';
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="30">
+  <title>AirIQ Status</title>
+  <style>
+    *{box-sizing:border-box}
+    body{background:#0a1628;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:40px;margin:0}
+    h1{color:#f97316;margin:0 0 8px;font-size:26px;letter-spacing:-.02em}
+    .badge{display:inline-block;padding:4px 16px;border-radius:20px;font-weight:700;font-size:13px;
+      background:${statusColor}1a;color:${statusColor};border:1px solid ${statusColor}60;margin-bottom:8px}
+    .ts{color:#475569;font-size:13px;margin-bottom:28px}
+    table{border-collapse:collapse;width:100%;max-width:620px}
+    th{text-align:left;color:#f97316;border-bottom:2px solid #1e3a5f;padding:8px 16px;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+    td{padding:13px 16px;border-bottom:1px solid #1e3a5f;font-size:15px;vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    .note{color:#334155;font-size:12px;margin-top:20px}
+  </style>
+</head><body>
+  <h1>AirIQ Status</h1>
+  <div class="badge">${h.status.toUpperCase()}</div>
+  <div class="ts">Last checked: ${new Date(h.checkedAt).toLocaleString('en-US',{timeZone:'America/New_York'})} EST</div>
+  <table>
+    <thead><tr><th>Service</th><th>Status</th><th>Latency</th><th>Notes</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="note">Auto-refreshes every 30 seconds</div>
+</body></html>`);
 });
 
 // ─── SERIAL LOOKUP ───────────────────────────────────────────────────────────
@@ -960,16 +1134,18 @@ let mondayColTypes = {};
 
 async function mondayGraphQL(query, variables) {
   const body = variables ? { query, variables } : { query };
-  const res = await fetch('https://api.monday.com/v2', {
-    method: 'POST',
-    headers: {
-      'Content-Type':    'application/json',
-      'Authorization':   `Bearer ${process.env.MONDAY_API_KEY}`,
-      'Accept-Encoding': 'identity',
-    },
-    body: JSON.stringify(body),
+  const data = await retryFetch(async () => {
+    const res = await fetch('https://api.monday.com/v2', {
+      method: 'POST',
+      headers: {
+        'Content-Type':    'application/json',
+        'Authorization':   `Bearer ${process.env.MONDAY_API_KEY}`,
+        'Accept-Encoding': 'identity',
+      },
+      body: JSON.stringify(body),
+    });
+    return res.json();
   });
-  const data = await res.json();
   if (data.errors) throw new Error(data.errors.map(e => e.message).join('; '));
   return data;
 }
@@ -1061,16 +1237,18 @@ async function mondayUpsertProspect(stopData) {
         }
       }
     `;
-    const searchRaw = await fetch('https://api.monday.com/v2', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.MONDAY_API_KEY}`,
-        'Content-Type': 'application/json',
-        'API-Version': '2024-01',
-      },
-      body: JSON.stringify({ query: searchQuery }),
+    const searchData = await retryFetch(async () => {
+      const searchRaw = await fetch('https://api.monday.com/v2', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.MONDAY_API_KEY}`,
+          'Content-Type': 'application/json',
+          'API-Version': '2024-01',
+        },
+        body: JSON.stringify({ query: searchQuery }),
+      });
+      return searchRaw.json();
     });
-    const searchData = await searchRaw.json();
     if (searchData.errors) throw new Error(searchData.errors.map(e => e.message).join('; '));
 
     const items = searchData.data?.boards?.[0]?.items_page?.items || [];
@@ -1853,11 +2031,20 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`AirIQ running on port ${PORT}`);
   try { await initFieldLogTable(); } catch (e) { console.error('Field log table init failed:', e.message); }
-  try { await fetchInventoryFromGmail(); } catch (e) { console.error('Initial Gmail inventory load failed:', e.message); }
+  try {
+    await fetchInventoryFromGmail();
+    if (inventoryCache.length === 0) loadInventoryFallback();
+  } catch (e) {
+    console.error('Initial Gmail inventory load failed:', e.message);
+    loadInventoryFallback();
+  }
   if (process.env.MONDAY_API_KEY) {
     try { await fetchMondayMeta(); } catch (e) { console.error('Monday.com meta fetch failed:', e.message); }
     try { await fetchMondayUsers(); } catch (e) { console.error('Monday.com users fetch failed:', e.message); }
   }
+  // Start health check — run once immediately then every 5 minutes
+  runHealthCheck().catch(e => console.error('Initial health check failed:', e.message));
+  setInterval(() => runHealthCheck().catch(e => console.error('Health check error:', e.message)), 5 * 60 * 1000);
 });
 
 // Refresh daily at 6:10am EST (11:10 UTC) — after the 5:56am ST email arrives
