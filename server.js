@@ -158,6 +158,7 @@ async function getGmailToken() {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept-Encoding': 'identity' },
+    compress: false,
     body: new URLSearchParams({
       client_id:     process.env.GMAIL_CLIENT_ID,
       client_secret: process.env.GMAIL_CLIENT_SECRET,
@@ -261,7 +262,7 @@ async function fetchInventoryFromGmail() {
     // Step 1: Search for the most recent Hodge Compressor Inventory email
     const searchRes = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=subject:"Hodge+Compressor+Inventory"+from:noreply@onservicetitan.com',
-      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' } }
+      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
     );
     const searchData = await searchRes.json();
 
@@ -276,7 +277,7 @@ async function fetchInventoryFromGmail() {
     // Step 2: Get the message to find the attachment ID
     const msgRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
-      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' } }
+      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
     );
     const msgData = await msgRes.json();
 
@@ -311,7 +312,7 @@ async function fetchInventoryFromGmail() {
     // Step 3: Download the attachment
     const attachRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
-      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' } }
+      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
     );
     const attachData = await attachRes.json();
 
