@@ -894,9 +894,8 @@ async function checkServiceTitan() {
   const t0 = Date.now();
   try {
     const resp = await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
-      body: JSON.stringify({ health: true }),
+      method: 'GET',
+      headers: { 'Accept-Encoding': 'identity' },
     });
     return { status: resp.status < 500 ? 'up' : 'down', latencyMs: Date.now() - t0 };
   } catch (e) { return { status: 'down', latencyMs: Date.now() - t0, error: e.message }; }
