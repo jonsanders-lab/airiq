@@ -157,7 +157,7 @@ let isFetching = false;
 async function getGmailToken() {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept-Encoding': 'identity' },
     body: new URLSearchParams({
       client_id:     process.env.GMAIL_CLIENT_ID,
       client_secret: process.env.GMAIL_CLIENT_SECRET,
@@ -234,7 +234,7 @@ async function appendToSheet(rowData) {
       `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED`,
       {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
         body: JSON.stringify({ values: [rowData] }),
       }
     );
@@ -261,7 +261,7 @@ async function fetchInventoryFromGmail() {
     // Step 1: Search for the most recent Hodge Compressor Inventory email
     const searchRes = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=subject:"Hodge+Compressor+Inventory"+from:noreply@onservicetitan.com',
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' } }
     );
     const searchData = await searchRes.json();
 
@@ -276,7 +276,7 @@ async function fetchInventoryFromGmail() {
     // Step 2: Get the message to find the attachment ID
     const msgRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' } }
     );
     const msgData = await msgRes.json();
 
@@ -311,7 +311,7 @@ async function fetchInventoryFromGmail() {
     // Step 3: Download the attachment
     const attachRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' } }
     );
     const attachData = await attachRes.json();
 
@@ -367,7 +367,7 @@ async function fetchInventoryFromGmail() {
     }
 
   } catch (err) {
-    console.error('fetchInventoryFromGmail error:', err.message);
+    console.error('fetchInventoryFromGmail error:', err);
   } finally {
     isFetching = false;
   }
@@ -476,6 +476,7 @@ async function stGetToken() {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${credentials}`,
+      'Accept-Encoding': 'identity',
     },
     body: new URLSearchParams({ grant_type: 'client_credentials' }),
   });
@@ -507,7 +508,7 @@ app.get('/api/st/customers', async (req, res) => {
 
     const custUrl = `https://api.servicetitan.io/crm/v2/tenant/${ST_TENANT}/customers?name=${encodeURIComponent(name)}&active=true&pageSize=5${appKeyParam}`;
     console.log(`[ST customers] GET ${custUrl}`);
-    const custResp = await fetch(custUrl, { headers: hdrs });
+    const custResp = await fetch(custUrl, { headers: { ...hdrs, 'Accept-Encoding': 'identity' } });
     if (!custResp.ok) {
       const body = await custResp.text();
       console.error(`[ST customers] customer search failed status=${custResp.status} body=${body}`);
@@ -522,7 +523,7 @@ app.get('/api/st/customers', async (req, res) => {
       try {
         const jobsUrl = `https://api.servicetitan.io/jpm/v2/tenant/${ST_TENANT}/jobs?customerId=${customers[0].id}&pageSize=1&sort=-completedOn&jobStatus=Completed${appKeyParam}`;
         console.log(`[ST customers] GET ${jobsUrl}`);
-        const jobsResp = await fetch(jobsUrl, { headers: hdrs });
+        const jobsResp = await fetch(jobsUrl, { headers: { ...hdrs, 'Accept-Encoding': 'identity' } });
         if (jobsResp.ok) {
           const jd = await jobsResp.json();
           lastServiceDate = (jd.data || [])[0]?.completedOn || null;
@@ -567,12 +568,13 @@ app.post('/api/st', async (req, res) => {
   try {
     const response = await fetch(PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
       body: JSON.stringify(req.body)
     });
     const data = await response.json();
     res.json(data);
   } catch (e) {
+    console.error('st proxy error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -653,7 +655,7 @@ app.get('/api/sheets/setup', async (req, res) => {
       `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
       {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
         body: JSON.stringify({ values: [SHEET_HEADERS] }),
       }
     );
@@ -691,6 +693,7 @@ app.post('/api/market-intel/compare', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept-Encoding': 'identity',
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
         'anthropic-beta': 'pdfs-2024-09-25',
@@ -945,8 +948,9 @@ async function mondayGraphQL(query, variables) {
   const res = await fetch('https://api.monday.com/v2', {
     method: 'POST',
     headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${process.env.MONDAY_API_KEY}`,
+      'Content-Type':    'application/json',
+      'Authorization':   `Bearer ${process.env.MONDAY_API_KEY}`,
+      'Accept-Encoding': 'identity',
     },
     body: JSON.stringify(body),
   });
