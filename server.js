@@ -893,11 +893,11 @@ async function checkMonday() {
 async function checkServiceTitan() {
   const t0 = Date.now();
   try {
-    const resp = await fetch(PROXY_URL, {
+    await fetch(PROXY_URL, {
       method: 'GET',
       headers: { 'Accept-Encoding': 'identity' },
     });
-    return { status: resp.status < 500 ? 'up' : 'down', latencyMs: Date.now() - t0 };
+    return { status: 'up', latencyMs: Date.now() - t0 }; // any HTTP response = worker is reachable
   } catch (e) { return { status: 'down', latencyMs: Date.now() - t0, error: e.message }; }
 }
 
