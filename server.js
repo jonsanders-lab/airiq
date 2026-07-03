@@ -259,34 +259,38 @@ async function fetchInventoryFromGmail() {
 
   try {
     console.log('Gmail: fetching OAuth token...');
-    const token = await getGmailToken();
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GMAIL_CLIENT_ID,
+      process.env.GMAIL_CLIENT_SECRET
+    );
+    oauth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
     console.log('Gmail: OAuth token obtained');
 
     // Step 1: Search for the most recent Hodge Compressor Inventory email
     console.log('Gmail: step 1 — searching for inventory email...');
-    const searchRes = await fetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=subject:"Hodge+Compressor+Inventory"+from:noreply@onservicetitan.com',
-      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
-    );
-    const searchText = await searchRes.text();
-    const searchData = JSON.parse(searchText);
+    const searchRes = await gmail.users.messages.list({
+      userId: 'me',
+      maxResults: 1,
+      q: 'subject:"Hodge Compressor Inventory" from:noreply@onservicetitan.com',
+    });
+    const messages = searchRes.data.messages;
 
-    if (!searchData.messages || searchData.messages.length === 0) {
+    if (!messages || messages.length === 0) {
       console.error('No Hodge Compressor Inventory email found in Gmail');
       return;
     }
 
-    const messageId = searchData.messages[0].id;
+    const messageId = messages[0].id;
     console.log('Gmail: step 1 complete, messageId:', messageId);
 
     // Step 2: Get the message to find the attachment ID
     console.log('Gmail: step 2 — fetching message details...');
-    const msgRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
-      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
-    );
-    const msgText = await msgRes.text();
-    const msgData = JSON.parse(msgText);
+    const msgRes = await gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+    });
+    const msgData = msgRes.data;
 
     // Find the xlsx attachment part
     let attachmentId = null;
@@ -318,12 +322,12 @@ async function fetchInventoryFromGmail() {
 
     // Step 3: Download the attachment
     console.log('Gmail: step 3 — downloading attachment...');
-    const attachRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
-      { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
-    );
-    const attachText = await attachRes.text();
-    const attachData = JSON.parse(attachText);
+    const attachRes = await gmail.users.messages.attachments.get({
+      userId: 'me',
+      messageId,
+      id: attachmentId,
+    });
+    const attachData = attachRes.data;
     console.log('Gmail: step 3 complete, attachment size:', attachData?.size);
 
     // Gmail returns base64url encoded data — convert to standard base64
