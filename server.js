@@ -257,9 +257,12 @@ async function fetchInventoryFromGmail() {
   console.log('Loading inventory from Gmail...');
 
   try {
+    console.log('Gmail: fetching OAuth token...');
     const token = await getGmailToken();
+    console.log('Gmail: OAuth token obtained');
 
     // Step 1: Search for the most recent Hodge Compressor Inventory email
+    console.log('Gmail: step 1 — searching for inventory email...');
     const searchRes = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=subject:"Hodge+Compressor+Inventory"+from:noreply@onservicetitan.com',
       { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
@@ -272,9 +275,10 @@ async function fetchInventoryFromGmail() {
     }
 
     const messageId = searchData.messages[0].id;
-    console.log(`Found inventory email: ${messageId}`);
+    console.log('Gmail: step 1 complete, messageId:', messageId);
 
     // Step 2: Get the message to find the attachment ID
+    console.log('Gmail: step 2 — fetching message details...');
     const msgRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
       { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
@@ -307,14 +311,16 @@ async function fetchInventoryFromGmail() {
       return;
     }
 
-    console.log(`Downloading attachment: ${filename}`);
+    console.log('Gmail: step 2 complete, attachmentId:', attachmentId);
 
     // Step 3: Download the attachment
+    console.log('Gmail: step 3 — downloading attachment...');
     const attachRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
       { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
     );
     const attachData = await attachRes.json();
+    console.log('Gmail: step 3 complete, attachment size:', attachData?.size);
 
     // Gmail returns base64url encoded data — convert to standard base64
     const base64 = attachData.data.replace(/-/g, '+').replace(/_/g, '/');
