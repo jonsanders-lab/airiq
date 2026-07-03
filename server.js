@@ -940,6 +940,11 @@ app.get('/api/health', (req, res) => {
   res.json(healthCache);
 });
 
+app.post('/api/health/test-alert', async (req, res) => {
+  await sendSlackAlert('🧪 *AirIQ Status Test* — Slack alert webhook is working ✅');
+  res.json({ ok: true, message: 'Test alert sent to SLACK_STATUS_WEBHOOK_URL' });
+});
+
 app.get('/status', (req, res) => {
   const h = healthCache;
   if (!h) return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>AirIQ Status</title><style>body{background:#0a1628;color:#fff;font-family:sans-serif;padding:40px}</style></head><body><h1 style="color:#f97316">AirIQ Status</h1><p>Health check not yet run — will refresh in 5 seconds.</p></body></html>`);
