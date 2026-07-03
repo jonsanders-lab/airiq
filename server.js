@@ -846,8 +846,8 @@ let healthCache = null;
 let prevHealthStatus = {};
 
 async function sendSlackAlert(text) {
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-  if (!webhookUrl || webhookUrl === 'SLACK_WEBHOOK_PLACEHOLDER') return;
+  const webhookUrl = process.env.SLACK_STATUS_WEBHOOK_URL;
+  if (!webhookUrl) return;
   try {
     await fetch(webhookUrl, {
       method: 'POST',
