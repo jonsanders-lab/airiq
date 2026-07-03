@@ -166,7 +166,8 @@ async function getGmailToken() {
       grant_type:    'refresh_token',
     }),
   });
-  const data = await res.json();
+  const tokenText = await res.text();
+  const data = JSON.parse(tokenText);
   if (!data.access_token) {
     throw new Error('Gmail token error: ' + JSON.stringify(data));
   }
@@ -267,7 +268,8 @@ async function fetchInventoryFromGmail() {
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=subject:"Hodge+Compressor+Inventory"+from:noreply@onservicetitan.com',
       { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
     );
-    const searchData = await searchRes.json();
+    const searchText = await searchRes.text();
+    const searchData = JSON.parse(searchText);
 
     if (!searchData.messages || searchData.messages.length === 0) {
       console.error('No Hodge Compressor Inventory email found in Gmail');
@@ -283,7 +285,8 @@ async function fetchInventoryFromGmail() {
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
       { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
     );
-    const msgData = await msgRes.json();
+    const msgText = await msgRes.text();
+    const msgData = JSON.parse(msgText);
 
     // Find the xlsx attachment part
     let attachmentId = null;
@@ -319,7 +322,8 @@ async function fetchInventoryFromGmail() {
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
       { headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'identity' }, compress: false }
     );
-    const attachData = await attachRes.json();
+    const attachText = await attachRes.text();
+    const attachData = JSON.parse(attachText);
     console.log('Gmail: step 3 complete, attachment size:', attachData?.size);
 
     // Gmail returns base64url encoded data — convert to standard base64
