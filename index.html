@@ -8959,9 +8959,11 @@ function MarketIntel() {
 // ─── SALES BLITZ MODE ───────────────────────────────────────────────────────
 // Separate from Field Log: blitz stop logging hits /api/blitz/* only and never
 // writes to field_log_entries or monday.com.
-function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
+function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [] }) {
   const OUTCOMES = ["Membership Opp","Equipment Opp","Service Lead","Piping/Install",
                     "Sticker Placed","VR Presentation","Appointment Set","Nothing Today"];
+  // Opp outcomes that require the ST Inbound Lead Form before logging (same gate as regular Field Log, plus VR)
+  const BLITZ_OPP_OUTCOMES = ["Membership Opp","Equipment Opp","Service Lead","Piping/Install","VR Presentation","Appointment Set"];
 
   const [subTab,   setSubTab]   = React.useState("group");
   const [loading,  setLoading]  = React.useState(true);
@@ -8975,6 +8977,14 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
   const [showBackup,    setShowBackup]    = React.useState(false);
   const [logState,      setLogState]      = React.useState({});
   const [dash,          setDash]          = React.useState(null);
+  const [sessions,      setSessions]      = React.useState([]);
+  const [parsedStops,   setParsedStops]   = React.useState(null);
+  const [assignments,   setAssignments]   = React.useState({});
+  const [showAssign,      setShowAssign]      = React.useState(false);
+  const [showArchiveWarn, setShowArchiveWarn] = React.useState(false);
+  const [showManual,    setShowManual]    = React.useState(false);
+  const [manualForm,    setManualForm]    = React.useState({ company:"", contact_name:"", phone:"", address:"", notes:"" });
+  const [manualSaving,  setManualSaving]  = React.useState(false);
   const fileRef = React.useRef(null);
 
   async function loadActive() {
@@ -9005,6 +9015,11 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
   }
   React.useEffect(() => { loadActive(); }, []);
 
+  async function loadSessions() {
+    try { const r = await fetch("/api/blitz/sessions"); const d = await r.json(); if (Array.isArray(d)) setSessions(d); } catch (e) { /* ignore */ }
+  }
+  React.useEffect(() => { loadSessions(); }, []);
+
   React.useEffect(() => { if (selectedGroup) localStorage.setItem("blitzGroup", selectedGroup); }, [selectedGroup]);
 
   React.useEffect(() => {
@@ -9018,16 +9033,19 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
   const days   = React.useMemo(() => [...new Set(stops.map(s => Number(s.day)))].sort((a,b) => a-b), [stops]);
 
   const isBackup = s => (s.role || "").toLowerCase().includes("backup");
+  const isManual = s => (s.role || "").toLowerCase() === "manual";
   const stopNum  = s => { const m = String(s.stop_number || "").match(/\d+/); return m ? parseInt(m[0],10) : 9999; };
 
   const groupDayStops = React.useMemo(() =>
     stops.filter(s => s.group_name === selectedGroup && Number(s.day) === Number(selectedDay)),
     [stops, selectedGroup, selectedDay]);
-  const primaryStops = groupDayStops.filter(s => !isBackup(s)).sort((a,b) => stopNum(a) - stopNum(b));
+  const primaryStops = groupDayStops.filter(s => !isBackup(s) && !isManual(s)).sort((a,b) => stopNum(a) - stopNum(b));
+  const manualStops  = groupDayStops.filter(isManual).sort((a,b) => stopNum(a) - stopNum(b));
   const backupStops  = groupDayStops.filter(isBackup).sort((a,b) => stopNum(a) - stopNum(b));
+  const routeStops   = [...primaryStops, ...manualStops]; // manual stops appear at the bottom of the primary list
 
-  const loggedCount = primaryStops.filter(s => s.logged).length;
-  const pct = primaryStops.length ? Math.round(loggedCount / primaryStops.length * 100) : 0;
+  const loggedCount = routeStops.filter(s => s.logged).length;
+  const pct = routeStops.length ? Math.round(loggedCount / routeStops.length * 100) : 0;
 
   function toggleOutcome(id, label) {
     setLogState(prev => {
@@ -9046,6 +9064,9 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
   }
   function setNotes(id, val) {
     setLogState(prev => ({ ...prev, [id]: { ...(prev[id] || { outcomes: [] }), notes: val } }));
+  }
+  function setStConfirmed(id, val) {
+    setLogState(prev => ({ ...prev, [id]: { ...(prev[id] || { outcomes: [], notes: "" }), stConfirmed: val } }));
   }
 
   async function logStop(stop) {
@@ -9073,7 +9094,6 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     if (!/\.xlsx$/i.test(file.name)) { setUploadMsg("Please choose an .xlsx file"); if (fileRef.current) fileRef.current.value = ""; return; }
-    if (!blitzName.trim()) { setUploadMsg("Enter a blitz name first"); if (fileRef.current) fileRef.current.value = ""; return; }
     if (!window.XLSX) { setUploadMsg("Spreadsheet library not loaded — refresh and retry"); return; }
     setUploading(true); setUploadMsg("Parsing…");
     try {
@@ -9114,18 +9134,81 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
         contact_email:   String(pick(r, "Contact Email")).trim(),
       })).filter(s => s.company && s.group_name);
       if (parsed.length === 0) { setUploadMsg("No valid rows found (need Group + Company)."); setUploading(false); if (fileRef.current) fileRef.current.value = ""; return; }
+      // Don't upload yet — collect group→rep assignments first
+      const grpNames = [...new Set(parsed.map(s => s.group_name))].sort();
+      const init = {};
+      grpNames.forEach(g => { init[g] = ""; });
+      setParsedStops(parsed);
+      setAssignments(init);
+      setUploadMsg(`Parsed ${parsed.length} stops · ${grpNames.length} groups`);
+      setShowAssign(true);
+    } catch (err) { setUploadMsg("Error: " + err.message); }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function startUpload() {
+    // Leader initiates a new upload; warn first if a blitz is already active
+    if (session) setShowArchiveWarn(true);
+    else if (fileRef.current) fileRef.current.click();
+  }
+  function proceedAfterWarn() {
+    setShowArchiveWarn(false);
+    if (fileRef.current) fileRef.current.click();
+  }
+  async function submitUpload() {
+    if (!blitzName.trim()) { setUploadMsg("Enter a blitz name"); return; }
+    if (!parsedStops || parsedStops.length === 0) { setUploadMsg("No parsed stops"); return; }
+    setUploading(true); setUploadMsg("Uploading…");
+    try {
       const resp = await fetch("/api/blitz/upload", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: blitzName.trim(), stops: parsed }),
+        body: JSON.stringify({ name: blitzName.trim(), stops: parsedStops, group_assignments: assignments }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Upload failed");
       setUploadMsg(`✅ Loaded ${data.totalStops} stops`);
       setBlitzName("");
+      setParsedStops(null);
+      setShowAssign(false);
       await loadActive();
+      loadSessions();
     } catch (err) { setUploadMsg("Error: " + err.message); }
     setUploading(false);
-    if (fileRef.current) fileRef.current.value = "";
+  }
+  function exportSession(sid) {
+    // Direct navigation triggers the download and bypasses the service worker
+    window.location.href = `/api/blitz/export/${sid}`;
+  }
+
+  async function addManualStop() {
+    if (!manualForm.company.trim() || !session) return;
+    setManualSaving(true);
+    try {
+      const r = await fetch("/api/blitz/stops/manual", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: session.id, group_name: selectedGroup, day: selectedDay,
+          company: manualForm.company.trim(), contact_name: manualForm.contact_name,
+          phone: manualForm.phone, address: manualForm.address, notes: manualForm.notes,
+        }),
+      });
+      const st = await r.json();
+      if (!r.ok) throw new Error(st.error || "Add failed");
+      setStops(prev => [...prev, st]);
+      setShowManual(false);
+      setManualForm({ company:"", contact_name:"", phone:"", address:"", notes:"" });
+    } catch (e) { alert("Could not add stop: " + e.message); }
+    setManualSaving(false);
+  }
+
+  async function unlogStop(stop) {
+    try {
+      const r = await fetch(`/api/blitz/log/${stop.id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error("Undo failed");
+      setStops(prev => prev.map(s => s.id === stop.id ? { ...s, logged:false, logged_at:null, outcome:null, notes:null } : s));
+      setLogState(prev => ({ ...prev, [stop.id]: { outcomes: [], notes: "" } }));
+    } catch (e) { alert("Could not undo: " + e.message); }
   }
 
   async function loadDash() {
@@ -9138,6 +9221,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
       await fetch("/api/blitz/session", { method: "DELETE" });
       setSession(null); setStops([]); setDash(null);
       if (onActiveChange) onActiveChange(false);
+      loadSessions();
       if (onExit) onExit();
     } catch (e) { alert("Failed to end blitz"); }
   }
@@ -9161,14 +9245,20 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
 
   function StopCard(s) {
     const cur = logState[s.id] || { outcomes: [], notes: "" };
-    const badgeColor = s.logged ? C.green : C.orange;
+    const manual = isManual(s);
+    const PURPLE = "#7C3AED";
+    const badgeBg = manual ? PURPLE : (s.logged ? C.green : C.orange);
+    const leftBar = s.logged ? C.green : (manual ? PURPLE : C.orange);
+    const badgeText = isBackup(s) ? "BACKUP" : manual ? (s.stop_number || "M") : `Stop ${stopNum(s) === 9999 ? (s.stop_number||"") : stopNum(s)}`;
+    const needsSt = cur.outcomes.some(o => BLITZ_OPP_OUTCOMES.includes(o));
+    const logBlocked = cur.outcomes.length === 0 || cur.saving || (needsSt && !cur.stConfirmed);
     return (
-      <div key={s.id} style={{ background:C.surface, border:`1px solid ${s.logged ? C.green : C.border}`,
-        borderLeft:`4px solid ${badgeColor}`, borderRadius:10, padding:"12px 14px", marginBottom:10 }}>
+      <div key={s.id} style={{ background:C.surface, border:`1px solid ${s.logged ? C.green : (manual ? PURPLE : C.border)}`,
+        borderLeft:`4px solid ${leftBar}`, borderRadius:10, padding:"12px 14px", marginBottom:10 }}>
         <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
           <span style={{ flexShrink:0, fontFamily:F.mono, fontSize:10, fontWeight:700, letterSpacing:0.5,
-            padding:"4px 8px", borderRadius:6, color:"#fff", background:badgeColor }}>
-            {isBackup(s) ? "BACKUP" : `Stop ${stopNum(s) === 9999 ? (s.stop_number||"") : stopNum(s)}`}
+            padding:"4px 8px", borderRadius:6, color:"#fff", background:badgeBg }}>
+            {badgeText}
           </span>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontFamily:F.body, fontSize:16, fontWeight:700, color:C.text, lineHeight:1.2 }}>{s.company}</div>
@@ -9194,10 +9284,13 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
             <a href={mapsHref(s.address)} target="_blank" rel="noopener noreferrer" style={{ fontFamily:F.mono, fontSize:11, color:C.blueLight, textDecoration:"none" }}>📍 {s.address}</a>
           </div>
         )}
-        <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8, alignItems:"center" }}>
           {s.air_likelihood && pill(`Air: ${s.air_likelihood}`, C.copper)}
           {s.site_confidence && pill(`Site: ${s.site_confidence}`, C.blueLight)}
-          {s.territory && pill(s.territory, C.dim)}
+          {s.territory && (
+            <span style={{ fontFamily:F.mono, fontSize:10, fontWeight:600, letterSpacing:0.3, color:C.text,
+              background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:"3px 8px" }}>📍 {s.territory}</span>
+          )}
         </div>
 
         {s.logged ? (
@@ -9205,6 +9298,9 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
             <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
               {pill(s.outcome === "nothing" ? "Nothing Today" : (s.outcome || "Logged"), C.green)}
               <span style={{ fontFamily:F.mono, fontSize:9, color:C.dim }}>✓ {fmtLogged(s.logged_at)}</span>
+              <button onClick={() => unlogStop(s)} style={{ marginLeft:"auto", flexShrink:0, background:"transparent",
+                border:`1px solid ${C.border}`, borderRadius:6, padding:"4px 10px", color:C.mid,
+                fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>↺ Undo</button>
             </div>
             {s.notes && <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, marginTop:6, lineHeight:1.4 }}>{s.notes}</div>}
           </div>
@@ -9222,13 +9318,27 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
                 );
               })}
             </div>
+            {needsSt && (
+              <div style={{ marginBottom:8, padding:"12px 14px", background:"rgba(193,122,53,0.08)",
+                border:`1px solid rgba(193,122,53,0.35)`, borderRadius:8 }}>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSfSzGL7nR-dGftkNz50l0jCAdJmQytQzUfkSkiJz9A6RBLH8w/viewform"
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ display:"block", fontFamily:F.mono, fontSize:12, letterSpacing:1, color:C.copper, textDecoration:"underline", marginBottom:10 }}>
+                  📋 Open ST Inbound Lead Form
+                </a>
+                <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
+                  <input type="checkbox" checked={!!cur.stConfirmed} onChange={e => setStConfirmed(s.id, e.target.checked)}
+                    style={{ width:18, height:18, marginTop:2, accentColor:C.orange, cursor:"pointer", flexShrink:0 }}/>
+                  <span style={{ fontFamily:F.body, fontSize:14, color:C.text, lineHeight:1.4 }}>Service Titan Inbound Lead Form Completed</span>
+                </label>
+              </div>
+            )}
             <input value={cur.notes} onChange={e => setNotes(s.id, e.target.value)} placeholder="Notes (optional)"
               style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:7,
                 color:C.text, fontFamily:F.body, fontSize:13, padding:"9px 11px", boxSizing:"border-box", marginBottom:8 }}/>
-            <button onClick={() => logStop(s)} disabled={cur.outcomes.length === 0 || cur.saving} style={{
+            <button onClick={() => logStop(s)} disabled={logBlocked} style={{
               width:"100%", padding:"11px 0", border:"none", borderRadius:8, fontFamily:F.head, fontSize:15, letterSpacing:2,
-              color:"#fff", cursor: (cur.outcomes.length === 0 || cur.saving) ? "not-allowed" : "pointer",
-              opacity: (cur.outcomes.length === 0 || cur.saving) ? 0.5 : 1,
+              color:"#fff", cursor: logBlocked ? "not-allowed" : "pointer", opacity: logBlocked ? 0.5 : 1,
               background:`linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)`,
             }}>{cur.saving ? "LOGGING…" : "LOG STOP"}</button>
           </div>
@@ -9309,6 +9419,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
 
   return (
     <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
+      <input ref={fileRef} type="file" accept=".xlsx" onChange={handleFile} style={{ display:"none" }}/>
       <div style={{ display:"flex", gap:8, marginBottom:14 }}>
         {[["group","MY GROUP"],["dashboard","BLITZ DASHBOARD"]].map(([v,l]) => (
           <button key={v} onClick={() => setSubTab(v)} style={{
@@ -9342,8 +9453,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
           <input value={blitzName} onChange={e => setBlitzName(e.target.value)} placeholder="Cleveland Blitz — July 2026"
             style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
               color:C.text, fontFamily:F.body, fontSize:14, padding:"11px 14px", boxSizing:"border-box", marginBottom:14 }}/>
-          <input ref={fileRef} type="file" accept=".xlsx" onChange={handleFile} style={{ display:"none" }}/>
-          <button onClick={() => fileRef.current && fileRef.current.click()} disabled={uploading} style={{
+          <button onClick={startUpload} disabled={uploading} style={{
             width:"100%", padding:"13px 0", border:"none", borderRadius:8, fontFamily:F.head, fontSize:16, letterSpacing:2,
             color:"#fff", cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1,
             background:`linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)`,
@@ -9352,15 +9462,41 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
             <div style={{ fontFamily:F.mono, fontSize:11, color: uploadMsg.startsWith("✅") ? C.green : uploadMsg.startsWith("Error") ? C.red : C.mid,
               letterSpacing:0.5, marginTop:12 }}>{uploadMsg}</div>
           )}
+
+          {sessions.length > 0 && (
+            <div style={{ marginTop:22, paddingTop:16, borderTop:`1px solid ${C.border}` }}>
+              <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, marginBottom:10 }}>ARCHIVED BLITZES</div>
+              {sessions.map(sn => (
+                <div key={sn.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {sn.name}{sn.active ? <span style={{ marginLeft:8, fontFamily:F.mono, fontSize:8, color:C.green, border:`1px solid ${C.green}`, borderRadius:8, padding:"1px 6px", letterSpacing:1 }}>ACTIVE</span> : null}
+                    </div>
+                    <div style={{ fontFamily:F.mono, fontSize:9, color:C.dim, marginTop:2 }}>
+                      {new Date(sn.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} · {sn.loggedStops}/{sn.totalStops} logged
+                    </div>
+                  </div>
+                  <button onClick={() => exportSession(sn.id)} style={{ flexShrink:0, background:C.surface2, border:`1px solid ${C.border}`,
+                    borderRadius:8, padding:"6px 10px", color:C.mid, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>📥 Export XLSX</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {!loading && session && subTab === "group" && (
         <div>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-            <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+            <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontFamily:F.head, fontSize:18, letterSpacing:1, color:C.orange, lineHeight:1.1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session.name}</div>
             </div>
+            <button onClick={() => exportSession(session.id)} style={{ flexShrink:0, background:C.surface2, border:`1px solid ${C.border}`,
+              borderRadius:8, padding:"6px 10px", color:C.mid, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>📥 Export</button>
+            {isLeader && (
+              <button onClick={startUpload} style={{ flexShrink:0, background:"transparent", border:`1px solid ${C.blue}`,
+                borderRadius:8, padding:"6px 10px", color:C.blueLight, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>Load New</button>
+            )}
             {isLeader && (
               <button onClick={endBlitz} style={{ flexShrink:0, background:"transparent", border:`1px solid ${C.red}`,
                 borderRadius:8, padding:"6px 10px", color:C.red, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>END BLITZ</button>
@@ -9393,7 +9529,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
             </div>
           ) : (
             <div>
-              {primaryStops.map(StopCard)}
+              {routeStops.map(StopCard)}
               {backupStops.length > 0 && (
                 <div style={{ marginTop:8 }}>
                   <button onClick={() => setShowBackup(v => !v)} style={{
@@ -9406,13 +9542,24 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
               )}
             </div>
           )}
+
+          {selectedGroup && (
+            <button onClick={() => setShowManual(true)} style={{
+              position:"sticky", bottom:12, width:"100%", marginTop:14, padding:"13px 0", cursor:"pointer",
+              borderRadius:10, border:`1.5px dashed #7C3AED`, background:"rgba(124,58,237,0.12)",
+              color:"#A78BFA", fontFamily:F.head, fontSize:15, letterSpacing:2,
+              boxShadow:"0 4px 14px rgba(0,0,0,0.25)",
+            }}>＋ ADD UNPLANNED STOP</button>
+          )}
         </div>
       )}
 
       {!loading && session && subTab === "dashboard" && (
         <div>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-            <div style={{ flex:1, fontFamily:F.head, fontSize:18, letterSpacing:1, color:C.orange }}>{session.name}</div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+            <div style={{ flex:1, minWidth:120, fontFamily:F.head, fontSize:18, letterSpacing:1, color:C.orange }}>{session.name}</div>
+            <button onClick={() => exportSession(session.id)} style={{ flexShrink:0, background:C.surface2, border:`1px solid ${C.border}`,
+              borderRadius:8, padding:"6px 10px", color:C.mid, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>📥 Export</button>
             {isLeader && (
               <button onClick={endBlitz} style={{ flexShrink:0, background:"transparent", border:`1px solid ${C.red}`,
                 borderRadius:8, padding:"6px 10px", color:C.red, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>END BLITZ</button>
@@ -9421,6 +9568,75 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
           {dash ? renderDashboard() : (
             <div style={{ textAlign:"center", padding:"30px 0", fontFamily:F.mono, fontSize:12, color:C.mid, letterSpacing:1 }}>LOADING SCOREBOARD…</div>
           )}
+        </div>
+      )}
+
+      {showArchiveWarn && (
+        <div onClick={() => setShowArchiveWarn(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:10030, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid ${C.orange}`, borderRadius:12, padding:24, maxWidth:380, width:"100%" }}>
+            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:1, color:C.orange, marginBottom:10 }}>⚡ Start a New Blitz?</div>
+            <div style={{ fontFamily:F.body, fontSize:14, color:C.text, lineHeight:1.5, marginBottom:20 }}>
+              This will archive the current blitz and start a new one. All existing progress will be saved and can be exported. Continue?
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={proceedAfterWarn} style={{ flex:1, padding:"12px 0", border:"none", borderRadius:8, fontFamily:F.head, fontSize:14, letterSpacing:1, color:"#fff", cursor:"pointer", background:`linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)` }}>Archive &amp; Start New</button>
+              <button onClick={() => setShowArchiveWarn(false)} style={{ padding:"12px 16px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, fontFamily:F.mono, fontSize:11, color:C.mid, cursor:"pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAssign && (
+        <div onClick={() => !uploading && setShowAssign(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:10030, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid ${C.orange}`, borderRadius:12, padding:24, maxWidth:440, width:"100%", maxHeight:"85vh", overflowY:"auto" }}>
+            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:1, color:C.orange, marginBottom:4 }}>ASSIGN REPS TO GROUPS</div>
+            <div style={{ fontFamily:F.body, fontSize:13, color:C.mid, marginBottom:16, lineHeight:1.5 }}>
+              {parsedStops ? `${parsedStops.length} stops parsed. ` : ""}Pick the Monday.com owner for each group's stops.
+            </div>
+            <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, marginBottom:6 }}>BLITZ NAME</div>
+            <input value={blitzName} onChange={e => setBlitzName(e.target.value)} placeholder="Cleveland Blitz — July 2026"
+              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontFamily:F.body, fontSize:14, padding:"10px 12px", boxSizing:"border-box", marginBottom:16 }}/>
+            {Object.keys(assignments).sort().map(g => (
+              <div key={g} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                <div style={{ flex:"0 0 92px", fontFamily:F.mono, fontSize:12, color:C.copper, fontWeight:700 }}>Group {g}</div>
+                <select value={assignments[g] || ""} onChange={e => setAssignments(prev => ({ ...prev, [g]: e.target.value }))}
+                  style={{ flex:1, background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontFamily:F.body, fontSize:14, padding:"9px 10px", boxSizing:"border-box" }}>
+                  <option value="">— Unassigned —</option>
+                  {reps.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            ))}
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={submitUpload} disabled={uploading} style={{ flex:1, padding:"13px 0", border:"none", borderRadius:8, fontFamily:F.head, fontSize:15, letterSpacing:2, color:"#fff", cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1, background:`linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)` }}>{uploading ? "STARTING…" : "START BLITZ"}</button>
+              <button onClick={() => setShowAssign(false)} disabled={uploading} style={{ padding:"13px 16px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, fontFamily:F.mono, fontSize:11, color:C.mid, cursor:"pointer" }}>Cancel</button>
+            </div>
+            {uploadMsg && <div style={{ fontFamily:F.mono, fontSize:11, color: uploadMsg.startsWith("Error") ? C.red : C.mid, marginTop:12 }}>{uploadMsg}</div>}
+          </div>
+        </div>
+      )}
+
+      {showManual && (
+        <div onClick={() => !manualSaving && setShowManual(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:10030, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid #7C3AED`, borderRadius:12, padding:24, maxWidth:420, width:"100%", maxHeight:"85vh", overflowY:"auto" }}>
+            <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:1, color:"#A78BFA", marginBottom:4 }}>＋ ADD UNPLANNED STOP</div>
+            <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:16 }}>Group {selectedGroup} · Day {selectedDay}</div>
+            {[["Company *","company"],["Contact name","contact_name"],["Phone","phone"],["Address","address"]].map(([lbl,key]) => (
+              <div key={key} style={{ marginBottom:12 }}>
+                <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, color:C.mid, marginBottom:5 }}>{lbl.toUpperCase()}</div>
+                <input value={manualForm[key]} onChange={e => setManualForm(p => ({ ...p, [key]: e.target.value }))}
+                  style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontFamily:F.body, fontSize:14, padding:"10px 12px", boxSizing:"border-box" }}/>
+              </div>
+            ))}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, color:C.mid, marginBottom:5 }}>NOTES</div>
+              <textarea value={manualForm.notes} onChange={e => setManualForm(p => ({ ...p, notes: e.target.value }))} rows={2}
+                style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontFamily:F.body, fontSize:14, padding:"10px 12px", boxSizing:"border-box", resize:"none" }}/>
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:8 }}>
+              <button onClick={addManualStop} disabled={!manualForm.company.trim() || manualSaving} style={{ flex:1, padding:"13px 0", border:"none", borderRadius:8, fontFamily:F.head, fontSize:15, letterSpacing:2, color:"#fff", cursor:(!manualForm.company.trim()||manualSaving)?"not-allowed":"pointer", opacity:(!manualForm.company.trim()||manualSaving)?0.5:1, background:"linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%)" }}>{manualSaving ? "ADDING…" : "ADD STOP"}</button>
+              <button onClick={() => setShowManual(false)} disabled={manualSaving} style={{ padding:"13px 16px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, fontFamily:F.mono, fontSize:11, color:C.mid, cursor:"pointer" }}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -11731,7 +11947,7 @@ function FieldLog() {
       )}
 
       {view === "blitz" && (
-        <BlitzMode repName={repName} branch={branch} isLeader={isBlitzLeader}
+        <BlitzMode repName={repName} branch={branch} isLeader={isBlitzLeader} reps={REPS}
           onActiveChange={setHasActiveBlitz} onExit={() => setView("rep")} />
       )}
     </div>
