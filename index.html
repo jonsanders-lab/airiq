@@ -8983,8 +8983,13 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
   const [showAssign,      setShowAssign]      = React.useState(false);
   const [showArchiveWarn, setShowArchiveWarn] = React.useState(false);
   const [showManual,    setShowManual]    = React.useState(false);
-  const [manualForm,    setManualForm]    = React.useState({ company:"", contact_name:"", phone:"", address:"", notes:"" });
+  const [manualForm,    setManualForm]    = React.useState({ company:"", contact_name:"", title:"", phone:"", mobile:"", email:"", website:"", address:"", notes:"" });
   const [manualSaving,  setManualSaving]  = React.useState(false);
+  const [blitzCardLoading, setBlitzCardLoading] = React.useState(false);
+  const [blitzCardMsg,     setBlitzCardMsg]     = React.useState("");
+  const [editContactId, setEditContactId] = React.useState(null);
+  const [editContact,   setEditContact]   = React.useState({});
+  const [editSaving,    setEditSaving]    = React.useState(false);
   const fileRef = React.useRef(null);
 
   async function loadActive() {
@@ -9082,7 +9087,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
     try {
       const r = await fetch(`/api/blitz/log/${stop.id}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outcome, notes: cur.notes || "" }),
+        body: JSON.stringify({ outcome, notes: cur.notes || "", repName }),
       });
       const updated = await r.json();
       if (!r.ok) throw new Error(updated.error || "Log failed");
@@ -9196,16 +9201,87 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
         body: JSON.stringify({
           session_id: session.id, group_name: selectedGroup, day: selectedDay,
           company: manualForm.company.trim(), contact_name: manualForm.contact_name,
-          phone: manualForm.phone, address: manualForm.address, notes: manualForm.notes,
+          title: manualForm.title, phone: manualForm.phone, mobile: manualForm.mobile,
+          email: manualForm.email, website: manualForm.website,
+          address: manualForm.address, notes: manualForm.notes,
         }),
       });
       const st = await r.json();
       if (!r.ok) throw new Error(st.error || "Add failed");
       setStops(prev => [...prev, st]);
       setShowManual(false);
-      setManualForm({ company:"", contact_name:"", phone:"", address:"", notes:"" });
+      setManualForm({ company:"", contact_name:"", title:"", phone:"", mobile:"", email:"", website:"", address:"", notes:"" });
     } catch (e) { alert("Could not add stop: " + e.message); }
     setManualSaving(false);
+  }
+
+  async function scanManualCard(file) {
+    setBlitzCardLoading(true); setBlitzCardMsg("");
+    try {
+      const b64 = await new Promise((resolve, reject) => {
+        const rd = new FileReader();
+        rd.onload = () => resolve(rd.result.split(",")[1]);
+        rd.onerror = reject;
+        rd.readAsDataURL(file);
+      });
+      const mime = file.type || "image/jpeg";
+      const r = await fetch("/api/claude", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6", max_tokens: 400,
+          messages: [{ role: "user", content: [
+            { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
+            { type: "text", text: 'Extract all contact information from this business card. Return ONLY a JSON object with these exact keys (use empty string if not found): {"name":"","title":"","company":"","mobile":"","office":"","email":"","website":"","address":""}. No markdown, no explanation, no code fences.' }
+          ] }]
+        })
+      });
+      const d = await r.json();
+      const text = (d.content && d.content[0] && d.content[0].text || "").replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "").trim();
+      const info = JSON.parse(text);
+      setManualForm(p => ({
+        ...p,
+        company:      info.company || p.company,
+        contact_name: info.name    || p.contact_name,
+        title:        info.title   || p.title,
+        email:        info.email   || p.email,
+        phone:        info.office  || p.phone,
+        mobile:       info.mobile  || p.mobile,
+        website:      info.website || p.website,
+        address:      info.address || p.address,
+      }));
+      setBlitzCardMsg("✓ Card scanned — review below");
+    } catch (e) {
+      setBlitzCardMsg("Couldn't read card — fill in manually");
+    }
+    setBlitzCardLoading(false);
+    setTimeout(() => setBlitzCardMsg(""), 4000);
+  }
+
+  function startEditContact(s) {
+    setEditContact({
+      contact_name: s.contact_name || "",
+      title:        s.title || "",
+      phone:        s.phone || "",
+      email:        s.email || s.contact_email || "",
+      mobile:       s.mobile || "",
+      website:      s.website || "",
+      address:      s.address || "",
+    });
+    setEditContactId(s.id);
+  }
+  async function saveContact(s) {
+    setEditSaving(true);
+    try {
+      const r = await fetch(`/api/blitz/stops/${s.id}/contact`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editContact),
+      });
+      const updated = await r.json();
+      if (!r.ok) throw new Error(updated.error || "Save failed");
+      setStops(prev => prev.map(x => x.id === s.id ? updated : x));
+      setEditContactId(null);
+    } catch (e) { alert("Could not save contact: " + e.message); }
+    setEditSaving(false);
   }
 
   async function unlogStop(stop) {
@@ -9258,6 +9334,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
     const badgeText = isBackup(s) ? "BACKUP" : manual ? (s.stop_number || "M") : `Stop ${stopNum(s) === 9999 ? (s.stop_number||"") : stopNum(s)}`;
     const needsSt = cur.outcomes.some(o => BLITZ_OPP_OUTCOMES.includes(o));
     const logBlocked = cur.outcomes.length === 0 || cur.saving || (needsSt && !cur.stConfirmed);
+    const editing = editContactId === s.id;
     return (
       <div key={s.id} style={{ background:C.surface, border:`1px solid ${s.logged ? C.green : (manual ? PURPLE : C.border)}`,
         borderLeft:`4px solid ${leftBar}`, borderRadius:10, padding:"12px 14px", marginBottom:10 }}>
@@ -9275,20 +9352,54 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
           )}
         </div>
 
-        {(s.contact_name || s.title) && (
-          <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid, marginTop:6 }}>
-            {s.contact_name}{s.contact_name && s.title ? " · " : ""}{s.title}
+        {editing ? (
+          <div style={{ marginTop:8 }}>
+            {[["Contact name","contact_name"],["Title","title"],["Phone","phone"],["Email","email"],["Mobile","mobile"],["Website","website"],["Address","address"]].map(([lbl,key]) => (
+              <div key={key} style={{ marginBottom:7 }}>
+                <div style={{ fontFamily:F.mono, fontSize:8, letterSpacing:1, color:C.mid, marginBottom:3 }}>{lbl.toUpperCase()}</div>
+                <input value={editContact[key] || ""} onChange={e => setEditContact(p => ({ ...p, [key]: e.target.value }))}
+                  style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:6, color:C.text, fontFamily:F.body, fontSize:13, padding:"7px 10px", boxSizing:"border-box" }}/>
+              </div>
+            ))}
+            <div style={{ display:"flex", gap:8, marginTop:8 }}>
+              <button onClick={() => saveContact(s)} disabled={editSaving} style={{ flex:1, padding:"9px 0", border:"none", borderRadius:7, fontFamily:F.head, fontSize:13, letterSpacing:1, color:"#fff", cursor: editSaving ? "not-allowed" : "pointer", opacity: editSaving ? 0.6 : 1, background:`linear-gradient(135deg,${C.blue} 0%,#2D5BBF 100%)` }}>{editSaving ? "SAVING…" : "SAVE"}</button>
+              <button onClick={() => setEditContactId(null)} disabled={editSaving} style={{ padding:"9px 14px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:7, fontFamily:F.mono, fontSize:10, color:C.mid, cursor:"pointer" }}>Cancel</button>
+            </div>
           </div>
-        )}
-        {s.phone && (
-          <div style={{ marginTop:5 }}>
-            <a href={`tel:${String(s.phone).replace(/[^0-9+]/g,"")}`} style={{ fontFamily:F.mono, fontSize:12, color:C.blueLight, textDecoration:"none" }}>📞 {s.phone}</a>
-          </div>
-        )}
-        {s.address && (
-          <div style={{ marginTop:4 }}>
-            <a href={mapsHref(s.address)} target="_blank" rel="noopener noreferrer" style={{ fontFamily:F.mono, fontSize:11, color:C.blueLight, textDecoration:"none" }}>📍 {s.address}</a>
-          </div>
+        ) : (
+          <React.Fragment>
+            {(s.contact_name || s.title) && (
+              <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid, marginTop:6 }}>
+                {s.contact_name}{s.contact_name && s.title ? " · " : ""}{s.title}
+              </div>
+            )}
+            {s.phone && (
+              <div style={{ marginTop:5 }}>
+                <a href={`tel:${String(s.phone).replace(/[^0-9+]/g,"")}`} style={{ fontFamily:F.mono, fontSize:12, color:C.blueLight, textDecoration:"none" }}>📞 {s.phone}</a>
+              </div>
+            )}
+            {s.mobile && (
+              <div style={{ marginTop:4 }}>
+                <a href={`tel:${String(s.mobile).replace(/[^0-9+]/g,"")}`} style={{ fontFamily:F.mono, fontSize:12, color:C.blueLight, textDecoration:"none" }}>📱 {s.mobile}</a>
+              </div>
+            )}
+            {(s.email || s.contact_email) && (
+              <div style={{ marginTop:4 }}>
+                <a href={`mailto:${s.email || s.contact_email}`} style={{ fontFamily:F.mono, fontSize:11, color:C.blueLight, textDecoration:"none" }}>✉️ {s.email || s.contact_email}</a>
+              </div>
+            )}
+            {s.website && (
+              <div style={{ marginTop:4 }}>
+                <a href={/^https?:\/\//.test(s.website) ? s.website : `https://${s.website}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily:F.mono, fontSize:11, color:C.blueLight, textDecoration:"none" }}>🌐 {s.website}</a>
+              </div>
+            )}
+            {s.address && (
+              <div style={{ marginTop:4 }}>
+                <a href={mapsHref(s.address)} target="_blank" rel="noopener noreferrer" style={{ fontFamily:F.mono, fontSize:11, color:C.blueLight, textDecoration:"none" }}>📍 {s.address}</a>
+              </div>
+            )}
+            <button onClick={() => startEditContact(s)} style={{ marginTop:7, background:"transparent", border:"none", padding:0, color:C.copper, fontFamily:F.mono, fontSize:10, letterSpacing:0.5, cursor:"pointer", textDecoration:"underline" }}>✏️ Edit Contact</button>
+          </React.Fragment>
         )}
         <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8, alignItems:"center" }}>
           {s.air_likelihood && pill(`Air: ${s.air_likelihood}`, C.copper)}
@@ -9633,7 +9744,22 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
           <div onClick={e => e.stopPropagation()} style={{ background:C.surface2, border:`1.5px solid #7C3AED`, borderRadius:12, padding:24, maxWidth:420, width:"100%", maxHeight:"85vh", overflowY:"auto" }}>
             <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:1, color:"#A78BFA", marginBottom:4 }}>＋ ADD UNPLANNED STOP</div>
             <div style={{ fontFamily:F.mono, fontSize:9, color:C.mid, letterSpacing:1, marginBottom:16 }}>{selectedGroup} · Day {selectedDay}</div>
-            {[["Company *","company"],["Contact name","contact_name"],["Phone","phone"],["Address","address"]].map(([lbl,key]) => (
+
+            <input type="file" accept="image/*" capture="environment" id="blitzCardInput" style={{ display:"none" }}
+              onChange={e => { if (e.target.files[0]) scanManualCard(e.target.files[0]); e.target.value=''; }}/>
+            <label htmlFor="blitzCardInput" style={{
+              display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%",
+              cursor: blitzCardLoading ? "not-allowed" : "pointer", marginBottom:14,
+              background:C.surface3, border:`1.5px dashed #7C3AED`, borderRadius:10,
+              padding:"12px 14px", fontFamily:F.mono, fontSize:12, letterSpacing:1.5, color:"#A78BFA",
+              opacity: blitzCardLoading ? 0.7 : 1, userSelect:"none", boxSizing:"border-box",
+            }}>{blitzCardLoading ? "⏳ READING CARD..." : "📷 SCAN BUSINESS CARD"}</label>
+            {blitzCardMsg && (
+              <div style={{ marginTop:-8, marginBottom:12, fontFamily:F.mono, fontSize:11, letterSpacing:0.5, textAlign:"center",
+                color: blitzCardMsg.startsWith("✓") ? C.green : C.red }}>{blitzCardMsg}</div>
+            )}
+
+            {[["Company *","company"],["Contact name","contact_name"],["Title","title"],["Phone","phone"],["Mobile","mobile"],["Email","email"],["Website","website"],["Address","address"]].map(([lbl,key]) => (
               <div key={key} style={{ marginBottom:12 }}>
                 <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1, color:C.mid, marginBottom:5 }}>{lbl.toUpperCase()}</div>
                 <input value={manualForm[key]} onChange={e => setManualForm(p => ({ ...p, [key]: e.target.value }))}

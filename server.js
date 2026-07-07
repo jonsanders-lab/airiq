@@ -105,6 +105,8 @@ async function initBlitzTables() {
   `);
   await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_blitz_stops_session ON blitz_stops (session_id)`);
   await pgPool.query(`ALTER TABLE blitz_sessions ADD COLUMN IF NOT EXISTS group_assignments JSONB DEFAULT '{}'`);
+  await pgPool.query(`ALTER TABLE blitz_stops ADD COLUMN IF NOT EXISTS email TEXT`);
+  await pgPool.query(`ALTER TABLE blitz_stops ADD COLUMN IF NOT EXISTS mobile TEXT`);
   console.log('blitz tables ready');
 }
 
@@ -2144,7 +2146,7 @@ app.post('/api/blitz/log/:stopId', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   const id = parseInt(req.params.stopId, 10);
   if (!id) return res.status(400).json({ error: 'Invalid stop id' });
-  const { outcome, notes } = req.body;
+  const { outcome, notes, repName } = req.body;
   try {
     const { rows } = await pgPool.query(
       `UPDATE blitz_stops SET logged=TRUE, logged_at=NOW(), outcome=$1, notes=$2
@@ -2155,7 +2157,8 @@ app.post('/api/blitz/log/:stopId', async (req, res) => {
     const stop = rows[0];
     res.json(stop);
 
-    // Fire-and-forget monday.com push using the group's assigned rep
+    // Fire-and-forget monday.com push using the group's assigned rep,
+    // falling back to the logging rep if the group has no assignment
     if (process.env.MONDAY_API_KEY && stop.company) {
       (async () => {
         try {
@@ -2163,7 +2166,7 @@ app.post('/api/blitz/log/:stopId', async (req, res) => {
             `SELECT group_assignments FROM blitz_sessions WHERE id=$1`, [stop.session_id]
           );
           const ga = (sres.rows[0] && sres.rows[0].group_assignments) || {};
-          const assignedRep = ga[stop.group_name];
+          const assignedRep = ga[stop.group_name] || repName || null;
           if (!assignedRep) return;
           // Morty and Hudson are not tracked in monday.com — never push their stops
           if (assignedRep === 'Morty' || assignedRep === 'Hudson') return;
@@ -2175,9 +2178,9 @@ app.post('/api/blitz/log/:stopId', async (req, res) => {
             notableMoment: stop.notes,
             ...blitzOutcomeFlags(stop.outcome),
             stickerCount:  0,
-            mobile:        stop.phone,
-            officePhone:   null,
-            email:         stop.contact_email,
+            mobile:        stop.mobile || stop.phone,
+            officePhone:   stop.phone,
+            email:         stop.email || stop.contact_email,
             branch:        territoryToBranch(stop.territory),
           }).catch(e => console.error('blitz monday upsert error:', e.message));
         } catch (e) { console.error('blitz monday push error:', e.message); }
@@ -2202,7 +2205,7 @@ app.delete('/api/blitz/log/:stopId', async (req, res) => {
 
 app.post('/api/blitz/stops/manual', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
-  const { session_id, group_name, day, company, contact_name, phone, address, notes } = req.body;
+  const { session_id, group_name, day, company, contact_name, title, phone, mobile, email, website, address, notes } = req.body;
   if (!session_id || !group_name || !company) {
     return res.status(400).json({ error: 'session_id, group_name and company required' });
   }
@@ -2216,11 +2219,31 @@ app.post('/api/blitz/stops/manual', async (req, res) => {
     const d = parseInt(String(day).replace(/[^0-9]/g, ''), 10) || 1;
     const { rows } = await pgPool.query(
       `INSERT INTO blitz_stops
-         (session_id, group_name, day, stop_number, role, company, contact_name, phone, address, notes)
-       VALUES ($1,$2,$3,$4,'MANUAL',$5,$6,$7,$8,$9) RETURNING *`,
+         (session_id, group_name, day, stop_number, role, company, contact_name, title, phone, mobile, email, website, address, notes)
+       VALUES ($1,$2,$3,$4,'MANUAL',$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [session_id, group_name, d, stopNumber, company.trim(),
-       contact_name || null, phone || null, address || null, notes || null]
+       contact_name || null, title || null, phone || null, mobile || null,
+       email || null, website || null, address || null, notes || null]
     );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/blitz/stops/:stopId/contact', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  const id = parseInt(req.params.stopId, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid stop id' });
+  const { contact_name, title, phone, email, mobile, website, address } = req.body;
+  try {
+    const { rows } = await pgPool.query(
+      `UPDATE blitz_stops SET
+         contact_name = $1, title = $2, phone = $3, email = $4,
+         mobile = $5, website = $6, address = $7
+       WHERE id = $8 RETURNING *`,
+      [contact_name || null, title || null, phone || null, email || null,
+       mobile || null, website || null, address || null, id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Stop not found' });
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
