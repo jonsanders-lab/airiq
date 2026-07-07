@@ -8990,7 +8990,10 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
   const [editContactId, setEditContactId] = React.useState(null);
   const [editContact,   setEditContact]   = React.useState({});
   const [editSaving,    setEditSaving]    = React.useState(false);
+  const [flashMsg,      setFlashMsg]      = React.useState("");
   const fileRef = React.useRef(null);
+  const stopRefs = React.useRef({});   // stop id -> card DOM node, for auto-scroll
+  const listTopRef = React.useRef(null);
 
   async function loadActive() {
     setLoading(true);
@@ -9077,6 +9080,11 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
     setLogState(prev => ({ ...prev, [id]: { ...(prev[id] || { outcomes: [], notes: "" }), stConfirmed: val } }));
   }
 
+  function scrollToStop(id) {
+    const el = stopRefs.current[id];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   async function logStop(stop) {
     const cur = logState[stop.id] || { outcomes: [], notes: "" };
     if (cur.outcomes.length === 0) return;
@@ -9092,6 +9100,26 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
       const updated = await r.json();
       if (!r.ok) throw new Error(updated.error || "Log failed");
       setStops(prev => prev.map(s => s.id === stop.id ? updated : s));
+
+      // Auto-scroll to the next unlogged PRIMARY stop (ordered by stop number)
+      const prim = stops
+        .filter(x => x.group_name === stop.group_name && Number(x.day) === Number(stop.day) && !isBackup(x) && !isManual(x))
+        .sort((a, b) => stopNum(a) - stopNum(b));
+      const idx = prim.findIndex(x => x.id === stop.id);
+      let next = null;
+      for (let i = idx + 1; i < prim.length; i++) { if (!prim[i].logged) { next = prim[i]; break; } }
+      const remaining = prim.filter(x => x.id !== stop.id && !x.logged);
+      setTimeout(() => {
+        if (next) {
+          scrollToStop(next.id);
+        } else if (remaining.length === 0) {
+          setFlashMsg("All primary stops logged! 🎉");
+          if (listTopRef.current) listTopRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+          setTimeout(() => setFlashMsg(""), 3500);
+        } else {
+          scrollToStop(remaining[0].id);
+        }
+      }, 150);
     } catch (err) {
       setLogState(prev => ({ ...prev, [stop.id]: { ...cur, saving: false } }));
       alert("Could not log stop: " + err.message);
@@ -9211,6 +9239,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
       setStops(prev => [...prev, st]);
       setShowManual(false);
       setManualForm({ company:"", contact_name:"", title:"", phone:"", mobile:"", email:"", website:"", address:"", notes:"" });
+      setTimeout(() => scrollToStop(st.id), 150); // scroll to the newly added card
     } catch (e) { alert("Could not add stop: " + e.message); }
     setManualSaving(false);
   }
@@ -9336,7 +9365,8 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
     const logBlocked = cur.outcomes.length === 0 || cur.saving || (needsSt && !cur.stConfirmed);
     const editing = editContactId === s.id;
     return (
-      <div key={s.id} style={{ background:C.surface, border:`1px solid ${s.logged ? C.green : (manual ? PURPLE : C.border)}`,
+      <div key={s.id} ref={el => { stopRefs.current[s.id] = el; }}
+        style={{ background:C.surface, border:`1px solid ${s.logged ? C.green : (manual ? PURPLE : C.border)}`,
         borderLeft:`4px solid ${leftBar}`, borderRadius:10, padding:"12px 14px", marginBottom:10 }}>
         <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
           <span style={{ flexShrink:0, fontFamily:F.mono, fontSize:10, fontWeight:700, letterSpacing:0.5,
@@ -9610,7 +9640,7 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
 
       {!loading && session && subTab === "group" && (
         <div>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+          <div ref={listTopRef} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, flexWrap:"wrap" }}>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontFamily:F.head, fontSize:18, letterSpacing:1, color:C.orange, lineHeight:1.1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session.name}</div>
             </div>
@@ -9621,6 +9651,12 @@ function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit, reps = [
                 borderRadius:8, padding:"6px 10px", color:C.red, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>END BLITZ</button>
             )}
           </div>
+
+          {flashMsg && (
+            <div style={{ marginBottom:12, padding:"12px 14px", background:"rgba(34,197,94,0.12)",
+              border:`1px solid ${C.green}`, borderRadius:10, textAlign:"center",
+              fontFamily:F.head, fontSize:16, letterSpacing:1, color:C.green }}>{flashMsg}</div>
+          )}
 
           <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, marginBottom:6 }}>GROUP</div>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
