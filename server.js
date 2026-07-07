@@ -2058,12 +2058,14 @@ function blitzOutcomeFlags(outcome) {
   };
 }
 
+// Branch dropdown labels must match exactly what regular Field Log sends to
+// monday.com — i.e. "{City} Compressor" (see getTZ note, e.g. "Nashville Compressor").
 const BLITZ_BRANCH_CITIES = ['Atlanta','Charlotte','Greenville','Tampa','Nashville','Cleveland','Detroit','Chicago','Dallas'];
 function territoryToBranch(territory) {
   if (!territory) return null;
   const t = territory.toLowerCase();
   const city = BLITZ_BRANCH_CITIES.find(c => t.includes(c.toLowerCase()));
-  return city ? `${city} Air Compressor` : null;
+  return city ? `${city} Compressor` : null;
 }
 
 app.post('/api/blitz/upload', async (req, res) => {
@@ -2163,6 +2165,8 @@ app.post('/api/blitz/log/:stopId', async (req, res) => {
           const ga = (sres.rows[0] && sres.rows[0].group_assignments) || {};
           const assignedRep = ga[stop.group_name];
           if (!assignedRep) return;
+          // Morty and Hudson are not tracked in monday.com — never push their stops
+          if (assignedRep === 'Morty' || assignedRep === 'Hudson') return;
           mondayUpsertProspect({
             repName:       assignedRep,
             companyName:   stop.company,
