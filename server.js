@@ -66,6 +66,47 @@ async function initFieldLogTable() {
   console.log('field_log_entries table ready');
 }
 
+async function initBlitzTables() {
+  if (!pgPool) return;
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS blitz_sessions (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      active BOOLEAN DEFAULT TRUE
+    )
+  `);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS blitz_stops (
+      id SERIAL PRIMARY KEY,
+      session_id INTEGER REFERENCES blitz_sessions(id),
+      group_name TEXT NOT NULL,
+      day INTEGER NOT NULL,
+      stop_number TEXT NOT NULL,
+      role TEXT NOT NULL,
+      company TEXT NOT NULL,
+      address TEXT,
+      miles_from_shop NUMERIC,
+      industry TEXT,
+      contact_name TEXT,
+      title TEXT,
+      phone TEXT,
+      air_likelihood TEXT,
+      site_confidence TEXT,
+      territory TEXT,
+      priority_score NUMERIC,
+      website TEXT,
+      contact_email TEXT,
+      logged BOOLEAN DEFAULT FALSE,
+      logged_at TIMESTAMPTZ,
+      outcome TEXT,
+      notes TEXT
+    )
+  `);
+  await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_blitz_stops_session ON blitz_stops (session_id)`);
+  console.log('blitz tables ready');
+}
+
 // ─── BRANCH TIMEZONE MAP ─────────────────────────────────────────────────────
 const BRANCH_TZ = {
   Atlanta:    'America/New_York',
@@ -1996,6 +2037,126 @@ app.post('/api/field-log/goals', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── SALES BLITZ ──────────────────────────────────────────────────────────────
+// blitz_stops is SEPARATE from field_log_entries — blitz logging never writes to
+// field_log_entries and never triggers monday.com upserts.
+
+app.post('/api/blitz/upload', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  const { name, stops } = req.body;
+  if (!name || !Array.isArray(stops) || stops.length === 0) {
+    return res.status(400).json({ error: 'name and stops[] required' });
+  }
+  const num = v => { const n = Number(v); return (v == null || v === '' || isNaN(n)) ? null : n; };
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`UPDATE blitz_sessions SET active=FALSE WHERE active=TRUE`);
+    const s = await client.query(
+      `INSERT INTO blitz_sessions (name, active) VALUES ($1, TRUE) RETURNING id`, [name]
+    );
+    const sessionId = s.rows[0].id;
+    let inserted = 0;
+    for (const st of stops) {
+      const company = (st.company || '').toString().trim();
+      const group   = (st.group_name || '').toString().trim();
+      if (!company || !group) continue;
+      const day  = parseInt(String(st.day).replace(/[^0-9]/g, ''), 10) || 1;
+      const role = (st.role || 'PRIMARY').toString().trim() || 'PRIMARY';
+      const stopNumber = (st.stop_number != null ? String(st.stop_number) : '').trim() || '—';
+      await client.query(
+        `INSERT INTO blitz_stops
+           (session_id, group_name, day, stop_number, role, company, address, miles_from_shop,
+            industry, contact_name, title, phone, air_likelihood, site_confidence, territory,
+            priority_score, website, contact_email)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        [sessionId, group, day, stopNumber, role, company,
+         st.address || null, num(st.miles_from_shop), st.industry || null,
+         st.contact_name || null, st.title || null, st.phone || null,
+         st.air_likelihood || null, st.site_confidence || null, st.territory || null,
+         num(st.priority_score), st.website || null, st.contact_email || null]
+      );
+      inserted++;
+    }
+    await client.query('COMMIT');
+    res.json({ session_id: sessionId, totalStops: inserted });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('blitz upload error:', e.message);
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/blitz/active', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const s = await pgPool.query(
+      `SELECT id, name, created_at, active FROM blitz_sessions WHERE active=TRUE ORDER BY id DESC LIMIT 1`
+    );
+    if (s.rows.length === 0) return res.json({ session: null, stops: [] });
+    const session = s.rows[0];
+    const st = await pgPool.query(
+      `SELECT * FROM blitz_stops WHERE session_id=$1
+       ORDER BY group_name ASC, day ASC,
+                NULLIF(regexp_replace(stop_number, '[^0-9]', '', 'g'), '')::int NULLS LAST,
+                id ASC`,
+      [session.id]
+    );
+    res.json({ session, stops: st.rows });
+  } catch (e) {
+    console.error('blitz active error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/blitz/log/:stopId', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  const id = parseInt(req.params.stopId, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid stop id' });
+  const { outcome, notes } = req.body;
+  try {
+    const { rows } = await pgPool.query(
+      `UPDATE blitz_stops SET logged=TRUE, logged_at=NOW(), outcome=$1, notes=$2
+       WHERE id=$3 RETURNING *`,
+      [outcome || null, notes || null, id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Stop not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/blitz/dashboard', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    const s = await pgPool.query(
+      `SELECT id FROM blitz_sessions WHERE active=TRUE ORDER BY id DESC LIMIT 1`
+    );
+    if (s.rows.length === 0) return res.json({ session_id: null, groups: [], totals: { stops: 0, opps: 0 } });
+    const sessionId = s.rows[0].id;
+    const { rows } = await pgPool.query(
+      `SELECT group_name AS "groupName", day,
+              COUNT(*) FILTER (WHERE logged)::int AS stops,
+              COUNT(*) FILTER (WHERE logged AND outcome IS NOT NULL AND lower(btrim(outcome)) <> 'nothing')::int AS opps
+       FROM blitz_stops WHERE session_id=$1
+       GROUP BY group_name, day
+       ORDER BY group_name, day`,
+      [sessionId]
+    );
+    const totals = rows.reduce((a, r) => ({ stops: a.stops + r.stops, opps: a.opps + r.opps }), { stops: 0, opps: 0 });
+    res.json({ session_id: sessionId, groups: rows, totals });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/blitz/session', async (req, res) => {
+  if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
+  try {
+    await pgPool.query(`UPDATE blitz_sessions SET active=FALSE WHERE active=TRUE`);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── SLACK FEEDBACK ───────────────────────────────────────────────────────────
 app.post('/api/slack-feedback', async (req, res) => {
   const { rep, branch, type, message, tab } = req.body;
@@ -2035,6 +2196,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`AirIQ running on port ${PORT}`);
   try { await initFieldLogTable(); } catch (e) { console.error('Field log table init failed:', e.message); }
+  try { await initBlitzTables(); } catch (e) { console.error('Blitz table init failed:', e.message); }
   try {
     await fetchInventoryFromGmail();
     if (inventoryCache.length === 0) loadInventoryFallback();

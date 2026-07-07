@@ -12,7 +12,7 @@ This keeps the briefing current automatically. Never skip this step.
 ---
 
 # AirIQ — Claude Code Project Briefing
-**Last updated: June 26, 2026 (session 10)**
+**Last updated: July 6, 2026 (session 11)**
 **VP of Sales: Jon Sanders — Hodge Industrial Technologies, Hoschton GA**
 **9 branches: Atlanta, Charlotte, Tampa, Greenville, Nashville, Dallas, Detroit, Cleveland, Chicago**
 **16 reps across 2 RSMs**
@@ -100,6 +100,10 @@ Railway volume mounted at /app/data for persistent storage
 - Stop search / form pre-fill: GET /api/field-log/search?q= (ILIKE across company/contact/location/notes); 400ms debounce; results panel with onMouseDown+onTouchEnd; fillFromSearchResult pre-fills form; ESC/× clear
 - GET /api/stories + POST /api/stories endpoints added; STORIES_FILE on Railway volume; Wingman LogAWin was silently failing without these
 - Drawing Tab Separation (session 10): FacilityDrawing extracted from SiteSurvey into standalone "Drawing" tab (id: drawing, icon: ✏️); App-level drawingAttachment and drawingForBOM state; Drawing toolbar: ⬇ DXF (DXF R12 export), ▶ IQF (sendToIQF callback), ▶ SYS ENG (sendToSysEng callback); SiteSurvey: shows attached drawing thumbnail with REMOVE + PDF upload zone; Sys Eng: "Analyze Drawing for BOM" card with AI analysis, editable BOM table, Copy BOM; Estimator "Send to Drawing" buttons now route to drawing tab; session loadSession() switches to drawing tab
+- MY LOG stop card date prefix (session 11): formatStopStamp() shows time-only for today's stops and "Jul 6, 2026 · 11:56 AM" for prior days; applied to both MY LOG views (grouped + chronological); Team View + formatTime unchanged
+- Sales Blitz Mode (session 11): standalone BlitzMode component inside Field Log tab. SheetJS (xlsx.full.min.js) added to CDN scripts (was NOT previously loaded). ⚡ BLITZ MODE header button visible to ALL reps when an active blitz exists, and always to blitz leaders (Jon S, Tony, Kyle, Morty, Hudson); button is orange when a blitz is active, navy-outlined otherwise; hidden entirely from non-leaders when no active blitz. Two sub-tabs: MY GROUP (group/day selectors built dynamically from the uploaded file, default group from localStorage blitzGroup + current blitz day by calendar diff; primary stops in numeric order, backups collapsed behind a toggle; stop cards show # badge orange/green, company, industry pill, contact+title, tel: phone, maps link — Apple Maps on iOS / Google Maps else, air-likelihood + site-confidence badges, priority score; outcome buttons + notes + LOG STOP; progress bar "X of Y stops logged today") and BLITZ DASHBOARD (scoreboard: one row per group, per-day stops/opps, total stops/opps, conv%; overall totals row; auto-refresh every 60s). Leaders-only: xlsx upload panel (reads "All 240 Stops" sheet or first sheet with a Group column, maps 17 columns) + End Blitz button (returns to normal Field Log). Blitz logging is fully separate from field_log_entries and never triggers monday.com.
+- server.js Blitz endpoints (session 11): blitz_sessions + blitz_stops tables (initBlitzTables on startup); POST /api/blitz/upload (deactivates prior active session, inserts stops in a transaction, returns {session_id, totalStops}); GET /api/blitz/active; POST /api/blitz/log/:stopId; GET /api/blitz/dashboard (per group/day stops+opps + overall totals; opp = outcome not null and not 'nothing'); DELETE /api/blitz/session
+- Reps Morty + Hudson added (session 11): REP_START_DATES (Morty 2010-01-01, Hudson 2025-04-14), Field Log rep dropdown, and global full-name REPS array. NO_GOAL_REPS = ['Morty','Hudson','Tony','Kyle','Jon S'] — getRepGoals() returns {daily:null, weekly:0, monthly:0} for these regardless of tenure/day
 
 ## KEY BUSINESS RULES (hardcoded)
 - HTM series: 2-3 day assembly lead time even if ST shows stock

@@ -110,6 +110,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
@@ -717,10 +718,16 @@ const REP_START_DATES = {
   'Dan':      '2026-04-06',
   'David G':  '2026-03-23',
   'Javier':   '2026-05-11',
+  'Morty':    '2010-01-01',
+  'Hudson':   '2025-04-14',
 };
+
+// Reps never subject to stop targets (leaders / special roles)
+const NO_GOAL_REPS = ['Morty', 'Hudson', 'Tony', 'Kyle', 'Jon S'];
 
 function getRepGoals(repName, goalsOverride) {
   const isWed = new Date().getDay() === 3;
+  if (NO_GOAL_REPS.includes(repName)) return { daily: null, weekly: 0, monthly: 0 };
   if (goalsOverride && Array.isArray(goalsOverride)) {
     const row = goalsOverride.find(r => r.rep_name === repName);
     if (row) {
@@ -2764,7 +2771,7 @@ const REPS = [
   "Tony Gilleland","Jon Landress","Zac Hoadley","Devon Dalton","Earl Livingston",
   "Kyle White","Dave Jolly","Chase Lewis","Mike George",
   "Jackson Carrell","Jon Sanders","Tristian Castiglione","Connor Smith",
-  "Dan Constant","David Gonzalez","Javi Cabral",
+  "Dan Constant","David Gonzalez","Javi Cabral","Morty","Hudson",
 ];
 
 function estAvailPressures(series, model) {
@@ -8949,8 +8956,479 @@ function MarketIntel() {
   );
 }
 
+// ─── SALES BLITZ MODE ───────────────────────────────────────────────────────
+// Separate from Field Log: blitz stop logging hits /api/blitz/* only and never
+// writes to field_log_entries or monday.com.
+function BlitzMode({ repName, branch, isLeader, onActiveChange, onExit }) {
+  const OUTCOMES = ["Membership Opp","Equipment Opp","Service Lead","Piping/Install",
+                    "Sticker Placed","VR Presentation","Appointment Set","Nothing Today"];
+
+  const [subTab,   setSubTab]   = React.useState("group");
+  const [loading,  setLoading]  = React.useState(true);
+  const [session,  setSession]  = React.useState(null);
+  const [stops,    setStops]    = React.useState([]);
+  const [blitzName, setBlitzName] = React.useState("");
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadMsg, setUploadMsg] = React.useState("");
+  const [selectedGroup, setSelectedGroup] = React.useState(() => localStorage.getItem("blitzGroup") || "");
+  const [selectedDay,   setSelectedDay]   = React.useState(1);
+  const [showBackup,    setShowBackup]    = React.useState(false);
+  const [logState,      setLogState]      = React.useState({});
+  const [dash,          setDash]          = React.useState(null);
+  const fileRef = React.useRef(null);
+
+  async function loadActive() {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/blitz/active");
+      const d = await r.json();
+      const sess = d.session || null;
+      const list = d.stops || [];
+      setSession(sess);
+      setStops(list);
+      if (onActiveChange) onActiveChange(!!sess);
+      if (sess) {
+        const dayList = [...new Set(list.map(s => Number(s.day)))].sort((a,b) => a-b);
+        const maxDay  = dayList.length ? Math.max(...dayList) : 1;
+        const created = new Date(sess.created_at);
+        const cDay    = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+        const now     = new Date();
+        const nDay    = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const dayNum  = Math.round((nDay - cDay) / 86400000) + 1;
+        setSelectedDay(Math.min(Math.max(dayNum, 1), maxDay));
+        const grpList = [...new Set(list.map(s => s.group_name))].sort();
+        const stored  = localStorage.getItem("blitzGroup") || "";
+        setSelectedGroup(grpList.includes(stored) ? stored : (grpList[0] || ""));
+      }
+    } catch (e) { /* leave empty */ }
+    setLoading(false);
+  }
+  React.useEffect(() => { loadActive(); }, []);
+
+  React.useEffect(() => { if (selectedGroup) localStorage.setItem("blitzGroup", selectedGroup); }, [selectedGroup]);
+
+  React.useEffect(() => {
+    if (subTab !== "dashboard") return;
+    loadDash();
+    const t = setInterval(loadDash, 60000);
+    return () => clearInterval(t);
+  }, [subTab]);
+
+  const groups = React.useMemo(() => [...new Set(stops.map(s => s.group_name))].sort(), [stops]);
+  const days   = React.useMemo(() => [...new Set(stops.map(s => Number(s.day)))].sort((a,b) => a-b), [stops]);
+
+  const isBackup = s => (s.role || "").toLowerCase().includes("backup");
+  const stopNum  = s => { const m = String(s.stop_number || "").match(/\d+/); return m ? parseInt(m[0],10) : 9999; };
+
+  const groupDayStops = React.useMemo(() =>
+    stops.filter(s => s.group_name === selectedGroup && Number(s.day) === Number(selectedDay)),
+    [stops, selectedGroup, selectedDay]);
+  const primaryStops = groupDayStops.filter(s => !isBackup(s)).sort((a,b) => stopNum(a) - stopNum(b));
+  const backupStops  = groupDayStops.filter(isBackup).sort((a,b) => stopNum(a) - stopNum(b));
+
+  const loggedCount = primaryStops.filter(s => s.logged).length;
+  const pct = primaryStops.length ? Math.round(loggedCount / primaryStops.length * 100) : 0;
+
+  function toggleOutcome(id, label) {
+    setLogState(prev => {
+      const cur = prev[id] || { outcomes: [], notes: "" };
+      const has = cur.outcomes.includes(label);
+      let outcomes;
+      if (label === "Nothing Today") {
+        outcomes = has ? [] : ["Nothing Today"];
+      } else {
+        outcomes = has
+          ? cur.outcomes.filter(l => l !== label)
+          : [...cur.outcomes.filter(l => l !== "Nothing Today"), label];
+      }
+      return { ...prev, [id]: { ...cur, outcomes } };
+    });
+  }
+  function setNotes(id, val) {
+    setLogState(prev => ({ ...prev, [id]: { ...(prev[id] || { outcomes: [] }), notes: val } }));
+  }
+
+  async function logStop(stop) {
+    const cur = logState[stop.id] || { outcomes: [], notes: "" };
+    if (cur.outcomes.length === 0) return;
+    let outcome;
+    if (cur.outcomes.length === 1 && cur.outcomes[0] === "Nothing Today") outcome = "nothing";
+    else outcome = cur.outcomes.filter(l => l !== "Nothing Today").join(", ") || "nothing";
+    setLogState(prev => ({ ...prev, [stop.id]: { ...cur, saving: true } }));
+    try {
+      const r = await fetch(`/api/blitz/log/${stop.id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome, notes: cur.notes || "" }),
+      });
+      const updated = await r.json();
+      if (!r.ok) throw new Error(updated.error || "Log failed");
+      setStops(prev => prev.map(s => s.id === stop.id ? updated : s));
+    } catch (err) {
+      setLogState(prev => ({ ...prev, [stop.id]: { ...cur, saving: false } }));
+      alert("Could not log stop: " + err.message);
+    }
+  }
+
+  async function handleFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!/\.xlsx$/i.test(file.name)) { setUploadMsg("Please choose an .xlsx file"); if (fileRef.current) fileRef.current.value = ""; return; }
+    if (!blitzName.trim()) { setUploadMsg("Enter a blitz name first"); if (fileRef.current) fileRef.current.value = ""; return; }
+    if (!window.XLSX) { setUploadMsg("Spreadsheet library not loaded — refresh and retry"); return; }
+    setUploading(true); setUploadMsg("Parsing…");
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      let sheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === "all 240 stops");
+      if (!sheetName) {
+        sheetName = wb.SheetNames.find(n => {
+          const j = window.XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: "" });
+          return j.length && Object.keys(j[0]).some(k => k.trim().toLowerCase() === "group");
+        });
+      }
+      if (!sheetName) { setUploadMsg('No sheet with a "Group" column found'); setUploading(false); return; }
+      const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
+      const pick = (row, ...names) => {
+        const keys = Object.keys(row);
+        for (const n of names) { const k = keys.find(k => k.trim().toLowerCase() === n.toLowerCase()); if (k != null) return row[k]; }
+        for (const n of names) { const k = keys.find(k => k.trim().toLowerCase().includes(n.toLowerCase())); if (k != null) return row[k]; }
+        return "";
+      };
+      const parsed = rows.map(r => ({
+        group_name:      String(pick(r, "Group")).trim(),
+        day:             pick(r, "Day"),
+        stop_number:     String(pick(r, "Stop")).trim(),
+        role:            String(pick(r, "Role")).trim(),
+        company:         String(pick(r, "Company")).trim(),
+        address:         String(pick(r, "Address")).trim(),
+        miles_from_shop: pick(r, "Mi from Shop", "Miles from Shop"),
+        industry:        String(pick(r, "Industry")).trim(),
+        contact_name:    String(pick(r, "Contact")).trim(),
+        title:           String(pick(r, "Title")).trim(),
+        phone:           String(pick(r, "Phone")).trim(),
+        air_likelihood:  String(pick(r, "Air Likelihood")).trim(),
+        site_confidence: String(pick(r, "Site Confidence")).trim(),
+        territory:       String(pick(r, "Territory")).trim(),
+        priority_score:  pick(r, "Priority Score"),
+        website:         String(pick(r, "Website")).trim(),
+        contact_email:   String(pick(r, "Contact Email")).trim(),
+      })).filter(s => s.company && s.group_name);
+      if (parsed.length === 0) { setUploadMsg("No valid rows found (need Group + Company)."); setUploading(false); if (fileRef.current) fileRef.current.value = ""; return; }
+      const resp = await fetch("/api/blitz/upload", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: blitzName.trim(), stops: parsed }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Upload failed");
+      setUploadMsg(`✅ Loaded ${data.totalStops} stops`);
+      setBlitzName("");
+      await loadActive();
+    } catch (err) { setUploadMsg("Error: " + err.message); }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function loadDash() {
+    try { const r = await fetch("/api/blitz/dashboard"); setDash(await r.json()); } catch (e) { /* ignore */ }
+  }
+
+  async function endBlitz() {
+    if (!window.confirm("End the current blitz? This deactivates it for the whole team.")) return;
+    try {
+      await fetch("/api/blitz/session", { method: "DELETE" });
+      setSession(null); setStops([]); setDash(null);
+      if (onActiveChange) onActiveChange(false);
+      if (onExit) onExit();
+    } catch (e) { alert("Failed to end blitz"); }
+  }
+
+  const fmtLogged = ts => {
+    if (!ts) return "";
+    const d = new Date(ts);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " · " +
+           d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  };
+  const mapsHref = addr => {
+    const q = encodeURIComponent(addr);
+    return /iPad|iPhone|iPod/.test(navigator.userAgent)
+      ? `https://maps.apple.com/?q=${q}` : `https://maps.google.com/?q=${q}`;
+  };
+
+  const pill = (txt, color) => (
+    <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:0.5, padding:"3px 7px", borderRadius:10,
+      background:`${color}22`, color, border:`1px solid ${color}55` }}>{txt}</span>
+  );
+
+  function StopCard(s) {
+    const cur = logState[s.id] || { outcomes: [], notes: "" };
+    const badgeColor = s.logged ? C.green : C.orange;
+    return (
+      <div key={s.id} style={{ background:C.surface, border:`1px solid ${s.logged ? C.green : C.border}`,
+        borderLeft:`4px solid ${badgeColor}`, borderRadius:10, padding:"12px 14px", marginBottom:10 }}>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+          <span style={{ flexShrink:0, fontFamily:F.mono, fontSize:10, fontWeight:700, letterSpacing:0.5,
+            padding:"4px 8px", borderRadius:6, color:"#fff", background:badgeColor }}>
+            {isBackup(s) ? "BACKUP" : `Stop ${stopNum(s) === 9999 ? (s.stop_number||"") : stopNum(s)}`}
+          </span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontFamily:F.body, fontSize:16, fontWeight:700, color:C.text, lineHeight:1.2 }}>{s.company}</div>
+            {s.industry && <div style={{ marginTop:3 }}>{pill(s.industry, C.mid)}</div>}
+          </div>
+          {s.priority_score != null && s.priority_score !== "" && (
+            <span style={{ flexShrink:0, fontFamily:F.mono, fontSize:9, color:C.dim }}>P{Number(s.priority_score)}</span>
+          )}
+        </div>
+
+        {(s.contact_name || s.title) && (
+          <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid, marginTop:6 }}>
+            {s.contact_name}{s.contact_name && s.title ? " · " : ""}{s.title}
+          </div>
+        )}
+        {s.phone && (
+          <div style={{ marginTop:5 }}>
+            <a href={`tel:${String(s.phone).replace(/[^0-9+]/g,"")}`} style={{ fontFamily:F.mono, fontSize:12, color:C.blueLight, textDecoration:"none" }}>📞 {s.phone}</a>
+          </div>
+        )}
+        {s.address && (
+          <div style={{ marginTop:4 }}>
+            <a href={mapsHref(s.address)} target="_blank" rel="noopener noreferrer" style={{ fontFamily:F.mono, fontSize:11, color:C.blueLight, textDecoration:"none" }}>📍 {s.address}</a>
+          </div>
+        )}
+        <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
+          {s.air_likelihood && pill(`Air: ${s.air_likelihood}`, C.copper)}
+          {s.site_confidence && pill(`Site: ${s.site_confidence}`, C.blueLight)}
+          {s.territory && pill(s.territory, C.dim)}
+        </div>
+
+        {s.logged ? (
+          <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              {pill(s.outcome === "nothing" ? "Nothing Today" : (s.outcome || "Logged"), C.green)}
+              <span style={{ fontFamily:F.mono, fontSize:9, color:C.dim }}>✓ {fmtLogged(s.logged_at)}</span>
+            </div>
+            {s.notes && <div style={{ fontFamily:F.body, fontSize:12, color:C.mid, marginTop:6, lineHeight:1.4 }}>{s.notes}</div>}
+          </div>
+        ) : (
+          <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:8 }}>
+              {OUTCOMES.map(o => {
+                const on = cur.outcomes.includes(o);
+                return (
+                  <button key={o} onClick={() => toggleOutcome(s.id, o)} style={{
+                    padding:"9px 6px", borderRadius:7, fontFamily:F.body, fontSize:12, fontWeight:600, cursor:"pointer",
+                    background: on ? `linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)` : C.surface2,
+                    border:`1.5px solid ${on ? C.orange : C.border}`, color: on ? "#fff" : C.text,
+                  }}>{o}</button>
+                );
+              })}
+            </div>
+            <input value={cur.notes} onChange={e => setNotes(s.id, e.target.value)} placeholder="Notes (optional)"
+              style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:7,
+                color:C.text, fontFamily:F.body, fontSize:13, padding:"9px 11px", boxSizing:"border-box", marginBottom:8 }}/>
+            <button onClick={() => logStop(s)} disabled={cur.outcomes.length === 0 || cur.saving} style={{
+              width:"100%", padding:"11px 0", border:"none", borderRadius:8, fontFamily:F.head, fontSize:15, letterSpacing:2,
+              color:"#fff", cursor: (cur.outcomes.length === 0 || cur.saving) ? "not-allowed" : "pointer",
+              opacity: (cur.outcomes.length === 0 || cur.saving) ? 0.5 : 1,
+              background:`linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)`,
+            }}>{cur.saving ? "LOGGING…" : "LOG STOP"}</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Dashboard scoreboard ──
+  function renderDashboard() {
+    const lookup = {};
+    (dash?.groups || []).forEach(r => { (lookup[r.groupName] = lookup[r.groupName] || {})[r.day] = r; });
+    const grpNames = dash?.groups ? [...new Set(dash.groups.map(r => r.groupName))].sort() : groups;
+    const dayList  = days.length ? days : (dash?.groups ? [...new Set(dash.groups.map(r => r.day))].sort((a,b)=>a-b) : []);
+    const th = { fontFamily:F.mono, fontSize:9, letterSpacing:1, color:C.copper, padding:"8px 6px", textAlign:"center", borderBottom:`2px solid ${C.border}`, whiteSpace:"nowrap" };
+    const td = { fontFamily:F.mono, fontSize:11, color:C.text, padding:"9px 6px", textAlign:"center", borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
+    const rowTotals = g => {
+      let stops = 0, opps = 0;
+      dayList.forEach(d => { const c = lookup[g]?.[d]; if (c) { stops += c.stops; opps += c.opps; } });
+      return { stops, opps };
+    };
+    const overall = dash?.totals || { stops: 0, opps: 0 };
+    return (
+      <div>
+        <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch", border:`1px solid ${C.border}`, borderRadius:10 }}>
+          <table style={{ borderCollapse:"collapse", width:"100%", minWidth:360 }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign:"left" }}>GROUP</th>
+                {dayList.map(d => <th key={d} style={th}>DAY {d}</th>)}
+                <th style={th}>TOTAL</th>
+                <th style={th}>OPPS</th>
+                <th style={th}>CONV%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grpNames.map(g => {
+                const t = rowTotals(g);
+                const conv = t.stops ? (t.opps / t.stops * 100).toFixed(1) : "0.0";
+                return (
+                  <tr key={g}>
+                    <td style={{ ...td, textAlign:"left", fontWeight:700, color:C.copper }}>{g}</td>
+                    {dayList.map(d => {
+                      const c = lookup[g]?.[d];
+                      return <td key={d} style={td}>{c ? `${c.stops} / ${c.opps}` : "—"}</td>;
+                    })}
+                    <td style={{ ...td, fontWeight:700 }}>{t.stops}</td>
+                    <td style={{ ...td, fontWeight:700, color:C.green }}>{t.opps}</td>
+                    <td style={td}>{conv}%</td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td style={{ ...td, textAlign:"left", fontWeight:700, color:C.orange, borderTop:`2px solid ${C.border}` }}>ALL GROUPS</td>
+                {dayList.map(d => <td key={d} style={{ ...td, borderTop:`2px solid ${C.border}` }}></td>)}
+                <td style={{ ...td, fontWeight:700, color:C.orange, borderTop:`2px solid ${C.border}` }}>{overall.stops}</td>
+                <td style={{ ...td, fontWeight:700, color:C.green, borderTop:`2px solid ${C.border}` }}>{overall.opps}</td>
+                <td style={{ ...td, fontWeight:700, borderTop:`2px solid ${C.border}` }}>{overall.stops ? (overall.opps / overall.stops * 100).toFixed(1) : "0.0"}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontFamily:F.mono, fontSize:9, color:C.dim, letterSpacing:1, marginTop:8, textAlign:"center" }}>
+          Each cell = stops logged / opps · auto-refreshes every 60s
+        </div>
+      </div>
+    );
+  }
+
+  const selBtn = (val, cur, set, label) => (
+    <button key={String(val)} onClick={() => set(val)} style={{
+      padding:"6px 12px", borderRadius:20, cursor:"pointer", fontFamily:F.mono, fontSize:10, letterSpacing:1,
+      border:`1px solid ${cur === val ? C.orange : C.border}`,
+      background: cur === val ? C.orangeSoft : "transparent",
+      color: cur === val ? C.orange : C.mid, whiteSpace:"nowrap",
+    }}>{label}</button>
+  );
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
+      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+        {[["group","MY GROUP"],["dashboard","BLITZ DASHBOARD"]].map(([v,l]) => (
+          <button key={v} onClick={() => setSubTab(v)} style={{
+            flex:1, padding:"9px 0", borderRadius:6,
+            background: subTab === v ? C.orange : C.surface2,
+            border:`1px solid ${subTab === v ? C.orange : C.border}`,
+            color: subTab === v ? "#fff" : C.mid, fontFamily:F.mono, fontSize:11, letterSpacing:2, cursor:"pointer",
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {loading && (
+        <div style={{ textAlign:"center", padding:"40px 0", fontFamily:F.mono, fontSize:12, color:C.mid, letterSpacing:2 }}>
+          LOADING BLITZ…
+        </div>
+      )}
+
+      {!loading && !session && !isLeader && (
+        <div style={{ textAlign:"center", padding:"40px 16px", fontFamily:F.mono, fontSize:12, color:C.mid, letterSpacing:1, lineHeight:1.6 }}>
+          No active blitz right now.<br/>Your manager will start one when it's time.
+        </div>
+      )}
+
+      {!loading && !session && isLeader && (
+        <div style={{ background:C.surface, border:`1px solid ${C.orange}`, borderLeft:`4px solid ${C.orange}`, borderRadius:10, padding:"18px 16px" }}>
+          <div style={{ fontFamily:F.head, fontSize:20, letterSpacing:2, color:C.orange, marginBottom:4 }}>⚡ START A BLITZ</div>
+          <div style={{ fontFamily:F.body, fontSize:13, color:C.mid, marginBottom:16, lineHeight:1.5 }}>
+            No active blitz. Name it, then upload the route .xlsx to load all stops for the team.
+          </div>
+          <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, marginBottom:6 }}>BLITZ NAME</div>
+          <input value={blitzName} onChange={e => setBlitzName(e.target.value)} placeholder="Cleveland Blitz — July 2026"
+            style={{ width:"100%", background:C.surface3, border:`1px solid ${C.border}`, borderRadius:8,
+              color:C.text, fontFamily:F.body, fontSize:14, padding:"11px 14px", boxSizing:"border-box", marginBottom:14 }}/>
+          <input ref={fileRef} type="file" accept=".xlsx" onChange={handleFile} style={{ display:"none" }}/>
+          <button onClick={() => fileRef.current && fileRef.current.click()} disabled={uploading} style={{
+            width:"100%", padding:"13px 0", border:"none", borderRadius:8, fontFamily:F.head, fontSize:16, letterSpacing:2,
+            color:"#fff", cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1,
+            background:`linear-gradient(135deg,${C.orange} 0%,#E8640A 100%)`,
+          }}>{uploading ? "UPLOADING…" : "↑ UPLOAD .XLSX ROUTE"}</button>
+          {uploadMsg && (
+            <div style={{ fontFamily:F.mono, fontSize:11, color: uploadMsg.startsWith("✅") ? C.green : uploadMsg.startsWith("Error") ? C.red : C.mid,
+              letterSpacing:0.5, marginTop:12 }}>{uploadMsg}</div>
+          )}
+        </div>
+      )}
+
+      {!loading && session && subTab === "group" && (
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontFamily:F.head, fontSize:18, letterSpacing:1, color:C.orange, lineHeight:1.1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session.name}</div>
+            </div>
+            {isLeader && (
+              <button onClick={endBlitz} style={{ flexShrink:0, background:"transparent", border:`1px solid ${C.red}`,
+                borderRadius:8, padding:"6px 10px", color:C.red, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>END BLITZ</button>
+            )}
+          </div>
+
+          <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, marginBottom:6 }}>GROUP</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
+            {groups.map(g => selBtn(g, selectedGroup, setSelectedGroup, `Group ${g}`))}
+          </div>
+
+          <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:1.5, color:C.mid, marginBottom:6 }}>DAY</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+            {days.map(d => selBtn(d, selectedDay, setSelectedDay, `Day ${d}`))}
+          </div>
+
+          <div style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginBottom:14 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
+              <span style={{ fontFamily:F.mono, fontSize:11, letterSpacing:1, color:C.text }}>{loggedCount} of {primaryStops.length} stops logged today</span>
+              <span style={{ fontFamily:F.mono, fontSize:11, color:C.orange, fontWeight:700 }}>{pct}%</span>
+            </div>
+            <div style={{ height:10, borderRadius:6, background:C.surface3, overflow:"hidden" }}>
+              <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.orange},#E8640A)`, transition:"width 0.3s" }}/>
+            </div>
+          </div>
+
+          {groupDayStops.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"30px 0", fontFamily:F.mono, fontSize:12, color:C.mid, letterSpacing:1 }}>
+              No stops for {selectedGroup ? `Group ${selectedGroup}` : "this group"} · Day {selectedDay}
+            </div>
+          ) : (
+            <div>
+              {primaryStops.map(StopCard)}
+              {backupStops.length > 0 && (
+                <div style={{ marginTop:8 }}>
+                  <button onClick={() => setShowBackup(v => !v)} style={{
+                    width:"100%", padding:"10px 0", borderRadius:8, cursor:"pointer",
+                    background:C.surface2, border:`1px dashed ${C.border}`, color:C.mid,
+                    fontFamily:F.mono, fontSize:11, letterSpacing:1,
+                  }}>{showBackup ? "▲ Hide Backup Stops" : `▼ Show Backup Stops (${backupStops.length})`}</button>
+                  {showBackup && <div style={{ marginTop:10 }}>{backupStops.map(StopCard)}</div>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && session && subTab === "dashboard" && (
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+            <div style={{ flex:1, fontFamily:F.head, fontSize:18, letterSpacing:1, color:C.orange }}>{session.name}</div>
+            {isLeader && (
+              <button onClick={endBlitz} style={{ flexShrink:0, background:"transparent", border:`1px solid ${C.red}`,
+                borderRadius:8, padding:"6px 10px", color:C.red, fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:"pointer" }}>END BLITZ</button>
+            )}
+          </div>
+          {dash ? renderDashboard() : (
+            <div style={{ textAlign:"center", padding:"30px 0", fontFamily:F.mono, fontSize:12, color:C.mid, letterSpacing:1 }}>LOADING SCOREBOARD…</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldLog() {
-  const REPS = ["Jon S","Tony","Kyle","Dan","Zac","Dave J","Chase","Devon","Earl","David G","Javier","Jon L","Jackson","Mike","Tristian","Connor"];
+  const REPS = ["Jon S","Tony","Kyle","Dan","Zac","Dave J","Chase","Devon","Earl","David G","Javier","Jon L","Jackson","Mike","Tristian","Connor","Morty","Hudson"];
   const INACTIVE_REPS = ["Jack"];
   const ACTIVITIES = [
     { id:"pmOpp",       label:"Membership Opp"   },
@@ -8964,6 +9442,7 @@ function FieldLog() {
   ];
 
   const LEADERS = ["Jon Sanders", "Tony", "Kyle"];
+  const BLITZ_LEADERS = ["Jon S", "Tony", "Kyle", "Morty", "Hudson"];
 
   const [view,       setView]       = React.useState(() => {
     const n = localStorage.getItem("fieldlog_rep") || localStorage.getItem("airiq_rep_name") || "";
@@ -9048,6 +9527,8 @@ function FieldLog() {
   const [repInlineFrom,        setRepInlineFrom]        = React.useState(() => new Date().toISOString().slice(0,10));
   const [repInlineTo,          setRepInlineTo]          = React.useState(() => new Date().toISOString().slice(0,10));
   const [repInlineExporting,   setRepInlineExporting]   = React.useState(false);
+  const [hasActiveBlitz, setHasActiveBlitz] = React.useState(false);
+  const isBlitzLeader = BLITZ_LEADERS.some(l => l.toLowerCase() === (repName || "").toLowerCase());
   const dashTimer      = React.useRef(null);
   const dashRangeRef   = React.useRef("today");
   const saveDraftTimer = React.useRef(null);
@@ -9062,6 +9543,13 @@ function FieldLog() {
   React.useEffect(() => {
     if (repName) fetchTally(repName);
   }, []);
+
+  React.useEffect(() => {
+    // Every rep polls active-blitz state so the button can appear for all reps during a blitz
+    fetch('/api/blitz/active').then(r => r.json())
+      .then(d => setHasActiveBlitz(!!(d && d.session)))
+      .catch(() => {});
+  }, [repName]);
 
   React.useEffect(() => {
     if (repName) fetchStops(repName);
@@ -9742,6 +10230,16 @@ function FieldLog() {
             }}>{label}</button>
           ))}
         </div>
+        {(isBlitzLeader || hasActiveBlitz) && (
+          <button onClick={()=>setView('blitz')} style={{
+            flexShrink:0,
+            background: (hasActiveBlitz || view==='blitz') ? C.orange : 'transparent',
+            border:`1px solid ${(hasActiveBlitz || view==='blitz') ? C.orange : C.blue}`,
+            borderRadius:12, padding:'6px 10px',
+            color: (hasActiveBlitz || view==='blitz') ? '#fff' : C.blueLight,
+            fontFamily:F.mono, fontSize:10, letterSpacing:1, cursor:'pointer', fontWeight:700,
+          }}>⚡ BLITZ MODE</button>
+        )}
         <button onClick={()=>setFeedbackOpen(true)} style={{flexShrink:0,background:'rgba(193,122,53,0.18)',border:'1px solid rgba(193,122,53,0.5)',borderRadius:12,padding:'6px 10px',color:'#C17A35',fontFamily:F.mono,fontSize:10,letterSpacing:1,cursor:'pointer'}}>💬 FEEDBACK</button>
       </div>
 
@@ -11230,6 +11728,11 @@ function FieldLog() {
           )}
 
         </div>
+      )}
+
+      {view === "blitz" && (
+        <BlitzMode repName={repName} branch={branch} isLeader={isBlitzLeader}
+          onActiveChange={setHasActiveBlitz} onExit={() => setView("rep")} />
       )}
     </div>
   );
