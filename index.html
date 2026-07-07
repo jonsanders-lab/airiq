@@ -9481,6 +9481,18 @@ function FieldLog() {
     return new Date(ts).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true });
   }
 
+  // Stop card timestamp: time only for today, "Jul 6, 2026 · 11:56 AM" for prior days
+  function formatStopStamp(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const time = d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true });
+    const now = new Date();
+    const isToday = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    if (isToday) return time;
+    const date = d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+    return `${date} · ${time}`;
+  }
+
   function getMyLocations() {
     if (!repName) return [];
     try { return JSON.parse(localStorage.getItem(`airiq_fieldlog_locations_${repName}`) || '[]'); } catch { return []; }
@@ -10312,7 +10324,7 @@ function FieldLog() {
                               {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
                             </div>
                             <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0, marginLeft:8 }}>
-                              <span style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{formatTime(s.logged_at)}</span>
+                              <span style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{formatStopStamp(s.logged_at)}</span>
                               <span style={{ color:C.mid, fontSize:11 }}>{isExp ? "▲" : "▼"}</span>
                             </div>
                           </div>
@@ -10457,7 +10469,7 @@ function FieldLog() {
                           {s.contact_name && <div style={{ fontFamily:F.mono, fontSize:11, color:C.mid }}>{s.contact_name}</div>}
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0, marginLeft:8 }}>
-                          <span style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{formatTime(s.logged_at)}</span>
+                          <span style={{ fontFamily:F.mono, fontSize:10, color:C.dim }}>{formatStopStamp(s.logged_at)}</span>
                           <span style={{ color:C.mid, fontSize:11 }}>{isExp ? "▲" : "▼"}</span>
                         </div>
                       </div>
