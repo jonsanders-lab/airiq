@@ -2060,14 +2060,14 @@ function blitzOutcomeFlags(outcome) {
   };
 }
 
-// Branch dropdown labels must match exactly what regular Field Log sends to
-// monday.com — i.e. "{City} Compressor" (see getTZ note, e.g. "Nashville Compressor").
+// The monday.com Branch dropdown options are bare city names — return just the
+// city so it matches a dropdown label exactly (passed as { labels: [branch] }).
 const BLITZ_BRANCH_CITIES = ['Atlanta','Charlotte','Greenville','Tampa','Nashville','Cleveland','Detroit','Chicago','Dallas'];
 function territoryToBranch(territory) {
   if (!territory) return null;
   const t = territory.toLowerCase();
   const city = BLITZ_BRANCH_CITIES.find(c => t.includes(c.toLowerCase()));
-  return city ? `${city} Compressor` : null;
+  return city ? city : null;
 }
 
 app.post('/api/blitz/upload', async (req, res) => {
