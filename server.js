@@ -2124,7 +2124,7 @@ app.get('/api/blitz/active', async (req, res) => {
   if (!pgPool) return res.status(503).json({ error: 'Database not configured' });
   try {
     const s = await pgPool.query(
-      `SELECT id, name, created_at, active FROM blitz_sessions WHERE active=TRUE ORDER BY id DESC LIMIT 1`
+      `SELECT id, name, created_at, active, group_assignments FROM blitz_sessions WHERE active=TRUE ORDER BY id DESC LIMIT 1`
     );
     if (s.rows.length === 0) return res.json({ session: null, stops: [] });
     const session = s.rows[0];
